@@ -211,9 +211,10 @@ export class SyncEngine {
     this.#setStatus({ state: "syncing" });
     try {
       await withLock(async () => {
-        await this.#push();
-        await this.#pull();
-        await rebuildView(this.#db);
+        const pushed = await this.#push();
+        const pulled = await this.#pull();
+        // No change on either side: the view is already right.
+        if (pushed || pulled) await rebuildView(this.#db);
       });
       this.#failures = 0;
       this.#setStatus({ state: "idle", lastSyncAt: Date.now() });
@@ -244,15 +245,17 @@ export class SyncEngine {
     return res;
   }
 
-  async #push(): Promise<void> {
+  /** Push the outbox. True if any op left the outbox. */
+  async #push(): Promise<boolean> {
     const db = this.#db;
     const clientId = await ensureClientId(db);
+    let changed = false;
     for (let round = 0; round < MAX_PUSHES; round++) {
       const entries = await db.outbox
         .orderBy("seq")
         .limit(MAX_PUSH_OPS)
         .toArray();
-      if (entries.length === 0) return;
+      if (entries.length === 0) return changed;
 
       const res = await this.#request("/api/sync/push", {
         method: "POST",
@@ -269,6 +272,7 @@ export class SyncEngine {
         );
         if (bad.length === 0) throw new HttpError(400);
         await db.outbox.bulkDelete(bad.map((e) => e.seq!));
+        changed = true;
         for (const e of bad) this.#reject(e.op, "invalid");
         continue;
       }
@@ -276,6 +280,7 @@ export class SyncEngine {
 
       const body = (await res.json()) as PushResponse;
       await db.outbox.bulkDelete(entries.map((e) => e.seq!));
+      changed = true;
       entries.forEach((entry, i) => {
         const result = body.results[i];
         const final = result?.status === "duplicate" ? result.original : result;
@@ -294,17 +299,21 @@ export class SyncEngine {
         }
       });
     }
+    return changed;
   }
 
-  async #pull(): Promise<void> {
+  /** Pull every page. True if any row came, or the server sent a reset. */
+  async #pull(): Promise<boolean> {
     let cursor = (await getMeta(this.#db, "cursor")) ?? 0;
+    let changed = false;
     for (let page = 0; page < MAX_PAGES; page++) {
       const res = await this.#request(`/api/sync/pull?since=${cursor}`);
       if (!res.ok) throw new HttpError(res.status);
       const body = (await res.json()) as PullResponse;
       await savePullPage(this.#db, body);
+      changed ||= body.reset || body.lists.length > 0 || body.items.length > 0;
       cursor = body.cursor;
-      if (!body.hasMore) return;
+      if (!body.hasMore) return changed;
     }
     throw new Error("Too many pull pages");
   }

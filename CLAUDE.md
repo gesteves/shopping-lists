@@ -42,7 +42,7 @@ The server applies new migrations at start (`src/instrumentation.ts`).
 - Obey the security rules in the comments of `ci.yml` and `.github/actions/`. Send each Slack message through `.github/actions/notify-slack`, and obey its rules.
 - `fly deploy -a <app> --remote-only --ha=false`. There is one volume, thus one machine. The app name is not in `fly.toml`, because the repository is public. Ask the owner for it, or set `FLY_APP`.
 - The image runs `scripts/docker-entrypoint.sh`. It restores the database from R2 on a new volume, then runs the server under `litestream replicate`. If R2 is not available, the machine does not start. This prevents a new empty database.
-- Fly secrets (names only): `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`. Never set `AUTH_STUB` on Fly. Set secrets with `fly secrets set`. Secrets made in the Fly dashboard did not get to new machines (#3).
+- Fly secrets (names only): `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (make them with `npx web-push generate-vapid-keys`; `VAPID_SUBJECT` is optional, the default is the app URL), `ANTHROPIC_API_KEY`. Never set `AUTH_STUB` on Fly. Set secrets with `fly secrets set`. Secrets made in the Fly dashboard did not get to new machines (#3).
 - Cloudflare: a proxied DNS record to Fly, and rules for this host only: Full (strict) SSL, and no cache for `/api/*` and `/sw.js`. Do not change the zone settings: other hosts use the zone.
 
 ## Dependencies

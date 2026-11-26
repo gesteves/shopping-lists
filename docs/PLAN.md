@@ -188,6 +188,12 @@ Code in `src/server/notify/`.
 
 **Settings:** "Enable notifications" must be tapped by the user, as iOS requires, and it only works in the installed PWA. Each device has its own on/off toggle, and each list has a mute toggle.
 
+**Built in #15:**
+- `/settings` (a link in the header; sign out moved there too). "This device": the Enable button, or why it can't (no server keys, Safari on iPhone/iPad outside the Home Screen app, blocked, unsupported). "Your devices": an on/off switch and Remove for each, and "Send a test notification". "Lists": a switch for each list (`list_mutes`).
+- API: `GET/POST /api/push/subscriptions`, `PATCH/DELETE /api/push/subscriptions/<id>`, `POST /api/push/test`, `GET/PUT /api/push/mutes`. The endpoint is unique: a browser that subscribes again replaces its row.
+- `src/server/push.ts`: `sendToUser(userId, payload)` sends to the enabled devices with a 24 h TTL, deletes a subscription on 404 or 410, and sets `last_success_at`. Keys come from `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. The subject is `VAPID_SUBJECT`, or the app origin, so no email is needed. Without keys, nothing is sent.
+- The service worker shows the payload (`PushPayload`: title, body, url, tag). A tap focuses a window of the app on that URL, or opens one. Only same-origin URLs are used.
+
 ## MCP
 Targets spec **2026-07-28**. Code in `src/app/mcp/route.ts` and `src/server/mcp/*`. References: [spec](https://modelcontextprotocol.io/specification/2026-07-28), [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog), [deprecated](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). Re-read them at the start of #18 and #19.
 
