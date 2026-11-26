@@ -22,7 +22,7 @@ export function GoogleSignInButton() {
       type="button"
       onClick={signIn}
       disabled={pending}
-      className="mt-10 min-h-12 w-full rounded-lg bg-green-800 px-5 text-base font-semibold text-white transition-colors hover:bg-green-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800 disabled:opacity-70"
+      className="mt-10 min-h-12 w-full rounded-lg bg-accent px-5 text-base font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-70"
     >
       {pending ? "Opening Google…" : "Sign in with Google"}
     </button>

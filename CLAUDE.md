@@ -77,3 +77,4 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 - The MCP server follows spec 2026-07-28. Read the spec again before MCP work.
 - For Claude API code, load the `claude-api` skill first.
 - For UI work, use the `frontend-design` skill.
+- Every UI change must work in light and dark. Use only the color tokens in `src/app/globals.css` (for example `bg-canvas`, `text-ink`). Never set the color scheme with JavaScript. Icons are SVG with `currentColor`.

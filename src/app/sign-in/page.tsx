@@ -10,10 +10,10 @@ export const metadata: Metadata = { title: "Sign in – Shopping Lists" };
 export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-16">
-      <h1 className="text-5xl leading-[0.95] font-semibold tracking-tight text-balance text-green-900">
+      <h1 className="text-5xl leading-[0.95] font-semibold tracking-tight text-balance text-accent">
         Shopping Lists
       </h1>
-      <p className="mt-4 text-lg text-stone-600">
+      <p className="mt-4 text-lg text-ink-muted">
         Sign in to see the lists you share.
       </p>
       <Suspense>
@@ -42,7 +42,7 @@ async function SignInError({
   return (
     <p
       role="alert"
-      className="mt-6 border-l-4 border-red-700 py-1 pl-3 text-red-800"
+      className="mt-6 border-l-4 border-danger py-1 pl-3 text-danger"
     >
       {message}
     </p>
