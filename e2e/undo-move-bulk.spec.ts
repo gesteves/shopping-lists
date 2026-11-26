@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
-import { signIn, synced } from "./helpers";
+import { dialog, signIn, synced } from "./helpers";
 
 function index(page: Page) {
   return page.getByRole("region", { name: "Lists" }).filter({ visible: true });
@@ -31,11 +31,7 @@ function item(page: Page, name: string) {
 }
 
 function toast(page: Page, text: string | RegExp) {
-  return page
-    .getByRole("status")
-    .locator("div")
-    .filter({ hasText: text })
-    .first();
+  return page.locator("wa-toast-item").filter({ hasText: text }).first();
 }
 
 test("delete then undo brings the item back for both people", async ({
@@ -55,8 +51,7 @@ test("delete then undo brings the item back for both people", async ({
     await expect(item(b, "Lemons")).toBeVisible();
 
     await a.getByRole("button", { name: "Edit Lemons" }).click();
-    await a
-      .getByRole("dialog", { name: "Edit item" })
+    await dialog(a, "Edit item")
       .getByRole("button", { name: "Delete" })
       .click();
     await expect(item(a, "Lemons")).toHaveCount(0);
@@ -80,8 +75,10 @@ test("delete a list, then undo", async ({ page }) => {
   await index(page)
     .getByRole("button", { name: `More for ${name}` })
     .click();
-  await index(page).getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Delete list" }).click();
+  await index(page).getByRole("menuitem", { name: "Delete" }).click();
+  await dialog(page, `Delete the “${name}” list?`)
+    .getByRole("button", { name: "Delete list" })
+    .click();
   await expect(index(page).getByRole("link", { name })).toHaveCount(0);
   await toast(page, `Deleted the “${name}” list.`)
     .getByRole("button", { name: "Undo" })
@@ -99,10 +96,9 @@ test("move an item to a different list", async ({ page }) => {
   await add(page, "Tortillas");
 
   await page.getByRole("button", { name: "Edit Tortillas" }).click();
-  await page
-    .getByRole("dialog", { name: "Edit item" })
-    .getByLabel("Move to")
-    .selectOption({ label: to });
+  const sheet = dialog(page, "Edit item");
+  await sheet.getByRole("combobox", { name: "Move to" }).click();
+  await sheet.getByRole("option", { name: to }).click();
   await expect(item(page, "Tortillas")).toHaveCount(0);
   await expect(
     toast(page, `Moved “Tortillas” to the “${to}” list.`),
@@ -128,7 +124,7 @@ test("uncheck all and clear checked items, and they sync", async ({ page }) => {
 
   // Uncheck all.
   await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("button", { name: "Uncheck all" }).click();
+  await page.getByRole("menuitem", { name: "Uncheck all" }).click();
   for (const n of ["Rice", "Beans", "Salsa"]) {
     await expect(item(page, n)).toHaveAttribute("aria-checked", "false");
   }
@@ -140,9 +136,8 @@ test("uncheck all and clear checked items, and they sync", async ({ page }) => {
   await item(page, "Salsa").click();
   await expect(item(page, "Salsa")).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("button", { name: "Clear checked items" }).click();
-  await page
-    .getByRole("dialog", { name: `Clear 1 item checked off “${name}”?` })
+  await page.getByRole("menuitem", { name: "Clear checked items" }).click();
+  await dialog(page, `Clear 1 item checked off “${name}”?`)
     .getByRole("button", { name: "Clear" })
     .click();
   await expect(item(page, "Salsa")).toHaveCount(0);
@@ -159,7 +154,7 @@ test("rename a list from its header", async ({ page }) => {
   await createList(page, name);
   await openList(page, name);
   await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("button", { name: "Rename" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
   const input = page.getByLabel(`New name for “${name}”`);
   await input.fill(`${name} 2`);
   await input.press("Enter");

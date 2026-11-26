@@ -41,3 +41,9 @@ public/swe-worker-*.js
 
 # typescript
 *.tsbuildinfo
+
+# Font Awesome Pro SVGs, from scripts/build-icons.mjs. Licensed: never commit.
+public/icons/
+
+# Built from the Web Awesome Pro theme (scripts/build-wa-dark.mjs).
+src/app/generated/

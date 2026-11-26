@@ -1,7 +1,9 @@
 // Builds the service worker (src/sw/sw.ts) into public/sw.js, after
 // `next build`. It calls the Serwist route handler one time, so the
-// precache list comes from the finished build. The server then serves a
-// static file: the Docker image needs no esbuild and no source at runtime.
+// precache list comes from the finished build. The list has the files in
+// public/ too, thus the self-hosted icons (#51) work offline. The server
+// then serves a static file: the Docker image needs no esbuild and no
+// source at runtime.
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { createSerwistRoute } from "@serwist/turbopack";

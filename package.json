@@ -4,20 +4,24 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/build-sw.mjs && node scripts/copy-standalone-assets.mjs",
+    "build": "npm run assets && next build && node scripts/build-sw.mjs && node scripts/copy-standalone-assets.mjs",
     "start": "node --env-file-if-exists=.env.local scripts/start.mjs",
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p src/sw",
+    "typecheck": "npm run assets && next typegen && tsc --noEmit && tsc --noEmit -p src/sw",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "icons": "node scripts/build-icons.mjs",
+    "predev": "npm run assets",
+    "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs"
   },
   "dependencies": {
     "@serwist/window": "^9.6.0",
+    "@web.awesome.me/webawesome-pro": "3.15.0",
     "better-auth": "^1.7.28",
     "better-sqlite3": "^13.2.0",
     "dexie": "^4.4.7",
@@ -32,6 +36,8 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.1",
+    "@fortawesome/free-brands-svg-icons": "7.3.1",
+    "@fortawesome/pro-regular-svg-icons": "7.3.1",
     "@playwright/test": "^1.65.1",
     "@serwist/turbopack": "^9.6.0",
     "@tailwindcss/turbopack": "4.3.5",

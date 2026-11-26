@@ -9,3 +9,7 @@ data/
 
 # The service worker build output.
 public/sw.js
+
+# Built by scripts (#51).
+src/app/generated/
+public/icons/

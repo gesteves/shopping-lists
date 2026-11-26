@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, synced } from "./helpers";
+import { dialog, signIn, synced } from "./helpers";
 
 /** The visible list index: the page on a phone, the sidebar on a desktop. */
 function lists(page: Page) {
@@ -27,7 +27,7 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   await lists(page)
     .getByRole("button", { name: `More for ${name}` })
     .click();
-  await lists(page).getByRole("button", { name: "Rename" }).click();
+  await lists(page).getByRole("menuitem", { name: "Rename" }).click();
   const input = lists(page).getByLabel(`New name for “${name}”`);
   await input.fill(renamed);
   await input.press("Enter");
@@ -40,14 +40,16 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   await lists(page)
     .getByRole("button", { name: `More for ${renamed}` })
     .click();
-  await lists(page).getByRole("button", { name: "Delete" }).click();
-  const dialog = page.getByRole("dialog", {
-    name: `Delete the “${renamed}” list?`,
-  });
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await lists(page).getByRole("menuitem", { name: "Delete" }).click();
+  const confirm = dialog(page, `Delete the “${renamed}” list?`);
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
   await expect(lists(page).getByRole("link", { name: renamed })).toBeVisible();
-  await lists(page).getByRole("button", { name: "Delete" }).click();
-  await dialog.getByRole("button", { name: "Delete list" }).click();
+  await lists(page)
+    .getByRole("button", { name: `More for ${renamed}` })
+    .click();
+  await lists(page).getByRole("menuitem", { name: "Delete" }).click();
+  await confirm.getByRole("button", { name: "Delete list" }).click();
   await expect(lists(page).getByRole("link", { name: renamed })).toHaveCount(0);
   await synced(page);
   await page.reload();

@@ -13,8 +13,9 @@ export async function AppHeader() {
         <SyncStatus />
         <Link
           href="/settings"
-          className="min-h-11 content-center rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
         >
+          <wa-icon name="gear"></wa-icon>
           Settings
         </Link>
         <Avatar name={user.name} image={user.image} />
@@ -38,30 +39,12 @@ export function HeaderFrame({ children }: { children?: React.ReactNode }) {
 }
 
 function Avatar({ name, image }: { name: string; image: string | null }) {
-  if (image) {
-    return (
-      // A Google avatar URL. next/image would need the Google host in the
-      // config, and the image is small.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={image}
-        alt={`Signed in as ${name}`}
-        title={`Signed in as ${name}`}
-        width={32}
-        height={32}
-        referrerPolicy="no-referrer"
-        className="size-8 rounded-full bg-accent-soft"
-      />
-    );
-  }
   return (
-    <span
-      role="img"
-      aria-label={`Signed in as ${name}`}
-      title={`Signed in as ${name}`}
-      className="grid size-8 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent"
-    >
-      {name.slice(0, 1).toUpperCase()}
-    </span>
+    <wa-avatar
+      image={image ?? undefined}
+      initials={name.slice(0, 1).toUpperCase()}
+      label={`Signed in as ${name}`}
+      style={{ "--size": "2rem" }}
+    ></wa-avatar>
   );
 }

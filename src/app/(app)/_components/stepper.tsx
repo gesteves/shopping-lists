@@ -1,9 +1,11 @@
 "use client";
 
 import { QUANTITY_MAX } from "@/shared/ops";
-import { MinusIcon, PlusIcon } from "./icons";
 
-/** A quantity from 1 to QUANTITY_MAX, with − and + buttons. */
+/**
+ * A quantity from 1 to QUANTITY_MAX. The − and + buttons are "Fewer" and
+ * "More" (web-awesome-setup.ts).
+ */
 export function Stepper({
   value,
   onChange,
@@ -13,34 +15,22 @@ export function Stepper({
   onChange: (value: number) => void;
   label: string;
 }) {
-  const button =
-    "grid size-11 place-items-center rounded-lg text-accent hover:bg-accent-soft disabled:opacity-40";
+  function read(event: Event) {
+    const next = Number((event.target as HTMLInputElement).value);
+    if (Number.isInteger(next) && next >= 1) {
+      onChange(Math.min(QUANTITY_MAX, next));
+    }
+  }
   return (
-    <div role="group" aria-label={label} className="flex items-center gap-1">
-      <button
-        type="button"
-        aria-label="Fewer"
-        disabled={value <= 1}
-        onClick={() => onChange(Math.max(1, value - 1))}
-        className={button}
-      >
-        <MinusIcon />
-      </button>
-      <output
-        aria-live="polite"
-        className="min-w-8 text-center text-lg font-semibold tabular-nums"
-      >
-        {value}
-      </output>
-      <button
-        type="button"
-        aria-label="More"
-        disabled={value >= QUANTITY_MAX}
-        onClick={() => onChange(Math.min(QUANTITY_MAX, value + 1))}
-        className={button}
-      >
-        <PlusIcon />
-      </button>
-    </div>
+    <wa-number-input
+      label={label}
+      value={String(value)}
+      min={1}
+      max={QUANTITY_MAX}
+      onInput={read}
+      onChange={read}
+      inputmode="numeric"
+      className="w-40"
+    ></wa-number-input>
   );
 }

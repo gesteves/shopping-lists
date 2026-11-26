@@ -12,14 +12,11 @@ export default function OfflinePage() {
         This page isn’t saved on this device yet. Your lists are, and changes
         you make sync when you’re back online.
       </p>
-      {/* A full page load, so the service worker can serve the saved page. */}
-      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-      <a
-        href="/"
-        className="mt-4 grid min-h-12 place-items-center rounded-xl bg-accent px-5 font-semibold text-accent-ink"
-      >
+      {/* A full page load (not a Next.js link), so the service worker can
+          serve the saved page. */}
+      <wa-button href="/" variant="brand" size="l" className="mt-4">
         Go to your lists
-      </a>
+      </wa-button>
     </main>
   );
 }

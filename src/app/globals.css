@@ -1,81 +1,150 @@
 @import "tailwindcss";
+/* The Web Awesome theme with its imports inlined, and its .wa-dark tokens
+   under prefers-color-scheme (made by scripts/build-wa-dark.mjs). */
+@import "./generated/wa-theme.css";
+@import "./generated/wa-dark.css";
 
 /*
- * Color tokens. Use only these colors in the UI, for example `bg-canvas`,
- * `text-ink`, or `border-line`. Each token has a light and a dark value, and
- * the system setting selects one (#22). There is no toggle.
+ * Colors (#22, #51). Web Awesome tokens (--wa-*) are the source. The
+ * overrides below keep the app's look:
  *
  *   Light: pale leaf-gray paper, green-black ink, and market green.
  *   Dark: a grocer's chalkboard, chalk-white text, and fresh leaf green.
  *
+ * Dark mode follows the system setting, with no JavaScript: the dark values
+ * are in @media (prefers-color-scheme: dark). Do not use .wa-dark or
+ * .wa-invert in the app.
+ *
  * ⚠️ Every UI change must work in light and dark. Keep body text at 4.5:1
  * or more on canvas and surface (e2e/theme.spec.ts checks it with axe).
  */
-:root {
-  /* Native controls, scrollbars, and Safari (Adaptive Dark Mode leaves a
-     page with this value alone). The <meta name="color-scheme"> in the
-     layout does the same before the CSS loads. */
-  color-scheme: light dark;
+@layer wa-theme-overrides {
+  :where(:root),
+  .wa-light,
+  .wa-dark .wa-invert {
+    --wa-color-surface-default: #f2f5f0;
+    --wa-color-surface-raised: #ffffff;
+    --wa-color-surface-lowered: #e7ece5;
+    --wa-color-surface-border: #d3dcd4;
+    --wa-color-text-normal: #14221a;
+    --wa-color-text-quiet: #536158;
+    --wa-color-text-link: #1d5c3a;
+    --wa-color-focus: #1d5c3a;
+    --wa-color-brand-fill-loud: #1d5c3a;
+    --wa-color-brand-on-loud: #ffffff;
+    --wa-color-brand-fill-normal: #c9e2d0;
+    --wa-color-brand-on-normal: #14221a;
+    --wa-color-brand-fill-quiet: #e0eee4;
+    --wa-color-brand-on-quiet: #1d5c3a;
+    --wa-color-brand-border-loud: #1d5c3a;
+    --wa-color-danger-fill-loud: #b3261e;
+    --wa-color-danger-on-loud: #ffffff;
+    --wa-color-danger-on-quiet: #b3261e;
+  }
 
-  --canvas: #f2f5f0;
-  --surface: #ffffff;
-  --ink: #14221a;
-  --ink-muted: #536158;
-  --line: #d3dcd4;
-  --accent: #1d5c3a;
-  --accent-ink: #ffffff;
-  --accent-soft: #e0eee4;
-  --danger: #b3261e;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #0f1a14;
-    --surface: #16241c;
-    --ink: #e8eee4;
-    --ink-muted: #a0b1a5;
-    --line: #2a3b31;
-    --accent: #7ed09a;
-    --accent-ink: #0b1810;
-    --accent-soft: #1c3426;
-    --danger: #ff8f85;
+  @media (prefers-color-scheme: dark) {
+    :where(:root) {
+      --wa-color-surface-default: #0f1a14;
+      --wa-color-surface-raised: #16241c;
+      --wa-color-surface-lowered: #0b140f;
+      --wa-color-surface-border: #2a3b31;
+      --wa-color-text-normal: #e8eee4;
+      --wa-color-text-quiet: #a0b1a5;
+      --wa-color-text-link: #7ed09a;
+      --wa-color-focus: #7ed09a;
+      --wa-color-brand-fill-loud: #7ed09a;
+      --wa-color-brand-on-loud: #0b1810;
+      --wa-color-brand-fill-normal: #2b4d39;
+      --wa-color-brand-on-normal: #e8eee4;
+      --wa-color-brand-fill-quiet: #1c3426;
+      --wa-color-brand-on-quiet: #7ed09a;
+      --wa-color-brand-border-loud: #7ed09a;
+      --wa-color-danger-fill-loud: #ff8f85;
+      --wa-color-danger-on-loud: #16241c;
+      --wa-color-danger-on-quiet: #ff8f85;
+    }
   }
 }
 
-/* `inline`: the utilities use the variables, thus they change with the
-   scheme. Tailwind's `dark:` variant follows the media query too. */
-@theme inline {
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-ink: var(--ink);
-  --color-ink-muted: var(--ink-muted);
-  --color-line: var(--line);
-  --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-soft: var(--accent-soft);
-  --color-danger: var(--danger);
+:root {
+  /* Native controls, scrollbars, and Safari (Adaptive Dark Mode leaves a
+     page with this value alone). The theme sets one scheme: this wins,
+     because it is not in a layer. The <meta name="color-scheme"> in the
+     layout does the same before the CSS loads. */
+  color-scheme: light dark;
 }
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+/* Tailwind color utilities (bg-canvas, text-ink, …) point to the Web
+   Awesome tokens. `inline`: they follow the scheme. */
+@theme inline {
+  --color-canvas: var(--wa-color-surface-default);
+  --color-surface: var(--wa-color-surface-raised);
+  --color-ink: var(--wa-color-text-normal);
+  --color-ink-muted: var(--wa-color-text-quiet);
+  --color-line: var(--wa-color-surface-border);
+  --color-accent: var(--wa-color-brand-fill-loud);
+  --color-accent-ink: var(--wa-color-brand-on-loud);
+  --color-accent-soft: var(--wa-color-brand-fill-quiet);
+  --color-danger: var(--wa-color-danger-on-quiet);
+  --font-sans: var(--wa-font-family-body);
+  /* Inline: wa-dialog and wa-drawer set their own --spacing, and their
+     content would get it. */
+  --spacing: 0.25rem;
 }
 
 @layer base {
   html {
-    background-color: var(--canvas);
-    color: var(--ink);
-    /* Checkboxes, radios, and range inputs. */
-    accent-color: var(--accent);
+    background-color: var(--wa-color-surface-default);
+    color: var(--wa-color-text-normal);
+    /* Native checkboxes, radios, and range inputs. */
+    accent-color: var(--wa-color-brand-fill-loud);
   }
 
-  /* One focus ring for every control, in both schemes. */
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--wa-color-focus);
     outline-offset: 2px;
   }
 
   ::selection {
-    background-color: var(--accent-soft);
-    color: var(--ink);
+    background-color: var(--wa-color-brand-fill-quiet);
+    color: var(--wa-color-text-normal);
   }
+
+  /* No flash of unstyled components: hide each Web Awesome tag until it
+     upgrades (src/app/web-awesome.ts). Not .wa-cloak: it hides the whole
+     page while any custom element is not defined, also the route announcer
+     of Next.js. Add a new tag to this list. */
+  :where(
+    wa-avatar,
+    wa-badge,
+    wa-button,
+    wa-callout,
+    wa-dropdown,
+    wa-dropdown-item,
+    wa-icon,
+    wa-input,
+    wa-number-input,
+    wa-option,
+    wa-select,
+    wa-switch,
+    wa-textarea,
+    wa-toast,
+    wa-toast-item
+  ):not(:defined) {
+    visibility: hidden;
+  }
+  wa-dialog:not(:defined),
+  wa-drawer:not(:defined) {
+    display: none;
+  }
+}
+
+/* A label that only assistive technology reads, for a Web Awesome field. */
+.wa-sr-label::part(form-control-label) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

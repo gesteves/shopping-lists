@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useList, useReportPresence } from "@/client/hooks";
 import type { ItemRecord } from "@/shared/sync";
-import { BackIcon } from "../../_components/icons";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
 import { ItemSheet } from "./item-sheet";
@@ -33,7 +32,7 @@ export function ListView() {
         href="/"
         className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md pr-2 font-medium text-accent lg:hidden"
       >
-        <BackIcon />
+        <wa-icon name="chevron-left"></wa-icon>
         Lists
       </Link>
       {view === undefined ? null : view === null ? (

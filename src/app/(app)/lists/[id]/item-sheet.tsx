@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { useLists, useUsers } from "@/client/hooks";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { itemHistory } from "@/client/format";
+import { useLists, useUsers } from "@/client/hooks";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
+import { useMedia } from "@/client/use-media";
 import { ITEM_NAME_MAX, NOTES_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
 import { Stepper } from "../../_components/stepper";
+import { useWaEvents } from "../../_components/wa";
 
 /**
  * Edit an item: name, quantity, and notes, with who added and changed it.
- * A bottom sheet on a phone, a centered dialog on a large screen.
+ * A bottom drawer on a phone, a dialog on a large screen. Neither focuses
+ * the name field when it opens, so a phone does not open the keyboard.
  */
 export function ItemSheet({
   item,
@@ -20,47 +23,50 @@ export function ItemSheet({
   item: ItemRecord | null;
   onClose: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const large = useMedia("(min-width: 64rem)");
+  // Keep the last item while the sheet closes, so its content stays.
+  const [shown, setShown] = useState(item);
+  if (item && item !== shown) setShown(item);
 
-  useEffect(() => {
-    const el = dialog.current;
-    if (item && el && !el.open) {
-      el.showModal();
-      // showModal() focuses the name field, and a phone then opens the
-      // keyboard. Focus the dialog instead: most edits are the quantity.
-      el.focus();
-    }
-    if (!item && el?.open) el.close();
-  }, [item]);
+  const ref = useWaEvents<HTMLElement>({
+    "wa-after-hide": (event) => {
+      // Only the sheet: the select in it fires its own hide events.
+      if (event.target === event.currentTarget) onClose();
+    },
+  });
 
-  return (
-    <dialog
-      ref={dialog}
-      onClose={onClose}
-      tabIndex={-1}
-      aria-labelledby="item-sheet-title"
-      className="fixed inset-x-0 top-auto bottom-0 m-0 outline-none max-h-[90dvh] w-full max-w-none rounded-t-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40 lg:inset-0 lg:m-auto lg:max-w-lg lg:rounded-2xl"
+  const content = shown && (
+    <SheetForm key={shown.id} item={shown} onDone={onClose} />
+  );
+  return large ? (
+    <wa-dialog ref={ref} open={item !== null} label="Edit item" light-dismiss>
+      {content}
+    </wa-dialog>
+  ) : (
+    <wa-drawer
+      ref={ref}
+      open={item !== null}
+      label="Edit item"
+      placement="bottom"
+      light-dismiss
+      style={{ "--size": "auto" }}
     >
-      {item && <SheetForm key={item.id} item={item} dialog={dialog} />}
-    </dialog>
+      {content}
+    </wa-drawer>
   );
 }
 
-function SheetForm({
-  item,
-  dialog,
-}: {
-  item: ItemRecord;
-  dialog: React.RefObject<HTMLDialogElement | null>;
-}) {
+function Field({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-1">{children}</div>;
+}
+
+function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   const users = useUsers();
   const lists = useLists();
   const others = lists?.filter((l) => l.id !== item.listId) ?? [];
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity);
   const [notes, setNotes] = useState(item.notes);
-  const ids = { name: useId(), notes: useId(), move: useId() };
-  const close = () => dialog.current?.close();
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -71,12 +77,12 @@ function SheetForm({
     if (Object.keys(fields).length > 0) {
       await mutate({ type: "updateItem", args: { itemId: item.id, fields } });
     }
-    close();
+    onDone();
   }
 
   async function remove() {
     await mutate({ type: "deleteItem", args: { itemId: item.id } });
-    close();
+    onDone();
     showToast({
       message: `Deleted “${item.name}”.`,
       action: {
@@ -91,7 +97,7 @@ function SheetForm({
     const target = lists?.find((l) => l.id === toListId);
     if (!target) return;
     await mutate({ type: "moveItem", args: { itemId: item.id, toListId } });
-    close();
+    onDone();
     showToast({
       message: `Moved “${item.name}” to the “${target.name}” list.`,
       action: {
@@ -108,98 +114,60 @@ function SheetForm({
   return (
     <form
       onSubmit={save}
-      className="flex flex-col gap-5 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+      className="flex flex-col gap-5 pb-[env(safe-area-inset-bottom)]"
     >
-      <h2 id="item-sheet-title" className="text-xl font-semibold">
-        Edit item
-      </h2>
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={ids.name}
-          className="text-sm font-medium text-ink-muted"
-        >
-          Name
-        </label>
-        <input
-          id={ids.name}
+      <Field>
+        <wa-input
+          label="Name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
           required
-          maxLength={ITEM_NAME_MAX}
-          className="min-h-12 rounded-xl border border-ink-muted bg-canvas px-4 text-lg"
-        />
-      </div>
+          maxlength={ITEM_NAME_MAX}
+        ></wa-input>
+      </Field>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-ink-muted">Quantity</span>
         <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
       </div>
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={ids.notes}
-          className="text-sm font-medium text-ink-muted"
-        >
-          Notes
-        </label>
-        <textarea
-          id={ids.notes}
+      <Field>
+        <wa-textarea
+          label="Notes"
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          maxLength={NOTES_MAX}
+          onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
+          maxlength={NOTES_MAX}
           rows={3}
-          className="rounded-xl border border-ink-muted bg-canvas px-4 py-2"
-        />
-      </div>
+          resize="auto"
+        ></wa-textarea>
+      </Field>
       {others.length > 0 && (
-        <div className="flex items-center justify-between gap-3">
-          <label
-            htmlFor={ids.move}
-            className="text-sm font-medium text-ink-muted"
-          >
-            Move to
-          </label>
-          <select
-            id={ids.move}
-            value=""
-            onChange={(e) => void move(e.target.value)}
-            className="min-h-11 max-w-[60%] rounded-lg border border-ink-muted bg-canvas px-3"
-          >
-            <option value="" disabled>
-              Pick a list
-            </option>
-            {others.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <wa-select
+          label="Move to"
+          placeholder="Pick a list"
+          value=""
+          onChange={(e) => void move((e.target as HTMLSelectElement).value)}
+        >
+          {others.map((l) => (
+            <wa-option key={l.id} value={l.id}>
+              {l.name}
+            </wa-option>
+          ))}
+        </wa-select>
       )}
       <ul className="text-sm text-ink-muted">
         {users &&
           itemHistory(item, users).map((line) => <li key={line}>{line}</li>)}
       </ul>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={remove}
-          className="min-h-11 rounded-lg px-3 font-medium text-danger hover:bg-accent-soft"
-        >
+        <wa-button variant="danger" appearance="plain" onClick={remove}>
+          <wa-icon slot="start" name="trash-can"></wa-icon>
           Delete
-        </button>
+        </wa-button>
         <span className="flex-1" />
-        <button
-          type="button"
-          onClick={close}
-          className="min-h-11 rounded-lg px-4 font-medium text-accent hover:bg-accent-soft"
-        >
+        <wa-button appearance="plain" onClick={onDone}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          className="min-h-11 rounded-lg bg-accent px-5 font-semibold text-accent-ink"
-        >
+        </wa-button>
+        <wa-button type="submit" variant="brand">
           Save
-        </button>
+        </wa-button>
       </div>
     </form>
   );

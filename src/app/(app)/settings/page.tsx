@@ -31,12 +31,9 @@ async function Settings() {
         </h2>
         <form action={signOut} className="flex items-center gap-4">
           <p className="flex-1 text-ink-muted">Signed in as {user.name}</p>
-          <button
-            type="submit"
-            className="min-h-11 rounded-lg px-3 font-medium text-accent hover:bg-accent-soft"
-          >
+          <wa-button type="submit" appearance="outlined">
             Sign out
-          </button>
+          </wa-button>
         </form>
       </section>
     </>

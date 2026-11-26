@@ -1,0 +1,21 @@
+{
+  "$comment": "The Font Awesome icons that the UI uses (#51). scripts/build-icons.mjs writes them to public/icons/<family>/<name>.svg at build time. Add a name here before you use it in <wa-icon>.",
+  "regular": [
+    "arrow-right-arrow-left",
+    "arrow-rotate-right",
+    "bell",
+    "broom",
+    "check",
+    "chevron-left",
+    "ellipsis",
+    "gear",
+    "list-check",
+    "minus",
+    "pen",
+    "plus",
+    "rotate-left",
+    "trash-can",
+    "xmark"
+  ],
+  "brands": ["google"]
+}

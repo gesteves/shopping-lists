@@ -39,3 +39,24 @@ export function outboxCount(page: Page): Promise<number> {
 export async function synced(page: Page) {
   await expect.poll(() => outboxCount(page), { timeout: 10_000 }).toBe(0);
 }
+
+/**
+ * A Web Awesome dialog or drawer, by its label. Scope to the host element:
+ * the inner <dialog> (role "dialog") is in the shadow root, and the fields
+ * are slotted, thus they are not inside it.
+ */
+export function dialog(page: Page, name: string | RegExp) {
+  return page
+    .locator("wa-dialog, wa-drawer")
+    .filter({ has: page.getByRole("dialog", { name }) });
+}
+
+/**
+ * The visible <wa-switch> of a switch, for a click. The role "switch" is a
+ * hidden input in its shadow root: check its state, but click this.
+ */
+export function switchControl(page: Page, name: string) {
+  return page
+    .locator("wa-switch")
+    .filter({ has: page.getByRole("switch", { name }) });
+}

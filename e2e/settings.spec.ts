@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, switchControl } from "./helpers";
 
 /** A device with a fake push endpoint, saved through the API. */
 async function fakeDevice(page: Page) {
@@ -37,21 +37,22 @@ test("turn a device off and on, send a test, and remove it", async ({
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-  const toggle = page.getByRole("switch", {
-    name: `Notifications on ${label}`,
-  });
+  const toggleName = `Notifications on ${label}`;
+  const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
-  await toggle.click();
+  await switchControl(page, toggleName).click();
   await expect(toggle).not.toBeChecked();
   await page.reload();
   await expect(toggle).not.toBeChecked();
-  await toggle.click();
+  await switchControl(page, toggleName).click();
   await expect(toggle).toBeChecked();
 
   // The fake endpoint refuses, so the push does not arrive.
   await page.getByRole("button", { name: "Send a test notification" }).click();
   await expect(
-    page.getByText(/Sent a test notification|didn’t reach your devices/),
+    page.locator("wa-toast-item").filter({
+      hasText: /Sent a test notification|didn’t reach your devices/,
+    }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: `Remove ${label}` }).click();
@@ -82,15 +83,14 @@ test("mute and unmute a list", async ({ page }) => {
     .toBe(true);
 
   await page.getByRole("link", { name: "Settings" }).click();
-  const toggle = page.getByRole("switch", {
-    name: `Notifications about ${name}`,
-  });
+  const toggleName = `Notifications about ${name}`;
+  const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
-  await toggle.click();
+  await switchControl(page, toggleName).click();
   await expect(toggle).not.toBeChecked();
   await page.reload();
   await expect(toggle).not.toBeChecked();
-  await toggle.click();
+  await switchControl(page, toggleName).click();
   // The switch changes after the server saves it. Then reload.
   await expect(toggle).toBeChecked();
   await page.reload();
