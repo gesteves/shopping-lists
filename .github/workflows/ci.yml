@@ -1,0 +1,212 @@
+name: "CI"
+
+# ⚠️ `push` applies to main only, on purpose. With ["*"], each push to a branch
+# with an open PR runs the checks two times: one time for the push and one time
+# for the PR. The pull_request trigger covers the work on a branch.
+# workflow_dispatch is a manual redeploy. From a branch that is not main, it
+# runs only the checks.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# No job writes to the repository. The deploy uses FLY_API_TOKEN, not
+# GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# ⚠️ cancel-in-progress is OFF for main, because this group includes the
+# deploy. A stopped `flyctl deploy` can leave the machine on a half-done
+# release. On a PR, a stop of an old run costs nothing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# ⚠️ Security rules for this file and the composite actions:
+#   - Values from the event payload (commit messages, PR titles, branch names)
+#     go through `env:`, and scripts read them as "$VAR". Never put them in a
+#     script with `${{ }}`. ci-context does this.
+#   - Each third-party action is pinned to a full commit SHA, with the version
+#     in a comment. A tag can move to new code. Dependabot (#25) updates both.
+#   - FLY_API_TOKEN goes only to the deploy step. Never set it in the env of
+#     the workflow or of a job: `npm ci` runs install scripts from other
+#     parties.
+#   - The checks must pass with no secrets. PRs from forks get no secrets.
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm skips the install script of a package that `allowScripts` does not
+      # approve, and it does not fail. For example, a version bump of a pinned
+      # package (#25). Thus make the list empty here.
+      - name: Check for unapproved install scripts
+        run: |
+          npm install-scripts ls
+          count="$(npm install-scripts ls --json | jq '.allowScripts | length')"
+          if [ "$count" != "0" ]; then
+            echo "::error::$count packages have install scripts that allowScripts does not approve. Review them, then run npm install-scripts approve."
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # The audit reads the lockfile only.
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high
+
+  notify-checks:
+    name: Notify checks result
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: checks
+    if: always()
+
+    steps:
+      # The checkout only gives the local composite actions.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+
+      - name: CI context
+        uses: ./.github/actions/ci-context
+
+      - name: Notify Slack (success)
+        if: needs.checks.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/notify-slack
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          text: "Shopping Lists checks <${{ env.BRANCH_URL }}|passed> on `${{ env.BRANCH_NAME }}`"
+          color: "good"
+          fallback: "Shopping Lists checks passed on ${{ env.BRANCH_NAME }}"
+
+      - name: Notify Slack (failure)
+        if: needs.checks.result == 'failure'
+        continue-on-error: true
+        uses: ./.github/actions/notify-slack
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          text: "Shopping Lists checks <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|failed> on `${{ env.BRANCH_NAME }}` :warning:"
+          color: "danger"
+          fallback: "Shopping Lists checks failed on ${{ env.BRANCH_NAME }}"
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: checks
+    # No cancel: a stopped deploy can leave a half-done release.
+    concurrency: deploy
+    # A manual run has no head commit. Then contains() gets an empty value and
+    # gives false.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      !contains(github.event.head_commit.message, '[skip deploy]') &&
+      !contains(github.event.head_commit.message, '[no deploy]')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: CI context
+        uses: ./.github/actions/ci-context
+
+      # This step runs in the job that has the deploy token. Thus it is pinned
+      # to a SHA: code at a tag or a branch can change.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # The app name is a secret, because the repository is public. There is
+      # one volume, thus one machine: --ha=false. The server applies the
+      # migrations at boot. Do not add a Fly release_command: its machine has
+      # no volume.
+      - name: Deploy to Fly.io
+        run: flyctl deploy -a "$FLY_APP" --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ secrets.FLY_APP }}
+
+      # Through Cloudflare, as a user gets to the app. If this fails, the deploy
+      # fails.
+      - name: Check production health
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          curl --fail --silent --show-error \
+            --retry 10 --retry-delay 6 --retry-all-errors --max-time 10 \
+            "${PRODUCTION_URL%/}/api/health" | jq -e '.ok == true'
+
+      - name: Notify Slack (deploy successful)
+        if: success()
+        continue-on-error: true
+        uses: ./.github/actions/notify-slack
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          text: "Shopping Lists deploy <${{ secrets.PRODUCTION_URL }}|successful> :rocket:"
+          color: "good"
+          fallback: "Shopping Lists deploy successful"
+
+      - name: Notify Slack (deploy failed)
+        if: failure()
+        continue-on-error: true
+        uses: ./.github/actions/notify-slack
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          text: "Shopping Lists deploy <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|failed> :warning:"
+          color: "danger"
+          fallback: "Shopping Lists deploy failed"

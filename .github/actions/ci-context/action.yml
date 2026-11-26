@@ -1,0 +1,74 @@
+name: "CI context"
+description: "Set SHORT_SHA, BRANCH_NAME, BRANCH_URL, COMMIT_MESSAGE, and COMMIT_CONTEXT in the job env, for the Slack messages."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set the commit and branch values
+      shell: bash
+      # ⚠️ Each value from the event payload comes through `env:`, and the
+      # script reads it as "$VAR". Never put such a value in the script with
+      # `${{ }}`. Other persons can write commit messages, PR titles, and
+      # branch names. With `${{ }}`, a backtick or a $(…) in them runs as shell.
+      # Put each new payload value in this block.
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_HEAD_REF: ${{ github.head_ref }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        REF_NAME: ${{ github.ref_name }}
+        SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          # GITHUB_SHA is the merge commit that GitHub makes for the PR. Use
+          # the PR head. The PR event has no commit message, thus use the title.
+          SHA="$PR_HEAD_SHA"
+          BRANCH_NAME="$PR_HEAD_REF"
+          COMMIT_MESSAGE="$PR_TITLE"
+          BRANCH_URL="${SERVER_URL}/${REPOSITORY}/pull/${PR_NUMBER}"
+        else
+          SHA="$GITHUB_SHA"
+          BRANCH_NAME="$REF_NAME"
+          COMMIT_MESSAGE="$HEAD_COMMIT_MESSAGE"
+          BRANCH_URL="${SERVER_URL}/${REPOSITORY}/tree/${REF_NAME}"
+        fi
+
+        SHORT_SHA="${SHA::8}"
+
+        # These values go into Slack mrkdwn, in the YAML `payload:` of
+        # notify-slack. Do these steps in this order:
+        #   1. Use only the first line. A newline breaks the YAML and the
+        #      KEY=value lines of $GITHUB_ENV.
+        #   2. Escape &, <, and > for Slack. Without this, a "<url|text>" in a
+        #      commit message shows as a link.
+        #   3. Escape backslashes, then double quotes, for the YAML string. If
+        #      you escape the quotes first, the backslash step escapes the new
+        #      backslashes again.
+        escape() {
+          printf '%s' "$1" | head -n 1 | sed \
+            -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
+            -e 's/\\/\\\\/g; s/"/\\"/g'
+        }
+        COMMIT_MESSAGE="$(escape "$COMMIT_MESSAGE")"
+        BRANCH_NAME="$(escape "$BRANCH_NAME")"
+        # In the URL, a quote or an angle bracket becomes its percent escape.
+        BRANCH_URL="$(printf '%s' "$BRANCH_URL" | sed 's/"/%22/g; s/</%3C/g; s/>/%3E/g')"
+
+        # The first line of the Slack attachment. A manual run has no commit
+        # message, thus say why the message is not there.
+        COMMIT_LINK="<${SERVER_URL}/${REPOSITORY}/commit/${SHA}|\`${SHORT_SHA}\`>"
+        case "$EVENT_NAME" in
+          workflow_dispatch) COMMIT_CONTEXT="Manual run of ${COMMIT_LINK}" ;;
+          *)                 COMMIT_CONTEXT="${COMMIT_LINK} - ${COMMIT_MESSAGE}" ;;
+        esac
+
+        {
+          echo "SHORT_SHA=${SHORT_SHA}"
+          echo "BRANCH_NAME=${BRANCH_NAME}"
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}"
+          echo "BRANCH_URL=${BRANCH_URL}"
+          echo "COMMIT_CONTEXT=${COMMIT_CONTEXT}"
+        } >> "$GITHUB_ENV"
