@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ServiceWorker } from "../service-worker";
 import { SessionRefresh } from "../session-refresh";
 import { AppHeader, HeaderFrame } from "./_components/app-header";
 import { ListIndex } from "./_components/list-index";
@@ -10,6 +11,10 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="flex min-h-dvh flex-col">
       <SessionRefresh />
+      {/* usePathname() reads the request, thus it needs a boundary. */}
+      <Suspense>
+        <ServiceWorker />
+      </Suspense>
       <Suspense fallback={<HeaderFrame />}>
         <AppHeader />
       </Suspense>

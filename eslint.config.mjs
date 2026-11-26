@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "playwright-report/**",
     "test-results/**",
+    // The service worker build output (scripts/build-sw.mjs).
+    "public/sw.js",
   ]),
 ]);
 

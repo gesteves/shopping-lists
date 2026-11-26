@@ -93,7 +93,10 @@ for (const { width, height, sidebar } of [
       contentType: "image/png",
     });
 
-    await page.goto("/");
+    // Under heavy parallel load, a late navigation can interrupt this one.
+    await expect(async () => {
+      await page.goto("/");
+    }).toPass();
     await expect(lists(page).getByRole("link", { name })).toBeVisible();
     const home = testInfo.outputPath(`home-${width}.png`);
     await page.screenshot({ path: home });

@@ -6,3 +6,6 @@ playwright-report/
 test-results/
 data/
 *.md
+
+# The service worker build output.
+public/sw.js
