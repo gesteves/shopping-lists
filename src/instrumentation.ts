@@ -5,4 +5,8 @@ export async function register() {
   // machine does not have the volume.
   const { runMigrations } = await import("@/db/migrate");
   runMigrations();
+  // Send notifications for activity (#16). Rows that a restart left are
+  // sent at the next tick.
+  const { startNotifier } = await import("@/server/notify/worker");
+  startNotifier();
 }
