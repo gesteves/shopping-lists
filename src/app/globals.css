@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Ticket #22 adds the color tokens and dark mode. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}

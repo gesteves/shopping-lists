@@ -38,3 +38,6 @@ public/swe-worker-*.js
 *.log
 .vercel
 .claude/settings.local.json
+
+# typescript
+*.tsbuildinfo

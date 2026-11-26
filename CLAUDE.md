@@ -18,7 +18,24 @@ Write all code comments, all the inline documentation, and any change to an agen
 
 ## Commands
 
-Ticket #1 adds the commands. Put them here when you do #1.
+Use npm. Node 24 or later.
+
+- `npm run dev`: start the dev server.
+- `npm run build`: make the standalone build in `.next/standalone`.
+- `npm start`: run the standalone build. It reads `.env.local` if it exists. Set the port with `PORT`.
+- `npm run lint`: run ESLint.
+- `npm run format`: run Prettier. `npm run format:check` only checks.
+- `npm run typecheck`: make the route types, then run `tsc`.
+- `npm test`: run the unit tests (Vitest, `src/**/*.test.ts`).
+- `npm run test:e2e`: build, start, and run the Playwright tests (`e2e/`). Run `npx playwright install chromium webkit` one time first.
+- `npm run db:generate`: make a migration in `drizzle/` from `src/db/schema.ts`.
+- `npm run db:migrate`: apply the migrations to `DATABASE_PATH` (default `./data/dev.db`).
+
+Copy `.env.example` to `.env.local` and add the values.
+
+## Next.js
+
+This project uses Next.js 16, with Cache Components on. Your training data can be old. Before you write Next.js code, read the related guide in `node_modules/next/dist/docs/`.
 
 ## Workflow
 
