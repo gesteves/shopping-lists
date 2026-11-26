@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import journal from "../../drizzle/meta/_journal.json";
 import { runMigrations } from "./migrate";
 
 describe("runMigrations", () => {
@@ -25,7 +26,7 @@ describe("runMigrations", () => {
     const mode = sqlite.pragma("journal_mode", { simple: true });
     sqlite.close();
 
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(journal.entries.length);
     expect(mode).toBe("wal");
   });
 });

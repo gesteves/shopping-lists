@@ -3,6 +3,12 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://localhost:${PORT}`;
 
+/** The e2e database. Each run starts with a new one. */
+export const E2E_DATABASE_PATH = "./data/e2e.db";
+
+/** The account that the e2e tests can sign in with. */
+export const E2E_ALLOWED_EMAIL = "allowed@example.com";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -16,8 +22,18 @@ export default defineConfig({
   ],
   webServer: {
     // Test the production build, not the dev server.
-    command: "npm run build && npm run start",
-    env: { PORT: String(PORT) },
+    command: `rm -f ${E2E_DATABASE_PATH}* && npm run build && npm run db:migrate && npm run start`,
+    env: {
+      PORT: String(PORT),
+      DATABASE_PATH: E2E_DATABASE_PATH,
+      BETTER_AUTH_URL: baseURL,
+      BETTER_AUTH_SECRET: "e2e-secret-that-is-at-least-32-characters",
+      ALLOWED_EMAILS: E2E_ALLOWED_EMAIL,
+      GOOGLE_CLIENT_ID: "e2e-client-id",
+      GOOGLE_CLIENT_SECRET: "e2e-client-secret",
+      // Turns on the sign-in stub (src/lib/auth-stub.ts).
+      AUTH_STUB: "1",
+    },
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
