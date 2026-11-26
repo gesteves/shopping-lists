@@ -5,6 +5,7 @@
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
+import { openUrl, targetUrl } from "./open-url";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -44,3 +45,28 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Push (#15). The payload is a PushPayload (src/shared/push.ts).
+self.addEventListener("push", (event) => {
+  let data: { title?: string; body?: string; url?: string; tag?: string };
+  try {
+    data = event.data?.json() ?? {};
+  } catch {
+    data = { body: event.data?.text() };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Shopping Lists", {
+      body: data.body ?? "",
+      tag: data.tag,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: data.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = targetUrl(event.notification.data?.url, self.location.origin);
+  event.waitUntil(openUrl(self.clients, url));
+});

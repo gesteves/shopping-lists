@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import { generateVAPIDKeys } from "web-push";
+
+// New VAPID keys for each run. Pushes in e2e go to fake endpoints.
+const vapid = generateVAPIDKeys();
 
 const PORT = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://localhost:${PORT}`;
@@ -35,6 +39,9 @@ export default defineConfig({
       ALLOWED_EMAILS: `${E2E_ALLOWED_EMAIL},${E2E_SECOND_EMAIL}`,
       GOOGLE_CLIENT_ID: "e2e-client-id",
       GOOGLE_CLIENT_SECRET: "e2e-client-secret",
+      VAPID_PUBLIC_KEY: vapid.publicKey,
+      VAPID_PRIVATE_KEY: vapid.privateKey,
+      VAPID_SUBJECT: "https://shopping-lists.invalid",
       // Turns on the sign-in stub (src/lib/auth-stub.ts).
       AUTH_STUB: "1",
     },

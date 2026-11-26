@@ -42,6 +42,7 @@ test("an allowlisted account signs in and out", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page).toHaveURL("/");
 
+  await page.getByRole("link", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/sign-in");
   await page.goto("/");

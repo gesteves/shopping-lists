@@ -71,7 +71,7 @@ for (const { width, height, sidebar } of [
 
     await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
     // The header is there on the list page too.
-    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
     const aside = page.getByRole("complementary", { name: "All lists" });
     if (sidebar) await expect(aside).toBeVisible();
     else {

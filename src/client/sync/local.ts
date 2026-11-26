@@ -3,6 +3,7 @@
 import { HlcClock } from "@/shared/hlc";
 import { opSchema, type Op, type OpInput, type OpType } from "@/shared/ops";
 import type { PullResponse } from "@/shared/sync";
+import type { EntityTable } from "dexie";
 import { getMeta, setMeta, type ClientDb } from "../db";
 import { applyLocal, type LocalState } from "./apply";
 
@@ -97,12 +98,36 @@ export async function rebuildView(db: ClientDb): Promise<void> {
       for (const entry of await db.outbox.orderBy("seq").toArray()) {
         applyLocal(state, entry.op, userId);
       }
-      await db.lists.clear();
-      await db.items.clear();
-      await db.lists.bulkPut([...state.lists.values()]);
-      await db.items.bulkPut([...state.items.values()]);
+      // Write only the rows that changed. A full rewrite at each sync makes
+      // large transactions that block the writes of the user.
+      await writeChanged(db.lists, state.lists);
+      await writeChanged(db.items, state.items);
     },
   );
+}
+
+/** True if two flat records have the same keys and values. */
+function sameRecord(a: object, b: object): boolean {
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(ra), ...Object.keys(rb)]);
+  for (const key of keys) if (ra[key] !== rb[key]) return false;
+  return true;
+}
+
+async function writeChanged<T extends { id: string }>(
+  table: EntityTable<T, "id">,
+  next: Map<string, T>,
+) {
+  const current = await table.toArray();
+  const gone = current.filter((row) => !next.has(row.id)).map((row) => row.id);
+  const before = new Map(current.map((row) => [row.id, row]));
+  const changed = [...next.values()].filter((row) => {
+    const old = before.get(row.id);
+    return !old || !sameRecord(old, row);
+  });
+  if (gone.length > 0) await table.bulkDelete(gone as never);
+  if (changed.length > 0) await table.bulkPut(changed);
 }
 
 /** Write one pull page to the server layer. Then call rebuildView(). */

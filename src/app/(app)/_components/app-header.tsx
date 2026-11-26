@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { signOut } from "../../actions";
 import { SyncStarter } from "../sync-starter";
 import { SyncStatus } from "./sync-status";
 
-/** The top bar: the app name, sync status, the avatar, and sign out. */
+/** The top bar: the app name, sync status, settings, and the avatar. */
 export async function AppHeader() {
   const user = await requireUser();
   return (
@@ -12,15 +11,13 @@ export async function AppHeader() {
       <SyncStarter userId={user.id} />
       <HeaderFrame>
         <SyncStatus />
-        <form action={signOut} className="flex items-center gap-3">
-          <Avatar name={user.name} image={user.image} />
-          <button
-            type="submit"
-            className="min-h-11 rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
-          >
-            Sign out
-          </button>
-        </form>
+        <Link
+          href="/settings"
+          className="min-h-11 content-center rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
+        >
+          Settings
+        </Link>
+        <Avatar name={user.name} image={user.image} />
       </HeaderFrame>
     </>
   );
