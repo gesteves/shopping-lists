@@ -22,6 +22,10 @@ export function openDatabase(path: string = databasePath()) {
 }
 
 export type Db = ReturnType<typeof openDatabase>;
+/** A transaction of `Db.transaction()`. */
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+/** A connection or a transaction. Reads can use both. */
+export type Reader = Db | Tx;
 
 let db: Db | undefined;
 
