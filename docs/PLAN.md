@@ -75,13 +75,15 @@ Schema in `src/db/schema.ts`.
 | `users` | id, email, name (Google given name), avatar_url |
 | `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, clocks (JSON), seq |
 | `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, created_by/at, updated_by/at, updated_via, deleted_at, clocks (JSON, one HLC timestamp per field), seq |
-| `processed_ops` | op_id, which makes pushes idempotent |
-| `activity` | id, actor_id, via, type, list_id, item_id, snapshot (names at that moment), at, notified_at. Drives notifications. |
-| `push_subscriptions` | id, user_id, endpoint, keys, device_label, enabled, last_success_at |
+| `processed_ops` | op_id, user_id, result (JSON), processed_at. It makes pushes idempotent: a retry gets the stored result. |
+| `activity` | id, op_id, actor_id, via, type (the op type), list_id, item_id, snapshot (names at that moment), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
+| `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at |
 | `list_mutes` | user_id, list_id |
-| `server_seq` | one global counter. Every write gets the next seq. |
+| `server_seq` | one global counter (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
 
 Better Auth uses `users`, `sessions`, `accounts`, and `verifications`. The OAuth server has its own tables.
+
+Indexes: `seq` on `lists` and `items`, `(list_id, name_key)` and `name_key` on `items`. There is no unique index on `(list_id, name_key)`: a hard constraint can make a push fail on each retry (for example, a move or a restore into a list that has the same name). `applyOps` does the dedupe.
 
 **Allowlist:** the `ALLOWED_EMAILS` environment variable. Better Auth's `user.validateUserInfo` rejects any other email before a user row is created. It checks again at each Google sign-in. `getCurrentUser` also treats a session for an email that is no longer in the list as signed out.
 
@@ -98,6 +100,10 @@ Better Auth uses `users`, `sessions`, `accounts`, and `verifications`. The OAuth
 Because of this, realtime updates, notifications and attribution behave the same whether a change comes from the app or from Claude.
 
 **Op types:** createList, renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll.
+
+**Op format** (`src/shared/ops.ts`, zod): `{ opId, clientId, hlc, type, args }`. `opId` is a UUID. The node of `hlc` must be the `clientId`. Strings are trimmed. `addItem` sets `quantity: 1` and `notes: ""` by default. `updateItem` takes `fields` (name, quantity, notes) with at least one field. Limits: list name 100, item name 200, notes 2000, quantity 1–999. `clearChecked` and `uncheckAll` take only `listId`: #5 sets which items they change.
+
+**HLC** (`src/shared/hlc.ts`): the form is `<15-digit ms>-<4 hex counter>-<node>`. A string comparison gives the same order as `compare()`, thus `clocks` can keep the strings. Ties break on the node (client ID). `receive()` refuses a remote time more than 5 minutes ahead of the local clock. `HlcClock` keeps the state; the client stores its `last` value to stay monotonic after a restart. Server writes (MCP) use a fixed node ID, for example `server`. `nameKey()` is in `src/shared/names.ts`.
 
 **Client** (`src/client/sync/`):
 - A change is written to Dexie optimistically and added to the outbox. The UI reads Dexie through `useLiveQuery`, so it works the same online and offline.
