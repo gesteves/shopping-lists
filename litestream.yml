@@ -1,0 +1,11 @@
+# Litestream replicates the SQLite database to Cloudflare R2.
+# Litestream reads these from the environment (Fly secrets):
+#   LITESTREAM_ACCESS_KEY_ID, LITESTREAM_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT
+dbs:
+  - path: ${DATABASE_PATH}
+    replica:
+      type: s3
+      bucket: ${R2_BUCKET}
+      path: shopping-lists
+      endpoint: ${R2_ENDPOINT}
+      region: auto

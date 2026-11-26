@@ -21,8 +21,9 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    // Test the production build, not the dev server.
-    command: `rm -f ${E2E_DATABASE_PATH}* && npm run build && npm run db:migrate && npm run start`,
+    // Test the production build, not the dev server. The server applies the
+    // migrations at boot.
+    command: `rm -f ${E2E_DATABASE_PATH}* && npm run build && npm run start`,
     env: {
       PORT: String(PORT),
       DATABASE_PATH: E2E_DATABASE_PATH,
