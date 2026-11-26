@@ -1,0 +1,85 @@
+import "fake-indexeddb/auto";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ItemRecord, ListRecord } from "@/shared/sync";
+import { ClientDb } from "./db";
+import { readList, readLists } from "./queries";
+
+let db: ClientDb;
+let n = 0;
+
+beforeEach(() => {
+  db = new ClientDb(`queries-${++n}`);
+});
+afterEach(() => db.close());
+
+const base = {
+  createdBy: "u",
+  createdAt: 1,
+  updatedBy: "u",
+  updatedVia: "app" as const,
+  seq: 1,
+};
+
+function list(id: string, name: string, deletedAt: number | null = null) {
+  return { ...base, id, name, updatedAt: 1, deletedAt } satisfies ListRecord;
+}
+
+function item(
+  id: string,
+  updatedAt: number,
+  checked = false,
+  deletedAt: number | null = null,
+): ItemRecord {
+  return {
+    ...base,
+    id,
+    listId: "l",
+    name: id,
+    quantity: 1,
+    notes: "",
+    checked,
+    checkedAt: checked ? updatedAt : null,
+    updatedAt,
+    deletedAt,
+  };
+}
+
+describe("readLists", () => {
+  it("gives the lists that are not deleted, by name", async () => {
+    await db.lists.bulkPut([
+      list("a", "target"),
+      list("b", "Costco"),
+      list("c", "Aldi", 5),
+    ]);
+    expect((await readLists(db)).map((l) => l.name)).toEqual([
+      "Costco",
+      "target",
+    ]);
+  });
+});
+
+describe("readList", () => {
+  it("sorts unchecked first, then the last updated first", async () => {
+    await db.lists.put(list("l", "Target"));
+    await db.items.bulkPut([
+      item("old", 1),
+      item("new", 9),
+      item("checked-new", 10, true),
+      item("checked-old", 2, true),
+      item("deleted", 20, false, 21),
+    ]);
+    const view = await readList(db, "l");
+    expect(view?.items.map((i) => i.id)).toEqual([
+      "new",
+      "old",
+      "checked-new",
+      "checked-old",
+    ]);
+  });
+
+  it("gives null for a deleted or missing list", async () => {
+    await db.lists.put(list("l", "Target", 3));
+    expect(await readList(db, "l")).toBeNull();
+    expect(await readList(db, "missing")).toBeNull();
+  });
+});
