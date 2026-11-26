@@ -8,5 +8,7 @@ export async function register() {
   // Send notifications for activity (#16). Rows that a restart left are
   // sent at the next tick.
   const { startNotifier } = await import("@/server/notify/worker");
-  startNotifier();
+  const { createSummarizer } = await import("@/server/notify/summarize");
+  // Claude writes the text for more than one change (#17).
+  startNotifier({ summarize: createSummarizer() });
 }

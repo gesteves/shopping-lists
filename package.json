@@ -17,9 +17,11 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "icons": "node scripts/build-icons.mjs",
     "predev": "npm run assets",
-    "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs"
+    "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs",
+    "try:summaries": "tsx --conditions=react-server scripts/try-summaries.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@serwist/window": "^9.6.0",
     "@web.awesome.me/webawesome-pro": "3.15.0",
     "better-auth": "^1.7.28",

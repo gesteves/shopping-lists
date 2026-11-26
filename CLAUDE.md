@@ -30,6 +30,7 @@ Use npm. Node 24 or later.
 - `npm run test:e2e`: build, start, and run the Playwright tests (`e2e/`). Run `npx playwright install chromium webkit` one time first.
 - `npm run db:generate`: make a migration in `drizzle/` from `src/db/schema.ts`.
 - `npm run db:migrate`: apply the migrations to `DATABASE_PATH` (default `./data/dev.db`).
+- `npm run try:summaries`: print the Claude notification summary for three sample bursts. It needs `ANTHROPIC_API_KEY` and makes three small API calls.
 
 Copy `.env.example` to `.env.local` and add the values.
 
