@@ -184,6 +184,8 @@ Code in `src/server/notify/`.
 - The prompt asks for one line of at most ~120 characters, in the same voice as the templates, with counts and list names. For example: "Sam added 12 items to the “Whole Foods” list and checked 3 off “Target”".
 - On any error or refusal, it falls back to "[Name] made N changes to …".
 
+**Built in #16** (`src/server/notify/`): `startNotifier()` runs from `src/instrumentation.ts` and ticks every 10 s. Rows are grouped by actor and `via`, so "(via Claude)" holds for the whole text. A group is sent after 60 s of quiet, or 3 minutes after its first row. The rows are marked as sent **before** the push: a crash can lose one push but never sends it twice, and rows that a restart leaves are sent at the next tick. For each recipient, rows on muted lists are dropped, then `collapse()` runs, so muted changes do not count. The push title is the list name (one list) or "Shopping Lists", the URL is the list (or `/`), and the tag is the list ID (or `activity`). There are two more templates for a lone restore: “[Name] restored the “[list]” list” and “[Name] put “[item]” back on the “[list]” list”. a/an uses the first letter, and numbers that start with 8, or are 11 or 18, take "an".
+
 **Sending:** `web-push` with VAPID keys. The payload carries a deep-link URL, and the notification `tag` is the list ID. Subscriptions that return 404 or 410 are deleted.
 
 **Settings:** "Enable notifications" must be tapped by the user, as iOS requires, and it only works in the installed PWA. Each device has its own on/off toggle, and each list has a mute toggle.
