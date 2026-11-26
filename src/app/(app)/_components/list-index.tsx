@@ -234,11 +234,12 @@ function CreateListForm() {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+    // Clear first: text typed while the write runs must stay.
+    setName("");
     await mutate({
       type: "createList",
       args: { listId: crypto.randomUUID(), name: trimmed },
     });
-    setName("");
   }
 
   return (

@@ -1,21 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { E2E_ALLOWED_EMAIL } from "../playwright.config";
-
-async function signIn(page: Page) {
-  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
-  await page.goto(`/api/auth/e2e/sign-in?${params}`);
-  await expect(page).toHaveURL("/");
-}
+import { signIn, synced } from "./helpers";
 
 /** The visible list index: the page on a phone, the sidebar on a desktop. */
 function lists(page: Page) {
   return page.getByRole("region", { name: "Lists" }).filter({ visible: true });
-}
-
-/** Wait until the server has every change. */
-async function synced(page: Page) {
-  await expect(page.getByText(/to sync/)).toHaveCount(0);
 }
 
 test("create, rename, and delete a list, and keep them after a reload", async ({
