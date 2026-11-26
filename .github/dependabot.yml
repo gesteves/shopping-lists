@@ -1,0 +1,51 @@
+version: 2
+
+# Weekly version updates. CI (.github/workflows/ci.yml) checks each PR.
+# The labels must exist in the repository: Dependabot does not make them.
+# Security updates use these settings too, but they do not wait for the
+# cooldown.
+
+updates:
+  # One PR for all minor and patch updates. Each major update gets its own PR,
+  # because Next.js, React, and Drizzle majors need a review.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels: [dependencies, javascript]
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # "/" covers only .github/workflows. The `uses:` in a composite action needs
+  # its own directory. The glob also covers new composite actions.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+      day: saturday
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels: [dependencies, github-actions]
+
+  # The base images in the Dockerfile: Node and Litestream. The Node tag is a
+  # major version only (24-trixie-slim), thus each Node PR is a major update.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels: [dependencies, docker]
