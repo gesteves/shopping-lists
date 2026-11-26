@@ -79,7 +79,7 @@ Schema in `src/db/schema.ts`.
 | `activity` | id, op_id, actor_id, via, type (the op type), list_id, item_id, snapshot (names at that moment), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at |
 | `list_mutes` | user_id, list_id |
-| `server_seq` | one global counter (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
+| `server_seq` | one global counter and `purged_seq` (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
 
 Better Auth uses `users`, `sessions`, `accounts`, and `verifications`. The OAuth server has its own tables.
 
@@ -99,6 +99,8 @@ Indexes: `seq` on `lists` and `items`, `(list_id, name_key)` and `name_key` on `
 
 Because of this, realtime updates, notifications and attribution behave the same whether a change comes from the app or from Claude.
 
+**`applyOps` results** (#5): each op gets `applied { changed }`, `merged { into, changed }`, `rejected { reason }`, or `duplicate { original }`. The reasons are `list_not_found`, `list_deleted`, `list_exists`, `item_not_found`, `item_exists`, and `clock_ahead` (the op HLC is more than 5 minutes after the server clock). `processed_ops` keeps the first result, also for a rejection, so a retry gets the same answer. An op that writes only clocks is `applied { changed: false }`: it gets no seq, no activity row and no poke. Each changed row gets its own seq, so a page of a pull never splits one seq. `updated_at` is the op time (the HLC wall time), not the server time. `activity.at` is the server time. An unexpected error rolls back the whole call.
+
 **Op types:** createList, renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll.
 
 **Op format** (`src/shared/ops.ts`, zod): `{ opId, clientId, hlc, type, args }`. `opId` is a UUID. The node of `hlc` must be the `clientId`. Strings are trimmed. `addItem` sets `quantity: 1` and `notes: ""` by default. `updateItem` takes `fields` (name, quantity, notes) with at least one field. Limits: list name 100, item name 200, notes 2000, quantity 1–999. `clearChecked` and `uncheckAll` take only `listId`: #5 sets which items they change.
@@ -113,9 +115,12 @@ Because of this, realtime updates, notifications and attribution behave the same
 **Conflict rules:**
 - Concurrent edits to different fields both survive (e.g. one person checks an item while the other edits its notes).
 - For the same field, the later edit wins.
-- Delete vs. edit: the later timestamp wins. Restore (undo) clears the tombstone.
+- Delete vs. edit: the later timestamp wins. "deleted" is a field with its own clock: a delete writes true, and a restore or any edit (rename, check, move…) writes false. Thus the result is the same in each order of arrival, and a later edit brings a deleted row back.
+- A list delete does not change its items. The client hides the items of a deleted list, and a restore brings them back.
+- `clearChecked` deletes, and `uncheckAll` unchecks, the items whose check clock is older than the op. An item checked after the op stays.
+- Item ops on an item in a deleted list are applied as usual. Only `addItem` and `moveItem` to a deleted list are rejected.
 - Adding an item to a list that was deleted while you were offline is rejected. The client shows a toast offering to re-create the list.
-- Tombstones are purged after 30 days.
+- Tombstones are purged after 30 days (`purgeTombstones`). It also deletes the items of purged lists, `processed_ops` rows, and sent `activity` rows older than the limit. It sets `server_seq.purged_seq` to the largest seq that it deleted. A pull with a cursor below `purged_seq` must start again from 0 (#6).
 
 **Offline auth:** if the session has expired, the outbox keeps queuing. On a 401, show "Sign in again to sync N changes" without dropping anything.
 
@@ -126,6 +131,7 @@ Because of this, realtime updates, notifications and attribution behave the same
 - Adding a name that matches an item already on the list opens an "Already on the list. Uncheck it?" prompt. If the match is already unchecked, it offers to increase the quantity.
 - The server never creates a second row with the same `name_key` on a list. It returns `merged`, and the client drops its local row.
 - MCP `add_items` does the same automatically and reports what happened.
+- The server dedupes only on `addItem`. A match is an item on the same list with the same `name_key` that is not deleted. If it is checked (and its check is older than the op), the server unchecks it. A deleted match does not count: the add makes a new row. A rename or a move can give two items with the same name.
 
 **Autocomplete:** suggests names from every item ever added, ranked by how often and how recently.
 

@@ -285,6 +285,11 @@ export const serverSeq = sqliteTable(
   {
     id: integer("id").primaryKey(),
     value: integer("value").notNull(),
+    /**
+     * The largest seq of a row that purgeTombstones deleted. A client with a
+     * cursor below it can miss a delete, thus it must pull again from 0 (#6).
+     */
+    purgedSeq: integer("purged_seq").notNull().default(0),
   },
   (t) => [check("server_seq_one_row", sql`${t.id} = 1`)],
 );

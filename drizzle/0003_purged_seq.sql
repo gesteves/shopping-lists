@@ -1,0 +1,1 @@
+ALTER TABLE `server_seq` ADD `purged_seq` integer DEFAULT 0 NOT NULL;
