@@ -45,6 +45,15 @@ The server applies new migrations at start (`src/instrumentation.ts`).
 - Fly secrets (names only): `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`. Never set `AUTH_STUB` on Fly. Set secrets with `fly secrets set`. Secrets made in the Fly dashboard did not get to new machines (#3).
 - Cloudflare: a proxied DNS record to Fly, and rules for this host only: Full (strict) SSL, and no cache for `/api/*` and `/sw.js`. Do not change the zone settings: other hosts use the zone.
 
+## Dependencies
+
+- Dependabot (`.github/dependabot.yml`) opens weekly PRs for npm, GitHub Actions, and the Docker base images. CI must pass before a merge. Do not merge a Dependabot PR that has a failed check.
+- `allowScripts` in `package.json` controls which install scripts npm runs. CI fails if a package with an install script has no entry (`npm install-scripts ls`).
+  - `better-sqlite3` is pinned to an exact version, because it must build its native module. When Dependabot bumps it, CI fails. To fix it: read the changes in the new version, then check out the Dependabot branch, run `npm install-scripts approve better-sqlite3` and `npm install-scripts prune`, and push.
+  - `esbuild` and `fsevents` are denied. They work without their scripts: esbuild loads its binary from an `@esbuild/<platform>` package, and fsevents has a prebuilt binary.
+  - For a new package with an install script, find out if it needs the script. If not, deny it. If it does, approve it pinned to the version.
+- A Node major update changes the two `node` tags in the `Dockerfile`. Also change `.nvmrc`. Use only LTS (even) majors.
+
 ## Next.js
 
 This project uses Next.js 16, with Cache Components on. Your training data can be old. Before you write Next.js code, read the related guide in `node_modules/next/dist/docs/`.

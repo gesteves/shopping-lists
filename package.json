@@ -45,9 +45,8 @@
   },
   "allowScripts": {
     "better-sqlite3@13.2.0": true,
-    "esbuild@0.18.20": true,
-    "esbuild@0.25.12": true,
-    "esbuild@0.28.2": true
+    "esbuild": false,
+    "fsevents": false
   },
   "engines": {
     "node": ">=24"
