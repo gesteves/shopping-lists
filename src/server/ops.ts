@@ -15,7 +15,7 @@
 //     "duplicate" and the first result.
 import "server-only";
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import { getDb, type Db } from "@/db/client";
+import { getDb, type Db, type Tx } from "@/db/client";
 import {
   activity,
   items,
@@ -26,31 +26,16 @@ import {
 import { HlcError, parse, type HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
 import type { ItemClocks, ListClocks, Op, OpOf, Via } from "@/shared/ops";
+import type { OpResult, RejectReason, StoredResult } from "@/shared/sync";
 import { bus } from "./bus";
 import { getServerClock } from "./clock";
+
+export type { OpResult, RejectReason, StoredResult };
 
 export interface Actor {
   /** The users.id of the person. An MCP write uses the token owner. */
   id: string;
 }
-
-export type RejectReason =
-  | "list_not_found"
-  | "list_deleted"
-  | "list_exists"
-  | "item_not_found"
-  | "item_exists"
-  /** The op HLC is too far after the server clock (MAX_DRIFT_MS). */
-  | "clock_ahead";
-
-export type StoredResult =
-  | { opId: string; status: "applied"; changed: boolean }
-  /** addItem found an item with the same name. The client drops its row. */
-  | { opId: string; status: "merged"; into: string; changed: boolean }
-  | { opId: string; status: "rejected"; reason: RejectReason };
-
-export type OpResult =
-  StoredResult | { opId: string; status: "duplicate"; original: StoredResult };
 
 export interface ApplyResult {
   results: OpResult[];
@@ -65,7 +50,6 @@ export interface ApplyOptions {
   now?: () => number;
 }
 
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type ListRow = typeof lists.$inferSelect;
 type ItemRow = typeof items.$inferSelect;
 type ItemSet = Partial<typeof items.$inferInsert>;

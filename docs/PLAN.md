@@ -112,6 +112,12 @@ Because of this, realtime updates, notifications and attribution behave the same
 - Each sync cycle: push the outbox → pull rows with `seq > cursor` (tombstones included) → re-apply any ops still pending.
 - Sync runs on startup, on `online`, on `visibilitychange` to visible, on an SSE `poke`, and after each local write (debounced).
 
+**Endpoints** (#6; wire types in `src/shared/sync.ts`, logic in `src/server/sync.ts`):
+- `POST /api/sync/push` takes `{ clientId, ops }`, with at most 200 ops and 1 MB. Each op must have the `clientId` of the push. Any bad input gets 400 and nothing is applied, so the client checks each op with `opSchema` before it goes in the outbox. A body that is not JSON gets 415, and a body that is too large gets 413. It returns `{ results, seq }`.
+- `GET /api/sync/pull?since=<seq>&limit=<n>` (default 500, max 1000) returns `{ reset, lists, items, users, hlc, cursor, hasMore }`. Rows are in seq order, with tombstones. There are no clocks or emails. `hlc` is the largest field clock in the page: the client gives it to its `HlcClock`, so its next edit sorts after what it saw. After the last page, `cursor` is the last seq of the server.
+- `reset: true` when `since` is below `purged_seq`, or above the last seq (the server database came from an older backup). The page then starts from seq 0, and the client deletes its lists and items (not its outbox) before it applies the page.
+- Reads go through `src/server/queries.ts`.
+
 **Conflict rules:**
 - Concurrent edits to different fields both survive (e.g. one person checks an item while the other edits its notes).
 - For the same field, the later edit wins.
