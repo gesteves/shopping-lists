@@ -286,6 +286,7 @@ Mobile-first. Routes under `src/app/(app)/`.
   - delete by swipe or menu, with an undo toast;
   - an item sheet: name, quantity stepper, notes, "Added by X · time" and "Updated by Y (via Claude) · time";
   - move to another list, and a "Clear checked / Uncheck all" menu;
+  - built in #13: a "List actions" menu beside the `h1` (rename, uncheck all, clear checked items with a confirmation, delete list) and "Move to" in the item sheet. Each delete, move, and bulk action shows a toast with Undo for 5 s (`src/client/toasts.ts`, `_components/toaster.tsx`). Undo sends `restoreItem`, `restoreList`, `moveItem` back, or one `restoreItem`/`check` for each item that the bulk op changed. The toaster also shows each change that the server refused.
   - an "editing…" badge on items the other person is editing.
   - Built in #9 (`src/app/(app)/lists/[id]/`): each row is one large `role="checkbox"` button with an Edit button beside it. The add bar is sticky at the bottom, with quantity and notes behind "Details". The sheet is a `<dialog>`: a bottom sheet on a phone, centered at `lg`. It takes focus itself, so the keyboard does not open. Delete is in the sheet; swipe-to-delete is not built. Forms clear before the write, so fast entry keeps each item.
 - **Header:** an offline indicator with the number of pending changes, and a **Keep screen on** toggle. The toggle uses the Screen Wake Lock API, re-acquires the lock on `visibilitychange`, is remembered per device, and is hidden where the API isn't supported.

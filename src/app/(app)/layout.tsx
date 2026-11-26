@@ -3,6 +3,7 @@ import { ServiceWorker } from "../service-worker";
 import { SessionRefresh } from "../session-refresh";
 import { AppHeader, HeaderFrame } from "./_components/app-header";
 import { ListIndex } from "./_components/list-index";
+import { Toaster } from "./_components/toaster";
 
 // The signed-in shell. On a phone, one column: `/` is the lists, and
 // `/lists/[id]` is one list. On a large screen, the lists are a sidebar
@@ -29,6 +30,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           {children}
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }

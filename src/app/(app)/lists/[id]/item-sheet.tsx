@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { useUsers } from "@/client/hooks";
+import { useLists, useUsers } from "@/client/hooks";
 import { itemHistory } from "@/client/format";
 import { mutate } from "@/client/sync";
+import { showToast } from "@/client/toasts";
 import { ITEM_NAME_MAX, NOTES_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
 import { Stepper } from "../../_components/stepper";
@@ -53,10 +54,12 @@ function SheetForm({
   dialog: React.RefObject<HTMLDialogElement | null>;
 }) {
   const users = useUsers();
+  const lists = useLists();
+  const others = lists?.filter((l) => l.id !== item.listId) ?? [];
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity);
   const [notes, setNotes] = useState(item.notes);
-  const ids = { name: useId(), notes: useId() };
+  const ids = { name: useId(), notes: useId(), move: useId() };
   const close = () => dialog.current?.close();
 
   async function save(event: FormEvent) {
@@ -74,6 +77,32 @@ function SheetForm({
   async function remove() {
     await mutate({ type: "deleteItem", args: { itemId: item.id } });
     close();
+    showToast({
+      message: `Deleted “${item.name}”.`,
+      action: {
+        label: "Undo",
+        run: () =>
+          void mutate({ type: "restoreItem", args: { itemId: item.id } }),
+      },
+    });
+  }
+
+  async function move(toListId: string) {
+    const target = lists?.find((l) => l.id === toListId);
+    if (!target) return;
+    await mutate({ type: "moveItem", args: { itemId: item.id, toListId } });
+    close();
+    showToast({
+      message: `Moved “${item.name}” to the “${target.name}” list.`,
+      action: {
+        label: "Undo",
+        run: () =>
+          void mutate({
+            type: "moveItem",
+            args: { itemId: item.id, toListId: item.listId },
+          }),
+      },
+    });
   }
 
   return (
@@ -120,6 +149,31 @@ function SheetForm({
           className="rounded-xl border border-ink-muted bg-canvas px-4 py-2"
         />
       </div>
+      {others.length > 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor={ids.move}
+            className="text-sm font-medium text-ink-muted"
+          >
+            Move to
+          </label>
+          <select
+            id={ids.move}
+            value=""
+            onChange={(e) => void move(e.target.value)}
+            className="min-h-11 max-w-[60%] rounded-lg border border-ink-muted bg-canvas px-3"
+          >
+            <option value="" disabled>
+              Pick a list
+            </option>
+            {others.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <ul className="text-sm text-ink-muted">
         {users &&
           itemHistory(item, users).map((line) => <li key={line}>{line}</li>)}

@@ -6,6 +6,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { useListSummaries } from "@/client/hooks";
 import type { ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
+import { showToast } from "@/client/toasts";
 import { LIST_NAME_MAX } from "@/shared/ops";
 import { MoreIcon, PlusIcon } from "./icons";
 import { ListViewers } from "./presence";
@@ -119,13 +120,13 @@ function ListRow({ list }: { list: ListSummary }) {
   );
 }
 
-function DeleteDialog({
+export function DeleteDialog({
   ref,
   list,
   onDeleted,
 }: {
   ref: React.RefObject<HTMLDialogElement | null>;
-  list: ListSummary;
+  list: Pick<ListSummary, "id" | "name" | "remaining">;
   onDeleted: () => void;
 }) {
   const titleId = useId();
@@ -133,6 +134,14 @@ function DeleteDialog({
     ref.current?.close();
     await mutate({ type: "deleteList", args: { listId: list.id } });
     onDeleted();
+    showToast({
+      message: `Deleted the “${list.name}” list.`,
+      action: {
+        label: "Undo",
+        run: () =>
+          void mutate({ type: "restoreList", args: { listId: list.id } }),
+      },
+    });
   }
   return (
     <dialog
@@ -168,11 +177,12 @@ function DeleteDialog({
   );
 }
 
-function RenameForm({
+/** Rename a list inline. The list index and the list header use it. */
+export function RenameForm({
   list,
   onDone,
 }: {
-  list: ListSummary;
+  list: Pick<ListSummary, "id" | "name">;
   onDone: () => void;
 }) {
   const [name, setName] = useState(list.name);
