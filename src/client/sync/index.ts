@@ -12,7 +12,12 @@ import {
 } from "./local";
 
 export type { OpRequest } from "./local";
-export type { RejectedDetail, SyncState, SyncStatus } from "./engine";
+export type {
+  MergedDetail,
+  RejectedDetail,
+  SyncState,
+  SyncStatus,
+} from "./engine";
 
 let engine: SyncEngine | undefined;
 

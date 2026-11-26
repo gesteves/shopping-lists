@@ -27,6 +27,14 @@ export interface SyncStatus {
   lastSyncAt: number | null;
 }
 
+/** The detail of a "merged" event: the server kept `into`, not the new row. */
+export interface MergedDetail {
+  op: Op;
+  into: string;
+  /** True if the server unchecked the item. */
+  changed: boolean;
+}
+
 /** The detail of a "rejected" event. "invalid" is a local schema failure. */
 export interface RejectedDetail {
   op: Op;
@@ -71,7 +79,8 @@ const MAX_PAGES = 1000;
 const MAX_PUSHES = 50;
 
 export class SyncEngine {
-  /** "rejected" events, with a RejectedDetail. The UI shows a toast. */
+  /** "rejected" (RejectedDetail) and "merged" (MergedDetail) events. The UI
+   * shows a toast. */
   readonly events = new EventTarget();
 
   readonly #db: ClientDb;
@@ -271,6 +280,18 @@ export class SyncEngine {
         const result = body.results[i];
         const final = result?.status === "duplicate" ? result.original : result;
         if (final?.status === "rejected") this.#reject(entry.op, final.reason);
+        // Only a new result: a duplicate was shown the first time.
+        if (result?.status === "merged") {
+          this.events.dispatchEvent(
+            new CustomEvent<MergedDetail>("merged", {
+              detail: {
+                op: entry.op,
+                into: result.into,
+                changed: result.changed,
+              },
+            }),
+          );
+        }
       });
     }
   }

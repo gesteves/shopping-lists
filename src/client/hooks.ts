@@ -13,7 +13,13 @@ import {
   type ListSummary,
   type ListView,
 } from "./queries";
-import { getSyncEngine, type RejectedDetail, type SyncStatus } from "./sync";
+import { buildCandidates, type Candidate } from "./suggest";
+import {
+  getSyncEngine,
+  type MergedDetail,
+  type RejectedDetail,
+  type SyncStatus,
+} from "./sync";
 
 /** The lists that are not deleted, by name. */
 export function useLists(): ListRecord[] | undefined {
@@ -57,15 +63,33 @@ export function useSyncStatus(): SyncStatus {
   );
 }
 
-/** Call `handler` for each op that the server rejected. */
-export function useRejectedOps(handler: (detail: RejectedDetail) => void) {
+function useEngineEvent<T>(type: string, handler: (detail: T) => void) {
   useEffect(() => {
     const listener = (event: Event) =>
-      handler((event as CustomEvent<RejectedDetail>).detail);
+      handler((event as CustomEvent<T>).detail);
     const events = getSyncEngine().events;
-    events.addEventListener("rejected", listener);
-    return () => events.removeEventListener("rejected", listener);
-  }, [handler]);
+    events.addEventListener(type, listener);
+    return () => events.removeEventListener(type, listener);
+  }, [type, handler]);
+}
+
+/** Call `handler` for each op that the server rejected. Give a stable
+ * handler (useCallback). */
+export function useRejectedOps(handler: (detail: RejectedDetail) => void) {
+  useEngineEvent("rejected", handler);
+}
+
+/** Call `handler` for each add that the server merged into an item. */
+export function useMergedOps(handler: (detail: MergedDetail) => void) {
+  useEngineEvent("merged", handler);
+}
+
+/** Autocomplete candidates from every item on this device. */
+export function useSuggestionCandidates(): Candidate[] | undefined {
+  return useLiveQuery(
+    async () => buildCandidates(await getClientDb().items.toArray()),
+    [],
+  );
 }
 
 /** What the other people show now. Empty while offline. */
