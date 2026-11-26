@@ -276,6 +276,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 
 - **`/sign-in`:** one "Sign in with Google" button. `src/proxy.ts` (Next 16 renamed middleware to proxy) sends signed-out users here, and allowlist rejections show a short error.
 - **`/`:** the lists. Create, rename, delete with undo, and presence dots. On desktop it's a two-pane layout: a list sidebar beside the open list.
+- **Shell (#8):** `src/app/(app)/layout.tsx`. The header (app name, sync status, avatar, sign out) is sticky, and every edge has the safe-area insets (`viewportFit: "cover"`). At `lg` and wider, the lists are a sidebar; `/` then shows a prompt to pick a list. Each list row has a "More" button with Rename (inline form) and Delete (a `<dialog>` to confirm). Components are in `src/app/(app)/_components/`.
 - **`/lists/[id]`:**
   - an add bar fixed to the bottom, with autocomplete and dedupe;
   - large tap targets to check items;

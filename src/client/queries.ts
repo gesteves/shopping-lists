@@ -41,3 +41,24 @@ export async function readList(
     .toArray();
   return { list, items: sortItems(items) };
 }
+
+export interface ListSummary extends ListRecord {
+  /** Items that are not checked and not deleted. */
+  remaining: number;
+}
+
+/** The lists that are not deleted, by name, each with its unchecked count. */
+export async function readListSummaries(db: ClientDb): Promise<ListSummary[]> {
+  const [lists, items] = await Promise.all([
+    readLists(db),
+    db.items.filter((i) => i.deletedAt === null && !i.checked).toArray(),
+  ]);
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    counts.set(item.listId, (counts.get(item.listId) ?? 0) + 1);
+  }
+  return lists.map((list) => ({
+    ...list,
+    remaining: counts.get(list.id) ?? 0,
+  }));
+}

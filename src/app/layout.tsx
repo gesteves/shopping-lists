@@ -13,6 +13,8 @@ export const metadata: Metadata = {
 // JavaScript. The theme colors are the canvas colors in globals.css.
 export const viewport: Viewport = {
   colorScheme: "light dark",
+  // Use the full screen. The shell adds the safe-area insets.
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f2f5f0" },
     { media: "(prefers-color-scheme: dark)", color: "#0f1a14" },

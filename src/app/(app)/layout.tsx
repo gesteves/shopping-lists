@@ -1,22 +1,29 @@
 import { Suspense } from "react";
-import { requireUser } from "@/lib/session";
 import { SessionRefresh } from "../session-refresh";
-import { SyncStarter } from "./sync-starter";
+import { AppHeader, HeaderFrame } from "./_components/app-header";
+import { ListIndex } from "./_components/list-index";
 
-// The signed-in part of the app. Ticket #8 adds the shell.
+// The signed-in shell. On a phone, one column: `/` is the lists, and
+// `/lists/[id]` is one list. On a large screen, the lists are a sidebar
+// beside the open list.
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
-    <>
+    <div className="flex min-h-dvh flex-col">
       <SessionRefresh />
-      <Suspense>
-        <StartSync />
+      <Suspense fallback={<HeaderFrame />}>
+        <AppHeader />
       </Suspense>
-      {children}
-    </>
+      <div className="flex flex-1 lg:grid lg:grid-cols-[22rem_1fr]">
+        <aside
+          aria-label="All lists"
+          className="hidden border-r border-line px-4 py-6 lg:block"
+        >
+          <ListIndex headingLevel={2} />
+        </aside>
+        <main className="flex w-full flex-1 flex-col pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] lg:px-10">
+          {children}
+        </main>
+      </div>
+    </div>
   );
-}
-
-async function StartSync() {
-  const user = await requireUser();
-  return <SyncStarter userId={user.id} />;
 }

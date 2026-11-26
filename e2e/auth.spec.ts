@@ -34,7 +34,9 @@ test("a signed-out API request gets 401", async ({ request }) => {
 test("an allowlisted account signs in and out", async ({ page }) => {
   await stubSignIn(page, E2E_ALLOWED_EMAIL);
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("Signed in as Ana")).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Signed in as Ana" }),
+  ).toBeVisible();
 
   // A signed-in user does not see the sign-in page.
   await page.goto("/sign-in");
