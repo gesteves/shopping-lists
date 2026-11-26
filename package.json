@@ -30,7 +30,7 @@
     "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^24.19.4",
+    "@types/node": "^26.6.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.11",
