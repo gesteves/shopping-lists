@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+dist/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+
+# local data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# testing
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# service worker build output
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+
+# misc
+.DS_Store
+*.pem
+*.log
+.vercel
+.claude/settings.local.json
