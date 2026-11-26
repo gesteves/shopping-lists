@@ -18,13 +18,15 @@ export function GoogleSignInButton() {
   }
 
   return (
-    <button
-      type="button"
+    <wa-button
+      variant="brand"
+      size="l"
       onClick={signIn}
-      disabled={pending}
-      className="mt-10 min-h-12 w-full rounded-lg bg-accent px-5 text-base font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-70"
+      loading={pending}
+      className="mt-10 w-full"
     >
+      <wa-icon slot="start" family="brands" name="google"></wa-icon>
       {pending ? "Opening Google…" : "Sign in with Google"}
-    </button>
+    </wa-button>
   );
 }

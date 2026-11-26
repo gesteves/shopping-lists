@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { WebAwesome } from "./web-awesome";
 
 export const metadata: Metadata = {
   title: "Shopping Lists",
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-canvas text-ink">
+        <WebAwesome />
         {children}
       </body>
     </html>

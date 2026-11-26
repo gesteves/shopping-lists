@@ -11,8 +11,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json .npmrc ./
+COPY scripts/check-registry-tokens.sh scripts/
+# The Pro packages come from private registries (#51). The tokens are build
+# secrets (`fly deploy --build-secret`): they are in the env of this command
+# only, and no image layer keeps them.
+RUN --mount=type=secret,id=WEBAWESOME_NPM_TOKEN \
+  --mount=type=secret,id=FONTAWESOME_NPM_AUTH_TOKEN \
+  WEBAWESOME_NPM_TOKEN="$(cat /run/secrets/WEBAWESOME_NPM_TOKEN 2>/dev/null)" \
+  FONTAWESOME_NPM_AUTH_TOKEN="$(cat /run/secrets/FONTAWESOME_NPM_AUTH_TOKEN 2>/dev/null)" \
+  sh -c 'scripts/check-registry-tokens.sh && npm ci'
 COPY . .
 # Makes .next/standalone with the static files and the migrations.
 RUN npm run build

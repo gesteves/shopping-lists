@@ -42,18 +42,18 @@ export function ServiceWorker() {
 
   if (!updated) return null;
   return (
-    <div
+    <wa-callout
       role="status"
-      className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-lg"
+      variant="brand"
+      className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto max-w-md shadow-lg"
     >
-      <p className="flex-1">A new version of the app is ready.</p>
-      <button
-        type="button"
-        onClick={() => location.reload()}
-        className="min-h-11 rounded-lg bg-accent px-4 font-semibold text-accent-ink"
-      >
-        Reload
-      </button>
-    </div>
+      <wa-icon slot="icon" name="arrow-rotate-right"></wa-icon>
+      <div className="flex items-center gap-3">
+        <p className="flex-1">A new version of the app is ready.</p>
+        <wa-button variant="brand" onClick={() => location.reload()}>
+          Reload
+        </wa-button>
+      </div>
+    </wa-callout>
   );
 }

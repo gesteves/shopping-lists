@@ -14,8 +14,8 @@ import { mutate } from "@/client/sync";
 import { nameKey } from "@/shared/names";
 import { ITEM_NAME_MAX, NOTES_MAX, QUANTITY_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
-import { PlusIcon } from "../../_components/icons";
 import { Stepper } from "../../_components/stepper";
+import { ConfirmDialog } from "../../_components/wa";
 
 interface Entry {
   name: string;
@@ -48,13 +48,11 @@ export function AddBar({
     entry: Entry;
   } | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
   const ids = {
     name: useId(),
     notes: useId(),
     details: useId(),
     listbox: useId(),
-    dialogTitle: useId(),
   };
 
   const candidates = useSuggestionCandidates();
@@ -86,7 +84,6 @@ export function AddBar({
     reset();
     if (match) {
       setDuplicate({ item: match, entry });
-      dialog.current?.showModal();
       return;
     }
     // Keep the keyboard open for the next item.
@@ -128,7 +125,7 @@ export function AddBar({
   async function resolveDuplicate() {
     if (!duplicate) return;
     const { item, entry } = duplicate;
-    dialog.current?.close();
+    setDuplicate(null);
     if (item.checked) {
       await mutate({ type: "uncheck", args: { itemId: item.id } });
     } else {
@@ -180,18 +177,15 @@ export function AddBar({
             <span className="font-medium text-ink-muted">Quantity</span>
             <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
           </div>
-          <label htmlFor={ids.notes} className="sr-only">
-            Notes
-          </label>
-          <textarea
-            id={ids.notes}
+          <wa-textarea
+            label="Notes"
+            className="wa-sr-label"
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
             placeholder="Notes, for example the brand or the size"
-            maxLength={NOTES_MAX}
+            maxlength={NOTES_MAX}
             rows={2}
-            className="rounded-xl border border-ink-muted bg-surface px-4 py-2 placeholder:text-ink-muted"
-          />
+          ></wa-textarea>
         </div>
       )}
       <div className="flex gap-2">
@@ -217,70 +211,47 @@ export function AddBar({
           aria-activedescendant={
             open && active >= 0 ? `${ids.listbox}-${active}` : undefined
           }
-          placeholder="Add an item"
+          placeholder="Add item"
           maxLength={ITEM_NAME_MAX}
           enterKeyHint="enter"
           autoComplete="off"
           className="min-h-12 min-w-0 flex-1 rounded-xl border border-ink-muted bg-surface px-4 text-lg placeholder:text-ink-muted"
         />
-        <button
-          type="button"
+        <wa-button
+          appearance="plain"
+          size="l"
           aria-expanded={details}
           aria-controls={ids.details}
           onClick={() => setDetails(!details)}
-          className="min-h-12 rounded-xl px-3 font-medium text-accent hover:bg-accent-soft"
         >
           Details
-        </button>
-        <button
+        </wa-button>
+        <wa-button
           type="submit"
+          variant="brand"
+          size="l"
           disabled={!name.trim()}
-          className="flex min-h-12 items-center gap-1 rounded-xl bg-accent px-4 font-semibold text-accent-ink disabled:opacity-50"
         >
-          <PlusIcon />
+          <wa-icon slot="start" name="plus"></wa-icon>
           Add
-        </button>
+        </wa-button>
       </div>
-      <dialog
-        ref={dialog}
-        aria-labelledby={ids.dialogTitle}
+      <ConfirmDialog
+        open={duplicate !== null}
+        label={
+          duplicate?.item.checked
+            ? `Already on the list. Uncheck “${duplicate.item.name}”?`
+            : `“${duplicate?.item.name ?? ""}” is already on the list.`
+        }
+        confirmLabel={duplicate?.item.checked ? "Uncheck" : "Add more"}
+        onConfirm={resolveDuplicate}
         onClose={() => setDuplicate(null)}
-        className="m-auto w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-6 text-ink backdrop:bg-black/40"
       >
-        {duplicate && (
-          <>
-            <h2
-              id={ids.dialogTitle}
-              className="text-xl font-semibold text-balance"
-            >
-              {duplicate.item.checked
-                ? `Already on the list. Uncheck “${duplicate.item.name}”?`
-                : `“${duplicate.item.name}” is already on the list.`}
-            </h2>
-            <p className="mt-2 text-ink-muted">
-              {duplicate.item.checked
-                ? "It’s checked off. Uncheck it to get it again."
-                : `Add ${duplicate.entry.quantity} more? Then it’s ×${Math.min(QUANTITY_MAX, duplicate.item.quantity + duplicate.entry.quantity)}.`}
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => dialog.current?.close()}
-                className="min-h-11 rounded-lg px-4 font-medium text-accent hover:bg-accent-soft"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={resolveDuplicate}
-                className="min-h-11 rounded-lg bg-accent px-4 font-semibold text-accent-ink"
-              >
-                {duplicate.item.checked ? "Uncheck" : "Add more"}
-              </button>
-            </div>
-          </>
-        )}
-      </dialog>
+        {duplicate &&
+          (duplicate.item.checked
+            ? "It’s checked off. Uncheck it to get it again."
+            : `Add ${duplicate.entry.quantity} more? Then it’s ×${Math.min(QUANTITY_MAX, duplicate.item.quantity + duplicate.entry.quantity)}.`)}
+      </ConfirmDialog>
     </form>
   );
 }

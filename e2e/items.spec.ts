@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_DATABASE_PATH } from "../playwright.config";
-import { signIn, synced } from "./helpers";
+import { dialog, signIn, synced } from "./helpers";
 
 /** Make a list in the UI and open it. */
 async function openNewList(page: Page) {
@@ -71,7 +71,7 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
 
   // Edit the name, the quantity, and the notes.
   await page.getByRole("button", { name: "Edit Milk" }).click();
-  const sheet = page.getByRole("dialog", { name: "Edit item" });
+  const sheet = dialog(page, "Edit item");
   await expect(sheet.getByText(/^Added by Ana · just now$/)).toBeVisible();
   await sheet.getByLabel("Name").fill("Oat milk");
   await sheet.getByRole("button", { name: "More" }).click();
@@ -109,7 +109,7 @@ test("every item action works offline and syncs when online", async ({
   await add(page, "Plums");
   await item(page, "Apples").click();
   await page.getByRole("button", { name: "Edit Pears" }).click();
-  const sheet = page.getByRole("dialog", { name: "Edit item" });
+  const sheet = dialog(page, "Edit item");
   await sheet.getByLabel("Notes").fill("Ripe");
   await sheet.getByRole("button", { name: "Save" }).click();
   await page.getByRole("button", { name: "Edit Plums" }).click();

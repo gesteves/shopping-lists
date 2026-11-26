@@ -1,9 +1,14 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMergedOps, useRejectedOps } from "@/client/hooks";
 import type { MergedDetail, RejectedDetail } from "@/client/sync";
-import { dismissToast, showToast, toastStore } from "@/client/toasts";
+import {
+  dismissToast,
+  showToast,
+  toastStore,
+  type Toast,
+} from "@/client/toasts";
 
 const REJECTED: Record<RejectedDetail["reason"], string> = {
   list_deleted: "the list was deleted",
@@ -15,20 +20,48 @@ const REJECTED: Record<RejectedDetail["reason"], string> = {
   invalid: "the change wasn’t valid",
 };
 
-/** The toasts, and a toast for each change that the server refused. */
+interface WaToast extends HTMLElement {
+  create(
+    message: string,
+    options?: { duration?: number; variant?: string },
+  ): Promise<HTMLElement & { hide(): Promise<void> }>;
+}
+
+/**
+ * The toasts (src/client/toasts.ts) in a <wa-toast>. The store keeps the
+ * time (5 s) and the limit (3). Also a toast for each change that the
+ * server refused, and for each add that it merged.
+ */
 export function Toaster() {
   const toasts = useSyncExternalStore(
     toastStore.subscribe,
     toastStore.getSnapshot,
     toastStore.getServerSnapshot,
   );
+  const host = useRef<WaToast>(null);
+  const shown = useRef(new Map<number, Promise<{ hide(): Promise<void> }>>());
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const ids = new Set(toasts.map((t) => t.id));
+    for (const toast of toasts) {
+      if (!shown.current.has(toast.id)) {
+        shown.current.set(toast.id, show(el, toast));
+      }
+    }
+    for (const [id, item] of shown.current) {
+      if (ids.has(id)) continue;
+      shown.current.delete(id);
+      void item.then((i) => i.hide()).catch(() => undefined);
+    }
+  }, [toasts]);
 
   useRejectedOps(
     useCallback(({ reason }: RejectedDetail) => {
       showToast({ message: `A change didn’t save: ${REJECTED[reason]}.` });
     }, []),
   );
-
   useMergedOps(
     useCallback(({ op, changed }: MergedDetail) => {
       if (op.type !== "addItem") return;
@@ -40,41 +73,34 @@ export function Toaster() {
     }, []),
   );
 
+  // Above the add bar of a list.
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      // Above the add bar of a list.
-      className="pointer-events-none fixed inset-x-4 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.5rem)] z-40 mx-auto flex max-w-md flex-col gap-2"
-    >
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-ink py-2 pr-2 pl-4 text-canvas shadow-lg"
-        >
-          <p className="flex-1 py-1">{toast.message}</p>
-          {toast.action && (
-            <button
-              type="button"
-              onClick={async () => {
-                dismissToast(toast.id);
-                await toast.action?.run();
-              }}
-              className="min-h-11 rounded-lg px-3 font-semibold text-canvas underline underline-offset-4"
-            >
-              {toast.action.label}
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label="Dismiss"
-            onClick={() => dismissToast(toast.id)}
-            className="grid size-11 place-items-center rounded-lg text-canvas/80"
-          >
-            ×
-          </button>
-        </div>
-      ))}
-    </div>
+    <wa-toast
+      ref={host as never}
+      placement="bottom-center"
+      className="mb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
+    ></wa-toast>
   );
+}
+
+async function show(el: WaToast, toast: Toast) {
+  await customElements.whenDefined("wa-toast");
+  // The store closes the toast: no time limit here.
+  const item = await el.create(toast.message, { duration: 0 });
+  item.addEventListener("wa-after-hide", () => dismissToast(toast.id));
+  if (toast.action) {
+    const button = document.createElement("wa-button");
+    button.setAttribute("size", "s");
+    button.setAttribute("appearance", "plain");
+    button.setAttribute("variant", "brand");
+    button.className = "ml-2";
+    button.textContent = toast.action.label;
+    const { run } = toast.action;
+    button.addEventListener("click", () => {
+      dismissToast(toast.id);
+      void run();
+    });
+    item.append(button);
+  }
+  return item;
 }

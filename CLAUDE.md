@@ -39,13 +39,15 @@ The server applies new migrations at start (`src/instrumentation.ts`).
 
 - CI (`.github/workflows/ci.yml`) runs the checks on each pull request and on `main`. The checks must pass before a merge.
 - A merge to `main` deploys to Fly after the checks pass, then calls the health check. `[skip deploy]` or `[no deploy]` in the head commit message stops the deploy. A manual run (`workflow_dispatch`) from `main` deploys again.
-- Obey the security rules in the comments of `ci.yml` and `.github/actions/`. Send each Slack message through `.github/actions/notify-slack`, and obey its rules.
+- Obey the security rules in the comments of `ci.yml` and `.github/actions/`. The checks need the two registry tokens, thus PRs from forks fail. Send each Slack message through `.github/actions/notify-slack`, and obey its rules.
 - `fly deploy -a <app> --remote-only --ha=false`. There is one volume, thus one machine. The app name is not in `fly.toml`, because the repository is public. Ask the owner for it, or set `FLY_APP`.
 - The image runs `scripts/docker-entrypoint.sh`. It restores the database from R2 on a new volume, then runs the server under `litestream replicate`. If R2 is not available, the machine does not start. This prevents a new empty database.
 - Fly secrets (names only): `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (make them with `npx web-push generate-vapid-keys`; `VAPID_SUBJECT` is optional, the default is the app URL), `ANTHROPIC_API_KEY`. Never set `AUTH_STUB` on Fly. Set secrets with `fly secrets set`. Secrets made in the Fly dashboard did not get to new machines (#3).
 - Cloudflare: a proxied DNS record to Fly, and rules for this host only: Full (strict) SSL, and no cache for `/api/*` and `/sw.js`. Do not change the zone settings: other hosts use the zone.
 
 ## Dependencies
+
+- The Pro packages (`@web.awesome.me/webawesome-pro`, `@fortawesome/pro-regular-svg-icons`) come from private registries (`.npmrc`). `npm install` needs `WEBAWESOME_NPM_TOKEN` and `FONTAWESOME_NPM_AUTH_TOKEN` in the env. Never put a token value in a file. CI gives them only to the install and deploy steps; the Docker build gets them as build secrets.
 
 - Dependabot (`.github/dependabot.yml`) opens weekly PRs for npm, GitHub Actions, and the Docker base images. CI must pass before a merge. Do not merge a Dependabot PR that has a failed check.
 - `allowScripts` in `package.json` controls which install scripts npm runs. CI fails if a package with an install script has no entry (`npm install-scripts ls`).
@@ -77,4 +79,7 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 - The MCP server follows spec 2026-07-28. Read the spec again before MCP work.
 - For Claude API code, load the `claude-api` skill first.
 - For UI work, use the `frontend-design` skill.
-- Every UI change must work in light and dark. Use only the color tokens in `src/app/globals.css` (for example `bg-canvas`, `text-ink`). Never set the color scheme with JavaScript. Icons are SVG with `currentColor`.
+- Every UI change must work in light and dark. Dark mode follows the system setting with no JavaScript: never set `.wa-dark`, `.wa-invert`, or the color scheme with JavaScript.
+- The UI uses Web Awesome Pro components (`<wa-*>`, #51). Import each new component in `src/app/web-awesome.ts` and add its tag to the hide-until-defined list in `src/app/globals.css`. Add `wa-*` event listeners with `useWaEvents` (`src/app/(app)/_components/wa.tsx`), not with `onwa-*` props: hydration does not attach them. Use kebab-case boolean attributes and closing tags.
+- Colors: change the `--wa-*` tokens in the `wa-theme-overrides` layer of `src/app/globals.css`. Tailwind color utilities (`bg-canvas`, `text-ink`, …) point to them. Use no other colors.
+- Icons: Font Awesome Pro, classic regular (`<wa-icon name="…">`), and `family="brands"` for brands. Add each icon name to `src/app/icons.json`. `npm run assets` writes the SVGs to `public/icons/` (gitignored: never commit Pro SVGs). Give an icon-only control a `label` on its `<wa-icon>`.

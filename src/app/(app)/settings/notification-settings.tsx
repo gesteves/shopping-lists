@@ -174,14 +174,10 @@ export function NotificationSettings({
             <p className="text-ink-muted">
               Get a notification when the other person changes a list.
             </p>
-            <button
-              type="button"
-              onClick={enable}
-              disabled={busy}
-              className="min-h-12 rounded-xl bg-accent px-5 font-semibold text-accent-ink disabled:opacity-60"
-            >
+            <wa-button variant="brand" size="l" onClick={enable} loading={busy}>
+              <wa-icon slot="start" name="bell"></wa-icon>
               Enable notifications
-            </button>
+            </wa-button>
           </div>
         ) : null}
       </section>
@@ -209,40 +205,36 @@ export function NotificationSettings({
                       </span>
                     )}
                   </span>
-                  <label className="flex min-h-11 items-center gap-2">
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      checked={device.enabled}
-                      onChange={() => void toggle(device)}
-                      aria-label={`Notifications on ${label}`}
-                      className="size-5"
-                    />
-                    <span className="text-sm text-ink-muted">
+                  <wa-switch
+                    checked={device.enabled}
+                    onChange={() => void toggle(device)}
+                  >
+                    <span className="sr-only">Notifications on {label}</span>
+                    <span aria-hidden="true" className="text-sm text-ink-muted">
                       {device.enabled ? "On" : "Off"}
                     </span>
-                  </label>
-                  <button
-                    type="button"
+                  </wa-switch>
+                  <wa-button
+                    variant="danger"
+                    appearance="plain"
                     onClick={() => void remove(device)}
-                    aria-label={`Remove ${label}`}
-                    className="min-h-11 rounded-lg px-3 font-medium text-danger hover:bg-accent-soft"
                   >
-                    Remove
-                  </button>
+                    Remove<span className="sr-only"> {label}</span>
+                  </wa-button>
                 </li>
               );
             })}
           </ul>
         )}
         {devices && devices.some((d) => d.enabled) && (
-          <button
-            type="button"
+          <wa-button
+            appearance="outlined"
             onClick={sendTest}
-            className="min-h-11 self-start rounded-lg px-3 font-medium text-accent hover:bg-accent-soft"
+            className="self-start"
           >
+            <wa-icon slot="start" name="bell"></wa-icon>
             Send a test notification
-          </button>
+          </wa-button>
         )}
       </section>
 
@@ -288,17 +280,17 @@ function MutedLists() {
       <ul className="flex flex-col gap-2">
         {lists.map((list) => (
           <li key={list.id}>
-            <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-surface px-4">
-              <span className="flex-1 font-medium">{list.name}</span>
-              <input
-                type="checkbox"
-                role="switch"
+            <div className="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-surface px-4">
+              <span aria-hidden="true" className="flex-1 font-medium">
+                {list.name}
+              </span>
+              <wa-switch
                 checked={!muted.has(list.id)}
                 onChange={() => void toggle(list.id)}
-                aria-label={`Notifications about ${list.name}`}
-                className="size-5"
-              />
-            </label>
+              >
+                <span className="sr-only">Notifications about {list.name}</span>
+              </wa-switch>
+            </div>
           </li>
         ))}
       </ul>

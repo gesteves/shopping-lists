@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
-import { signIn, synced } from "./helpers";
+import { dialog, signIn, synced } from "./helpers";
 
 function index(page: Page) {
   return page.getByRole("region", { name: "Lists" }).filter({ visible: true });
@@ -67,9 +67,7 @@ test("a name already on the list asks first", async ({ page }) => {
 
   // Unchecked: offer one more.
   await add(page, "butter");
-  const more = page.getByRole("dialog", {
-    name: "“Butter” is already on the list.",
-  });
+  const more = dialog(page, "“Butter” is already on the list.");
   await more.getByRole("button", { name: "Add more" }).click();
   await expect(item(page, "Butter")).toContainText("×2");
 
@@ -77,8 +75,7 @@ test("a name already on the list asks first", async ({ page }) => {
   await item(page, "Butter").click();
   await expect(item(page, "Butter")).toHaveAttribute("aria-checked", "true");
   await add(page, "Butter");
-  await page
-    .getByRole("dialog", { name: "Already on the list. Uncheck “Butter”?" })
+  await dialog(page, "Already on the list. Uncheck “Butter”?")
     .getByRole("button", { name: "Uncheck" })
     .click();
   await expect(item(page, "Butter")).toHaveAttribute("aria-checked", "false");

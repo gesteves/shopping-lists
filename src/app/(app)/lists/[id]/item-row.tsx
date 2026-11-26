@@ -2,7 +2,6 @@
 
 import { mutate } from "@/client/sync";
 import type { ItemRecord } from "@/shared/sync";
-import { CheckIcon, EditIcon } from "../../_components/icons";
 import { EditingBadge } from "../../_components/presence";
 
 /** One item: a large target to check it, and a button for the sheet. */
@@ -36,7 +35,7 @@ export function ItemRow({
           aria-hidden="true"
           className={`grid size-7 shrink-0 place-items-center rounded-full border-2 ${item.checked ? "border-accent bg-accent text-accent-ink" : "border-ink-muted"}`}
         >
-          {item.checked && <CheckIcon width={16} height={16} />}
+          {item.checked && <wa-icon name="check" className="text-sm"></wa-icon>}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-baseline gap-2">
@@ -46,9 +45,13 @@ export function ItemRow({
               {item.name}
             </span>
             {item.quantity > 1 && (
-              <span className="shrink-0 rounded-full bg-accent-soft px-2 text-sm font-semibold text-accent tabular-nums">
+              <wa-badge
+                pill
+                appearance="filled"
+                className="shrink-0 tabular-nums"
+              >
                 <span className="sr-only">quantity </span>×{item.quantity}
-              </span>
+              </wa-badge>
             )}
           </span>
           <EditingBadge itemId={item.id} />
@@ -59,14 +62,14 @@ export function ItemRow({
           )}
         </span>
       </button>
-      <button
-        type="button"
-        aria-label={`Edit ${item.name}`}
+      <wa-button
+        appearance="plain"
+        size="l"
         onClick={() => onEdit(item)}
-        className="grid min-w-12 place-items-center rounded-xl text-ink-muted hover:text-ink"
+        className="self-center"
       >
-        <EditIcon />
-      </button>
+        <wa-icon name="pen" label={`Edit ${item.name}`}></wa-icon>
+      </wa-button>
     </li>
   );
 }

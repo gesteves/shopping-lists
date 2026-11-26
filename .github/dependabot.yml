@@ -5,11 +5,24 @@ version: 2
 # Security updates use these settings too, but they do not wait for the
 # cooldown.
 
+# The Pro packages come from private registries (#51, .npmrc). The tokens are
+# Dependabot secrets.
+registries:
+  webawesome-pro:
+    type: npm-registry
+    url: https://npm.cloudsmith.io/fortawesome/webawesome-pro/
+    token: ${{secrets.WEBAWESOME_NPM_TOKEN}}
+  fontawesome-pro:
+    type: npm-registry
+    url: https://npm.fontawesome.com
+    token: ${{secrets.FONTAWESOME_NPM_AUTH_TOKEN}}
+
 updates:
   # One PR for all minor and patch updates. Each major update gets its own PR,
   # because Next.js, React, and Drizzle majors need a review.
   - package-ecosystem: npm
     directory: /
+    registries: [webawesome-pro, fontawesome-pro]
     schedule:
       interval: weekly
       day: saturday
