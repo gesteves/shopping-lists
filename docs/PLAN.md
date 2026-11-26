@@ -156,6 +156,9 @@ Because of this, realtime updates, notifications and attribution behave the same
   - `Cache-Control: no-transform` also stops the gzip layer of Next.js, which can hold events in its buffer. The stream starts with `retry: 3000` and a comment, so it opens at once. Next.js aborts `request.signal` when the client goes, and the stream then removes its bus listener (#11).
   - Client (`src/client/realtime.ts`): one `EventSource`, open only while the page is visible. Each `poke`, and each (re)connection, starts a sync. After an HTTP error (for example, 401), the browser stops, and the client tries again after 5 s, doubled each time, up to 60 s. `startSync()` starts it.
 - **`POST /api/presence`:** a heartbeat every 15s, and whenever your current view or editing target changes. The server keeps a 30s-TTL map in memory and broadcasts changes. Presence is hidden while offline.
+  - Built in #12. Body: `{ clientId, listId, editingItemId }` (`src/shared/presence.ts`); both null means the device left. The store (`src/server/presence.ts`) keys each entry by user and device, sweeps every 5 s, and broadcasts the full snapshot as the `presence` SSE event on each change. A new stream gets the snapshot first.
+  - Client (`src/client/presence.ts`): `useReportPresence()` in the list view sends changes at once, a heartbeat every 15 s while a list is open, and a clear on unmount, on hide, and on `pagehide`. Safari sends no clear for a full page load: the TTL removes it. The other people's presence is cleared whenever the stream is closed, so it is hidden offline.
+  - UI: avatar dots on list rows (`ListViewers`) and "Name is editing…" on item rows (`EditingBadge`), in `src/app/(app)/_components/presence.tsx`.
 
 ## Notifications
 Code in `src/server/notify/`.

@@ -8,6 +8,7 @@ import type { ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { LIST_NAME_MAX } from "@/shared/ops";
 import { MoreIcon, PlusIcon } from "./icons";
+import { ListViewers } from "./presence";
 
 /**
  * The lists, with create, rename, and delete. The page `/` shows it on a
@@ -72,8 +73,9 @@ function ListRow({ list }: { list: ListSummary }) {
           <span className="text-xl leading-tight font-semibold text-balance break-words">
             {list.name}
           </span>
-          <span className="text-sm text-ink-muted tabular-nums">
+          <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
             {remainingText(list.remaining)}
+            <ListViewers listId={list.id} />
           </span>
         </Link>
         <button

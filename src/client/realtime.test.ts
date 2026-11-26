@@ -15,9 +15,13 @@ class FakeSource extends EventTarget {
   close() {
     this.readyState = FakeSource.CLOSED;
   }
-  emit(type: string) {
+  emit(type: string, data?: unknown) {
     if (type === "open") this.readyState = FakeSource.OPEN;
-    this.dispatchEvent(new Event(type));
+    this.dispatchEvent(
+      data === undefined
+        ? new Event(type)
+        : new MessageEvent(type, { data: JSON.stringify(data) }),
+    );
   }
 }
 
@@ -34,9 +38,11 @@ function setup() {
   const doc = new FakeDocument();
   const timers: { fn: () => void; ms: number }[] = [];
   const calls = { pokes: 0, opens: 0 };
+  const presence: unknown[] = [];
   const stop = startRealtime({
     onPoke: () => calls.pokes++,
     onOpen: () => calls.opens++,
+    onPresence: (s) => presence.push(s),
     EventSource: FakeSource as unknown as typeof EventSource,
     document: doc,
     setTimeout: (fn, ms) => {
@@ -47,7 +53,7 @@ function setup() {
     clearTimeout: (h) => timers.splice(timers.indexOf(h as never), 1),
   });
   const latest = () => FakeSource.all.at(-1)!;
-  return { doc, timers, calls, stop, latest };
+  return { doc, timers, calls, stop, latest, presence };
 }
 
 describe("startRealtime", () => {
@@ -93,6 +99,16 @@ describe("startRealtime", () => {
     latest().readyState = FakeSource.CLOSED;
     latest().emit("error");
     expect(timers.map((t) => t.ms)).toEqual([5000]);
+  });
+
+  it("passes presence on, and clears it when the stream closes", () => {
+    const { doc, latest, presence } = setup();
+    latest().emit("open");
+    latest().emit("presence", { entries: [{ userId: "a" }] });
+    expect(presence).toEqual([{ entries: [{ userId: "a" }] }]);
+    latest().emit("error");
+    doc.set("hidden");
+    expect(presence.slice(1)).toEqual([null, null]);
   });
 
   it("stops everything", () => {

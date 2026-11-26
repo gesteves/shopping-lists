@@ -1,9 +1,15 @@
 // The sync engine of this browser, and the functions that the UI calls.
 import type { Op } from "@/shared/ops";
 import { getClientDb } from "../db";
+import { presenceStore, startPresence } from "../presence";
 import { startRealtime } from "../realtime";
 import { SyncEngine } from "./engine";
-import { mutateLocal, resetForUser, type OpRequest } from "./local";
+import {
+  ensureClientId,
+  mutateLocal,
+  resetForUser,
+  type OpRequest,
+} from "./local";
 
 export type { OpRequest } from "./local";
 export type { RejectedDetail, SyncState, SyncStatus } from "./engine";
@@ -16,18 +22,30 @@ export function getSyncEngine(): SyncEngine {
 }
 
 /**
- * Start sync and the realtime stream for the signed-in user. It returns a
+ * Start sync, the realtime stream, and presence for the signed-in user. It returns a
  * function that stops them. If a different user used this browser before,
  * the local data is deleted first.
  */
 export function startSync(userId: string): () => void {
   const stops: (() => void)[] = [];
   let stopped = false;
-  void resetForUser(getClientDb(), userId).then(() => {
+  void resetForUser(getClientDb(), userId).then(async () => {
+    const clientId = await ensureClientId(getClientDb());
     if (stopped) return;
     const engine = getSyncEngine();
     stops.push(engine.start());
-    stops.push(startRealtime({ onPoke: poke, onOpen: poke }));
+    stops.push(
+      startRealtime({
+        onPoke: poke,
+        onOpen: poke,
+        // Keep only the other people.
+        onPresence: (snapshot) =>
+          presenceStore.set(
+            snapshot?.entries.filter((e) => e.userId !== userId) ?? [],
+          ),
+      }),
+    );
+    stops.push(startPresence({ clientId }));
   });
   return () => {
     stopped = true;

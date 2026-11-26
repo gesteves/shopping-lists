@@ -17,6 +17,7 @@ describe("createEventStream", () => {
     controller = new AbortController();
     const reader = createEventStream(controller.signal).getReader();
     expect(await read(reader)).toBe("retry: 3000\n: connected\n\n");
+    expect(await read(reader)).toMatch(/^event: presence\ndata: \{"entries":/);
 
     bus.emit("poke", { seq: 7 });
     expect(await read(reader)).toBe('event: poke\ndata: {"seq":7}\n\n');
@@ -28,7 +29,19 @@ describe("createEventStream", () => {
       pingMs: 5,
     }).getReader();
     await read(reader);
+    await read(reader);
     expect(await read(reader)).toBe(": ping\n\n");
+  });
+
+  it("sends each presence change", async () => {
+    controller = new AbortController();
+    const reader = createEventStream(controller.signal).getReader();
+    await read(reader);
+    await read(reader);
+    bus.emit("presence", { entries: [] });
+    expect(await read(reader)).toBe(
+      'event: presence\ndata: {"entries":[]}\n\n',
+    );
   });
 
   it("closes and removes its listener when the request ends", async () => {
@@ -39,6 +52,8 @@ describe("createEventStream", () => {
     expect(bus.listenerCount("poke")).toBe(before + 1);
 
     controller.abort();
+    // The presence snapshot was queued before the end.
+    expect(await read(reader)).toMatch(/^event: presence/);
     expect(await read(reader)).toBeNull();
     expect(bus.listenerCount("poke")).toBe(before);
   });
