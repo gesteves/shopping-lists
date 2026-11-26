@@ -81,11 +81,11 @@ Schema in `src/db/schema.ts`.
 | `list_mutes` | user_id, list_id |
 | `server_seq` | one global counter. Every write gets the next seq. |
 
-Better Auth and the OAuth server have their own tables.
+Better Auth uses `users`, `sessions`, `accounts`, and `verifications`. The OAuth server has its own tables.
 
-**Allowlist:** the `ALLOWED_EMAILS` environment variable. Any other email is rejected before a user row is created.
+**Allowlist:** the `ALLOWED_EMAILS` environment variable. Better Auth's `user.validateUserInfo` rejects any other email before a user row is created. It checks again at each Google sign-in. `getCurrentUser` also treats a session for an email that is no longer in the list as signed out.
 
-**Sessions:** long and rolling (~180 days), because re-authenticating inside an iOS PWA is awkward.
+**Sessions:** long and rolling (~180 days), because re-authenticating inside an iOS PWA is awkward. Server Components cannot set cookies, so they read the session with `disableRefresh`. `<SessionRefresh>` calls `/api/auth/get-session` when the app opens or comes to the front, and that call extends the session and the cookie.
 
 ## Sync design
 **One mutation pipeline for everyone.** UI, sync and MCP all call `applyOps(actor, via, ops[])` in `src/server/ops.ts`. It runs in one SQLite transaction and:
@@ -249,7 +249,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 ## UI
 Mobile-first. Routes under `src/app/(app)/`.
 
-- **`/sign-in`:** one "Sign in with Google" button. Middleware sends signed-out users here, and allowlist rejections show a short error.
+- **`/sign-in`:** one "Sign in with Google" button. `src/proxy.ts` (Next 16 renamed middleware to proxy) sends signed-out users here, and allowlist rejections show a short error.
 - **`/`:** the lists. Create, rename, delete with undo, and presence dots. On desktop it's a two-pane layout: a list sidebar beside the open list.
 - **`/lists/[id]`:**
   - an add bar fixed to the bottom, with autocomplete and dedupe;
@@ -286,7 +286,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 - two browser contexts as two users: realtime updates within about 1s, and presence badges;
 - `context.setOffline(true)`: make edits, go back online, confirm they reconcile, with conflicting edits on both sides;
 - the undo toast;
-- a non-allowlisted account being rejected (a test auth stub stands in for Google).
+- a non-allowlisted account being rejected (a test auth stub stands in for Google). The stub (`src/lib/auth-stub.ts`) runs through the same Better Auth path as the Google callback. The standalone server always sets `NODE_ENV=production`, so the stub needs `AUTH_STUB=1`, an http loopback `BETTER_AUTH_URL`, and no `FLY_APP_NAME`.
 
 **MCP contract tests (vitest) against `/mcp`:**
 - 405 on `GET`/`DELETE`;
