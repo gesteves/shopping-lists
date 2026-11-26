@@ -5,7 +5,14 @@ import { NextResponse, type NextRequest } from "next/server";
 // routes must also call the functions in `src/lib/session.ts`.
 
 /** Paths that do not need a session. */
-const PUBLIC_PATHS = ["/sign-in", "/api/auth", "/api/health"];
+const PUBLIC_PATHS = [
+  "/sign-in",
+  "/api/auth",
+  "/api/health",
+  // The service worker and its offline page (#10).
+  "/sw.js",
+  "/~offline",
+];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(

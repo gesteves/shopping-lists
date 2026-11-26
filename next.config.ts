@@ -17,6 +17,20 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // The service worker (#10): public/sw.js, from scripts/build-sw.mjs. At
+  // the root, its scope is the whole app. The Cloudflare cache rule skips
+  // /sw.js, and the browser must check it again at each load: no-cache.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache" },
+          { key: "Content-Type", value: "text/javascript; charset=utf-8" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
