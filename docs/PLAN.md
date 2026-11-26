@@ -153,6 +153,8 @@ Because of this, realtime updates, notifications and attribution behave the same
   - A comment heartbeat every 20s keeps it under Cloudflare's 100s idle timeout.
   - Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`.
   - Events: `poke {seq}` and `presence {userId, listId, editingItemId}`.
+  - `Cache-Control: no-transform` also stops the gzip layer of Next.js, which can hold events in its buffer. The stream starts with `retry: 3000` and a comment, so it opens at once. Next.js aborts `request.signal` when the client goes, and the stream then removes its bus listener (#11).
+  - Client (`src/client/realtime.ts`): one `EventSource`, open only while the page is visible. Each `poke`, and each (re)connection, starts a sync. After an HTTP error (for example, 401), the browser stops, and the client tries again after 5 s, doubled each time, up to 60 s. `startSync()` starts it.
 - **`POST /api/presence`:** a heartbeat every 15s, and whenever your current view or editing target changes. The server keeps a 30s-TTL map in memory and broadcasts changes. Presence is hidden while offline.
 
 ## Notifications

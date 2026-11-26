@@ -6,8 +6,10 @@ const baseURL = `http://localhost:${PORT}`;
 /** The e2e database. Each run starts with a new one. */
 export const E2E_DATABASE_PATH = "./data/e2e.db";
 
-/** The account that the e2e tests can sign in with. */
+/** The accounts that the e2e tests can sign in with. */
 export const E2E_ALLOWED_EMAIL = "allowed@example.com";
+/** A second person, for the tests with two users (#11, #12). */
+export const E2E_SECOND_EMAIL = "second@example.com";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -30,7 +32,7 @@ export default defineConfig({
       DATABASE_PATH: E2E_DATABASE_PATH,
       BETTER_AUTH_URL: baseURL,
       BETTER_AUTH_SECRET: "e2e-secret-that-is-at-least-32-characters",
-      ALLOWED_EMAILS: E2E_ALLOWED_EMAIL,
+      ALLOWED_EMAILS: `${E2E_ALLOWED_EMAIL},${E2E_SECOND_EMAIL}`,
       GOOGLE_CLIENT_ID: "e2e-client-id",
       GOOGLE_CLIENT_SECRET: "e2e-client-secret",
       // Turns on the sign-in stub (src/lib/auth-stub.ts).
