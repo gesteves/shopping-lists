@@ -3,6 +3,7 @@
 import { mutate } from "@/client/sync";
 import type { ItemRecord } from "@/shared/sync";
 import { CheckIcon, EditIcon } from "../../_components/icons";
+import { EditingBadge } from "../../_components/presence";
 
 /** One item: a large target to check it, and a button for the sheet. */
 export function ItemRow({
@@ -50,6 +51,7 @@ export function ItemRow({
               </span>
             )}
           </span>
+          <EditingBadge itemId={item.id} />
           {item.notes && (
             <span className="truncate text-sm text-ink-muted">
               {item.notes}

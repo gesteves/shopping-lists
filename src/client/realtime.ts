@@ -1,3 +1,5 @@
+import type { PresenceSnapshot } from "@/shared/presence";
+
 // The SSE client (#11). Each `poke` from the server starts a sync. The
 // stream is open only while the page is visible: iOS stops the connections
 // of a hidden app anyway, and a sync runs when the app comes back.
@@ -14,6 +16,9 @@ export interface RealtimeOptions {
   onPoke: () => void;
   /** Called at each (re)connection. Changes can come while it is closed. */
   onOpen?: () => void;
+  /** Called with each presence snapshot, and with null when the stream
+   * closes (presence is hidden while offline). */
+  onPresence?: (snapshot: PresenceSnapshot | null) => void;
   url?: string;
   EventSource?: typeof EventSource;
   document?: VisibilitySource;
@@ -49,7 +54,15 @@ export function startRealtime(options: RealtimeOptions): () => void {
       options.onOpen?.();
     });
     current.addEventListener("poke", () => options.onPoke());
+    current.addEventListener("presence", (event) => {
+      try {
+        options.onPresence?.(JSON.parse((event as MessageEvent).data));
+      } catch {
+        // A bad event. The next one replaces it.
+      }
+    });
     current.addEventListener("error", () => {
+      options.onPresence?.(null);
       // The browser connects again by itself after a network error. After
       // an HTTP error (for example, 401) the state is CLOSED: try again
       // later.
@@ -65,6 +78,7 @@ export function startRealtime(options: RealtimeOptions): () => void {
   };
 
   const close = () => {
+    if (source) options.onPresence?.(null);
     source?.close();
     source = null;
     if (retry !== null) cancel(retry);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { useList } from "@/client/hooks";
+import { useList, useReportPresence } from "@/client/hooks";
 import type { ItemRecord } from "@/shared/sync";
 import { BackIcon } from "../../_components/icons";
 import { AddBar } from "./add-bar";
@@ -21,6 +21,10 @@ export function ListView() {
     ? (view?.items.find((i) => i.id === editing.id) ?? editing)
     : null;
   const remaining = view?.items.filter((i) => !i.checked).length ?? 0;
+  useReportPresence({
+    listId: view ? view.list.id : null,
+    editingItemId: current?.id ?? null,
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-4 lg:pt-6">

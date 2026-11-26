@@ -2,8 +2,10 @@
 // online and offline. A hook gives undefined until the first read is done.
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useSyncExternalStore } from "react";
+import type { PresenceEntry } from "@/shared/presence";
 import type { ListRecord, UserRecord } from "@/shared/sync";
 import { getClientDb } from "./db";
+import { presenceStore, reportPresence, type LocalPresence } from "./presence";
 import {
   readList,
   readListSummaries,
@@ -64,4 +66,24 @@ export function useRejectedOps(handler: (detail: RejectedDetail) => void) {
     events.addEventListener("rejected", listener);
     return () => events.removeEventListener("rejected", listener);
   }, [handler]);
+}
+
+/** What the other people show now. Empty while offline. */
+export function usePresence(): PresenceEntry[] {
+  return useSyncExternalStore(
+    presenceStore.subscribe,
+    presenceStore.getSnapshot,
+    presenceStore.getServerSnapshot,
+  );
+}
+
+/** Tell the other person what this screen shows. Clears on unmount. */
+export function useReportPresence({ listId, editingItemId }: LocalPresence) {
+  useEffect(() => {
+    reportPresence({ listId, editingItemId });
+  }, [listId, editingItemId]);
+  useEffect(
+    () => () => reportPresence({ listId: null, editingItemId: null }),
+    [],
+  );
 }
