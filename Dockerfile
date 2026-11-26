@@ -4,7 +4,7 @@
 
 FROM litestream/litestream:0.5.18 AS litestream
 
-FROM node:24-trixie-slim AS build
+FROM node:25-trixie-slim AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 # Tools to compile better-sqlite3 if its prebuilt binary is not available.
@@ -17,7 +17,7 @@ COPY . .
 # Makes .next/standalone with the static files and the migrations.
 RUN npm run build
 
-FROM node:24-trixie-slim
+FROM node:25-trixie-slim
 WORKDIR /app
 ENV NODE_ENV=production \
   NEXT_TELEMETRY_DISABLED=1 \
