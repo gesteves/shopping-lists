@@ -9,6 +9,7 @@ import { BackIcon } from "../../_components/icons";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
 import { ItemSheet } from "./item-sheet";
+import { ListHeader } from "./list-menu";
 
 /** One list: its items (unchecked first), the add bar, and the item sheet. */
 export function ListView() {
@@ -41,9 +42,7 @@ export function ListView() {
         </p>
       ) : (
         <>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-balance break-words">
-            {view.list.name}
-          </h1>
+          <ListHeader view={view} />
           <p className="mt-1 text-ink-muted tabular-nums" aria-live="polite">
             {view.items.length === 0
               ? "Nothing on this list yet. Add the first item below."
