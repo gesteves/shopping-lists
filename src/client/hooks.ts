@@ -4,12 +4,23 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ListRecord, UserRecord } from "@/shared/sync";
 import { getClientDb } from "./db";
-import { readList, readLists, type ListView } from "./queries";
+import {
+  readList,
+  readListSummaries,
+  readLists,
+  type ListSummary,
+  type ListView,
+} from "./queries";
 import { getSyncEngine, type RejectedDetail, type SyncStatus } from "./sync";
 
 /** The lists that are not deleted, by name. */
 export function useLists(): ListRecord[] | undefined {
   return useLiveQuery(() => readLists(getClientDb()), []);
+}
+
+/** The lists that are not deleted, by name, each with its unchecked count. */
+export function useListSummaries(): ListSummary[] | undefined {
+  return useLiveQuery(() => readListSummaries(getClientDb()), []);
 }
 
 /**

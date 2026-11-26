@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
 import { ClientDb } from "./db";
-import { readList, readLists } from "./queries";
+import { readList, readListSummaries, readLists } from "./queries";
 
 let db: ClientDb;
 let n = 0;
@@ -81,5 +81,23 @@ describe("readList", () => {
     await db.lists.put(list("l", "Target", 3));
     expect(await readList(db, "l")).toBeNull();
     expect(await readList(db, "missing")).toBeNull();
+  });
+});
+
+describe("readListSummaries", () => {
+  it("counts the items that are not checked and not deleted", async () => {
+    await db.lists.bulkPut([list("l", "Target"), list("m", "Costco")]);
+    await db.items.bulkPut([
+      item("a", 1),
+      item("b", 1),
+      item("c", 1, true),
+      item("d", 1, false, 5),
+    ]);
+    expect(
+      (await readListSummaries(db)).map((l) => [l.name, l.remaining]),
+    ).toEqual([
+      ["Costco", 0],
+      ["Target", 2],
+    ]);
   });
 });

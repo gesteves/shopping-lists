@@ -1,34 +1,20 @@
 import { Suspense } from "react";
-import { requireUser } from "@/lib/session";
-import { signOut } from "../actions";
+import { ListIndex } from "./_components/list-index";
+import { RequireUser } from "./_components/require-user";
 
-// Placeholder. Ticket #8 replaces this page.
 export default function HomePage() {
   return (
-    <main className="mx-auto w-full max-w-xl flex-1 px-6 py-10">
-      <h1 className="text-4xl font-semibold tracking-tight text-accent">
-        Shopping Lists
-      </h1>
-      <Suspense fallback={<p className="mt-4 text-ink-muted">Loading…</p>}>
-        <Account />
+    <>
+      <Suspense>
+        <RequireUser />
       </Suspense>
-    </main>
-  );
-}
-
-async function Account() {
-  const user = await requireUser();
-  return (
-    <div className="mt-4 flex items-center justify-between gap-4">
-      <p className="text-ink">Signed in as {user.name}</p>
-      <form action={signOut}>
-        <button
-          type="submit"
-          className="rounded-md px-3 py-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
-        >
-          Sign out
-        </button>
-      </form>
-    </div>
+      {/* On a large screen the sidebar has the lists. */}
+      <div className="mx-auto w-full max-w-xl py-6 lg:hidden">
+        <ListIndex />
+      </div>
+      <div className="hidden flex-1 place-items-center text-ink-muted lg:grid">
+        <p className="text-lg">Select a list, or make a new one.</p>
+      </div>
+    </>
   );
 }
