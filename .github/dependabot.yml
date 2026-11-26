@@ -21,6 +21,11 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # @types/node follows the Node major of .nvmrc and the Dockerfile.
+      # Change its major by hand, with a Node major update.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # "/" covers only .github/workflows. The `uses:` in a composite action needs
   # its own directory. The glob also covers new composite actions.
