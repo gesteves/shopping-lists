@@ -55,7 +55,7 @@ export function ListView() {
               <ItemRow key={item.id} item={item} onEdit={setEditing} />
             ))}
           </ul>
-          <AddBar listId={view.list.id} />
+          <AddBar listId={view.list.id} items={view.items} />
           <ItemSheet item={current} onClose={() => setEditing(null)} />
         </>
       )}

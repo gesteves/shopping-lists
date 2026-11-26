@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { useRejectedOps } from "@/client/hooks";
-import type { RejectedDetail } from "@/client/sync";
+import { useMergedOps, useRejectedOps } from "@/client/hooks";
+import type { MergedDetail, RejectedDetail } from "@/client/sync";
 import { dismissToast, showToast, toastStore } from "@/client/toasts";
 
 const REJECTED: Record<RejectedDetail["reason"], string> = {
@@ -26,6 +26,17 @@ export function Toaster() {
   useRejectedOps(
     useCallback(({ reason }: RejectedDetail) => {
       showToast({ message: `A change didn’t save: ${REJECTED[reason]}.` });
+    }, []),
+  );
+
+  useMergedOps(
+    useCallback(({ op, changed }: MergedDetail) => {
+      if (op.type !== "addItem") return;
+      showToast({
+        message: changed
+          ? `“${op.args.name}” was already on the list. It’s unchecked now.`
+          : `“${op.args.name}” was already on the list.`,
+      });
     }, []),
   );
 

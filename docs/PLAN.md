@@ -144,7 +144,9 @@ Because of this, realtime updates, notifications and attribution behave the same
 - MCP `add_items` does the same automatically and reports what happened.
 - The server dedupes only on `addItem`. A match is an item on the same list with the same `name_key` that is not deleted. If it is checked (and its check is older than the op), the server unchecks it. A deleted match does not count: the add makes a new row. A rename or a move can give two items with the same name.
 
-**Autocomplete:** suggests names from every item ever added, ranked by how often and how recently.
+**Autocomplete (#14):** suggests names from every item on the device (all lists, deleted items too), grouped by `name_key` (`src/client/suggest.ts`). A match at the start of the name comes first, then at the start of a word, then in the middle. In each group, the score is `log2(1 + count)` plus a recency term that halves every 14 days. The unchecked items of the current list, and an exact match, are left out. The add bar is an ARIA combobox: arrow keys and Enter pick, Escape closes, and a tap on a suggestion adds it.
+
+**Dedupe prompt (#14):** before `mutate`, the add bar looks for a live item with the same `name_key` on the list. If it is checked: "Already on the list. Uncheck it?". If not: "Add N more?" (an `updateItem` of the quantity). A `merged` result from the server (two devices added the same name) shows a toast through the engine's `merged` event.
 
 **Sorting:** unchecked first, then `updated_at` descending.
 
