@@ -1,6 +1,6 @@
 # Shopping Lists: Plan
 
-This doc holds the architecture and the decisions behind it. The work itself is tracked as [GitHub Issues #1–#20](https://github.com/gesteves/shopping-lists/milestone/1) (milestone `v1`). When a decision changes during a ticket, update this file in the same PR.
+This doc holds the architecture and the decisions behind it. The work itself is tracked as [GitHub Issues #1–#20 and #22](https://github.com/gesteves/shopping-lists/milestone/1) (milestone `v1`). When a decision changes during a ticket, update this file in the same PR.
 
 ## Context
 A private shopping-list app for two people. It's mobile-first: an iPhone home-screen PWA used in the store, with a responsive layout for planning on a laptop. Sign-in is with Google, limited to an allowlist.
@@ -259,7 +259,8 @@ Mobile-first. Routes under `src/app/(app)/`.
   - move to another list, and a "Clear checked / Uncheck all" menu;
   - an "editing…" badge on items the other person is editing.
 - **Header:** an offline indicator with the number of pending changes, and a **Keep screen on** toggle. The toggle uses the Screen Wake Lock API, re-acquires the lock on `visibilitychange`, is remembered per device, and is hidden where the API isn't supported.
-- **PWA:** `manifest.webmanifest` (standalone, icons, theme color), apple-touch-icon, dark mode, safe-area insets.
+- **PWA:** `manifest.webmanifest` (standalone, icons, theme color), apple-touch-icon, safe-area insets.
+- **Dark mode (#22):** follows the system setting; there's no toggle. The server-rendered `<head>` has `<meta name="color-scheme" content="light dark">`, and `:root` has `color-scheme: light dark`, so Safari's [Adaptive Dark Mode](https://webkit.org/blog/18541/introducing-adaptive-dark-mode/) leaves the app alone. Colors are CSS variables with light and dark values under `prefers-color-scheme`. `theme-color` is set for each scheme. Every UI change must work in both.
 - Use the frontend-design skill when building the UI.
 
 ## Infra
