@@ -1,6 +1,6 @@
 # Shopping Lists: Plan
 
-This doc holds the architecture and the decisions behind it. The work itself is tracked as [GitHub Issues #1–#20 and #22](https://github.com/gesteves/shopping-lists/milestone/1) (milestone `v1`). When a decision changes during a ticket, update this file in the same PR.
+This doc holds the architecture and the decisions behind it. The work itself is tracked as [GitHub Issues #1–#20, #22, #24 and #25](https://github.com/gesteves/shopping-lists/milestone/1) (milestone `v1`). When a decision changes during a ticket, update this file in the same PR.
 
 ## Context
 A private shopping-list app for two people. It's mobile-first: an iPhone home-screen PWA used in the store, with a responsive layout for planning on a laptop. Sign-in is with Google, limited to an allowlist.
@@ -267,6 +267,8 @@ Mobile-first. Routes under `src/app/(app)/`.
 - **Fly:** `fly.toml` with one shared-cpu machine, always on, and a volume at `/data`. The Dockerfile runs `litestream replicate -exec "node server.js"`, and `litestream.yml` points at an R2 bucket.
 - **Secrets:** Google client ID/secret, `BETTER_AUTH_SECRET`, `ALLOWED_EMAILS`, VAPID keys, `ANTHROPIC_API_KEY`, R2 credentials. They live in Fly secrets and `.env.local`, never in the repo or issues: both are public.
 - **Cloudflare:** a proxied DNS record to Fly, SSL Full (strict), and a cache-bypass rule for `/api/*` and `/sw.js`. The service worker is served with `Cache-Control: no-cache`. Use the `cf` CLI with `--dry-run` first.
+- **CI/CD (#24):** GitHub Actions runs the checks (format, lint, typecheck, unit and e2e tests, `npm audit`, unapproved install scripts) on each PR and on `main`. A green push to `main` runs `flyctl deploy --remote-only`, then the health check. `[skip deploy]` in the commit message skips the deploy. Results go to Slack through an incoming webhook. Each third-party action is pinned to a commit SHA, `FLY_API_TOKEN` goes only to the deploy step, and event values reach scripts only through `env:`. `PRODUCTION_URL` is a secret, because the repo is public. Migrations run at boot, not in a Fly `release_command`, because that machine has no volume.
+- **Dependabot (#25):** weekly updates for npm, GitHub Actions (including the composite actions), and the Docker base images, with a short cooldown. Minor and patch updates are grouped. `allowScripts` pins `better-sqlite3`, so a bump of it needs a new approval.
 
 **Biggest platform risk:** Google sign-in from an installed iOS PWA. OAuth redirects in standalone mode and cookies not being shared with Safari could break it, so #3 tests it before anything else builds on it.
 

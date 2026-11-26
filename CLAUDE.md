@@ -23,7 +23,7 @@ Ticket #1 adds the commands. Put them here when you do #1.
 ## Workflow
 
 1. Do one ticket in each session. The tickets are the GitHub Issues in milestone `v1`.
-2. Find the next ticket: `gh issue list --milestone v1 --state open`. Select the lowest number whose dependencies are closed.
+2. Find the next ticket: `gh issue list --milestone v1 --state open`. Select the lowest number whose dependencies are closed. A ticket with the `priority` label goes first, if its dependencies are closed.
 3. Read the issue, `docs/PLAN.md`, and the comments on the issues it depends on.
 4. Make a branch `NN-slug` (for example, `05-apply-ops`).
 5. Make all acceptance criteria pass. Add tests for each criterion that you can test.
