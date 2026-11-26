@@ -111,6 +111,11 @@ Because of this, realtime updates, notifications and attribution behave the same
 - A change is written to Dexie optimistically and added to the outbox. The UI reads Dexie through `useLiveQuery`, so it works the same online and offline.
 - Each sync cycle: push the outbox → pull rows with `seq > cursor` (tombstones included) → re-apply any ops still pending.
 - Sync runs on startup, on `online`, on `visibilitychange` to visible, on an SSE `poke`, and after each local write (debounced).
+- **Two layers** (#7): `serverLists`/`serverItems` hold the rows from the last pull. `lists`/`items` hold the view: the server rows with the pending ops on top. `mutate()` writes the op to the outbox and applies it to the view in one transaction. After each sync, `rebuildView()` makes the view again from the server rows and the outbox, so a rejected op goes away and a merged row is dropped. `src/client/sync/apply.ts` is the local copy of the merge rules, without clocks.
+- The HLC state is in the Dexie `meta` table, and each write reads and updates it in its transaction, so two tabs never give the same HLC. A Web Lock lets only one tab sync at a time.
+- Errors: a network or 5xx error retries with backoff (1s, doubled each time, 60s at most). A 400 drops the ops that are no longer valid under the current schema (a "rejected" event with reason `invalid`). A 401 stops until the next trigger and keeps the outbox.
+- If a different user signs in on the same browser, the local data (outbox included) is deleted. The client ID and the clock stay.
+- Code: `src/client/db.ts`, `src/client/sync/`, and the hooks in `src/client/hooks.ts`. `<SyncStarter>` in the `(app)` layout starts the engine.
 
 **Endpoints** (#6; wire types in `src/shared/sync.ts`, logic in `src/server/sync.ts`):
 - `POST /api/sync/push` takes `{ clientId, ops }`, with at most 200 ops and 1 MB. Each op must have the `clientId` of the push. Any bad input gets 400 and nothing is applied, so the client checks each op with `opSchema` before it goes in the outbox. A body that is not JSON gets 415, and a body that is too large gets 413. It returns `{ results, seq }`.

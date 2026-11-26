@@ -69,3 +69,34 @@ test("a signed-in client pushes ops and pulls them back", async ({ page }) => {
   expect(body.users).toContainEqual(expect.objectContaining({ name: "Ana" }));
   expect(body.cursor).toBeGreaterThanOrEqual(pushed.seq);
 });
+
+test("the app pulls into IndexedDB after sign-in", async ({ page }) => {
+  const pulled = page.waitForResponse(
+    (res) => res.url().includes("/api/sync/pull") && res.status() === 200,
+  );
+  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
+  await page.goto(`/api/auth/e2e/sign-in?${params}`);
+  await pulled;
+
+  // Read the Dexie database directly.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<{ users: number; cursor: unknown }>((resolve, reject) => {
+            const open = indexedDB.open("shopping-lists");
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+              const tx = open.result.transaction(["users", "meta"]);
+              const users = tx.objectStore("users").count();
+              const cursor = tx.objectStore("meta").get("cursor");
+              tx.oncomplete = () => {
+                resolve({ users: users.result, cursor: cursor.result?.value });
+                open.result.close();
+              };
+            };
+          }),
+      ),
+    )
+    .toMatchObject({ users: expect.any(Number), cursor: expect.any(Number) });
+});
