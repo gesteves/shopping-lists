@@ -1,0 +1,54 @@
+name: "Notify Slack"
+description: "Send a CI or deploy result to Slack, with the commit attachment and the run footer."
+
+# Each Slack message goes through this action. Obey these rules when you add a
+# message:
+#
+#   Messages. The checks send one result for each run: passed or failed. A
+#   deploy sends one message on a success and one on a failure. A deploy does
+#   NOT send a message at the start.
+#
+#   Name. "Shopping Lists <thing> <outcome>", for example "Shopping Lists checks
+#   passed" or "Shopping Lists deploy failed".
+#
+#   Text. Slack mrkdwn with ONE link, on the outcome words. A success links to
+#   the thing that passed or is live. A failure links to the run.
+#
+#   Fallback. Plain text on one line, with NO URL. It is the notification
+#   preview, and the attachment already has the links.
+#
+#   Color. `good` for a success, `danger` for a failure. Emoji: `:rocket:` for
+#   a deploy success, `:warning:` for a failure.
+#
+# Run ci-context before this action. It sets COMMIT_CONTEXT, with the Slack and
+# YAML escapes. Put only escaped values in `text` and `fallback`: they go into
+# a YAML string below.
+
+inputs:
+  webhook:
+    description: "Slack incoming webhook URL."
+    required: true
+  text:
+    description: "Top-level message text (Slack mrkdwn)."
+    required: true
+  color:
+    description: "Attachment color: good, warning, danger, or a hex value."
+    required: true
+  fallback:
+    description: "Plain-text fallback for the attachment."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: slackapi/slack-github-action@0bc3581177d9a0f8d555e07689384b376528e8fa # v4.1.0
+      with:
+        webhook: ${{ inputs.webhook }}
+        webhook-type: incoming-webhook
+        payload: |
+          text: "${{ inputs.text }}"
+          attachments:
+            - color: "${{ inputs.color }}"
+              fallback: "${{ inputs.fallback }}"
+              text: "${{ env.COMMIT_CONTEXT }}"
+              footer: "<${{ github.server_url }}/${{ github.repository }}|${{ github.repository }}> · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow>"
