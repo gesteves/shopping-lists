@@ -2,6 +2,16 @@
 # Starts the app on Fly. It starts as root, because the volume is root-owned.
 set -eu
 
+# Stop with a clear message if a value is missing. Without the key, Litestream
+# tries the AWS instance role and fails with an unclear error.
+for name in LITESTREAM_ACCESS_KEY_ID LITESTREAM_SECRET_ACCESS_KEY R2_BUCKET R2_ENDPOINT DATABASE_PATH; do
+  eval "value=\${$name:-}"
+  if [ -z "$value" ]; then
+    echo "Missing env var: $name. Set it with fly secrets." >&2
+    exit 1
+  fi
+done
+
 DB_DIR=$(dirname "$DATABASE_PATH")
 mkdir -p "$DB_DIR"
 chown node:node "$DB_DIR"
