@@ -11,18 +11,14 @@ import {
 import { useSuggestionCandidates } from "@/client/hooks";
 import { rankSuggestions } from "@/client/suggest";
 import { copy } from "@/copy";
-import { mutate } from "@/client/sync";
+import { mutate, type OpRequest } from "@/client/sync";
+import { showToast } from "@/client/toasts";
 import { nameKey } from "@/shared/names";
 import { ITEM_NAME_MAX, NOTES_MAX, QUANTITY_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
+import { checkedFields, type Entry } from "@/client/duplicate";
 import { Stepper } from "../../_components/stepper";
 import { ConfirmDialog } from "../../_components/wa";
-
-interface Entry {
-  name: string;
-  quantity: number;
-  notes: string;
-}
 
 /**
  * The add bar at the bottom of a list. The name is required. The quantity
@@ -92,16 +88,32 @@ export function AddBar({
     reset();
     // Keep the keyboard open for the next item.
     input.current?.focus();
-    await mutate({
-      type: "addItem",
-      args: {
-        itemId: crypto.randomUUID(),
-        listId,
-        name: entry.name.trim(),
-        quantity: entry.quantity,
-        notes: entry.notes.trim(),
+    await write(entry, [
+      {
+        type: "addItem",
+        args: {
+          itemId: crypto.randomUUID(),
+          listId,
+          name: entry.name.trim(),
+          quantity: entry.quantity,
+          notes: entry.notes.trim(),
+        },
       },
-    });
+    ]);
+  }
+
+  /**
+   * Do the writes of an entry. The form is clear already, thus a failed
+   * write shows a toast with the name. The other ops of the entry stop.
+   */
+  async function write(entry: Entry, requests: OpRequest[]) {
+    try {
+      for (const request of requests) await mutate(request);
+    } catch (error) {
+      console.error(error);
+      // Plain, like the toasts of the changes that the server refused.
+      showToast({ message: copy.addBar.failed(entry.name.trim()) });
+    }
   }
 
   function submit(event: FormEvent) {
@@ -132,17 +144,25 @@ export function AddBar({
     setDuplicate(null);
     reset();
     if (item.checked) {
-      await mutate({ type: "uncheck", args: { itemId: item.id } });
+      const fields = checkedFields(item, entry);
+      await write(entry, [
+        { type: "uncheck", args: { itemId: item.id } },
+        ...(fields
+          ? [{ type: "updateItem" as const, args: { itemId: item.id, fields } }]
+          : []),
+      ]);
     } else {
-      await mutate({
-        type: "updateItem",
-        args: {
-          itemId: item.id,
-          fields: {
-            quantity: Math.min(QUANTITY_MAX, item.quantity + entry.quantity),
+      await write(entry, [
+        {
+          type: "updateItem",
+          args: {
+            itemId: item.id,
+            fields: {
+              quantity: Math.min(QUANTITY_MAX, item.quantity + entry.quantity),
+            },
           },
         },
-      });
+      ]);
     }
     input.current?.focus();
   }
@@ -261,7 +281,7 @@ export function AddBar({
       >
         {duplicate &&
           (duplicate.item.checked
-            ? copy.addBar.checkedBody
+            ? checkedBody(duplicate.item, duplicate.entry)
             : copy.addBar.duplicateBody(
                 duplicate.entry.quantity,
                 Math.min(
@@ -272,4 +292,15 @@ export function AddBar({
       </ConfirmDialog>
     </form>
   );
+}
+
+/** The text of the prompt for a checked item. It tells the changes. */
+function checkedBody(item: ItemRecord, entry: Entry) {
+  const fields = checkedFields(item, entry);
+  return fields
+    ? copy.addBar.checkedBodyChanges(
+        fields.quantity,
+        fields.notes !== undefined,
+      )
+    : copy.addBar.checkedBody;
 }

@@ -7,6 +7,8 @@ import {
   anyCount,
   createList,
   dialog,
+  escapeRegExp,
+  listIndex,
   openList,
   signIn,
   synced,
@@ -302,7 +304,26 @@ test("Cancel in the dedupe prompt keeps the name, quantity, and notes", async ({
   ).toHaveValue("2");
 });
 
-test("an add to a list deleted offline offers to re-create the list", async ({
+test("an add that fails on the device shows a toast", async ({ page }) => {
+  await signIn(page);
+  await openNewList(page);
+  await synced(page);
+  // IndexedDB refuses each new row, as when the disk is full. The outbox
+  // entry of a write is a new row.
+  await page.evaluate(() => {
+    IDBObjectStore.prototype.add = () => {
+      throw new DOMException("Full", "QuotaExceededError");
+    };
+  });
+  await page.getByLabel(copy.addBar.name).fill("Tent");
+  await page.getByLabel(copy.addBar.name).press("Enter");
+  await expect(
+    page.locator("wa-toast-item", { hasText: copy.addBar.failed("Tent") }),
+  ).toBeVisible();
+  await expect(item(page, "Tent")).toHaveCount(0);
+});
+
+test("adds to a list deleted offline give one toast and one new list", async ({
   page,
   context,
   browser,
@@ -312,11 +333,13 @@ test("an add to a list deleted offline offers to re-create the list", async ({
   await synced(page);
   const listId = new URL(page.url()).pathname.split("/").pop()!;
 
-  // Offline, this device adds an item. Then Ben deletes the list.
+  // Offline, this device adds three items. Then Ben deletes the list.
   await context.setOffline(true);
-  await page.getByLabel(copy.addBar.name).fill("Tent");
-  await page.getByLabel(copy.addBar.name).press("Enter");
-  await expect(item(page, "Tent")).toBeVisible();
+  for (const thing of ["Tent", "Stove", "Lantern"]) {
+    await page.getByLabel(copy.addBar.name).fill(thing);
+    await page.getByLabel(copy.addBar.name).press("Enter");
+    await expect(item(page, thing)).toBeVisible();
+  }
   const ben = await browser.newPage();
   try {
     await signIn(ben, E2E_SECOND_EMAIL, "Ben");
@@ -340,15 +363,26 @@ test("an add to a list deleted offline offers to re-create the list", async ({
     await ben.close();
   }
 
-  // Online, the server refuses the add. The toast offers a new list.
+  // Online, the server refuses the three adds. One toast offers a new list.
   await context.setOffline(false);
   const toast = page.locator("wa-toast-item", {
-    hasText: copy.toasts.listDeletedAdd(name, "Tent"),
+    hasText: copy.toasts.listDeletedMany(name, 3, "add"),
   });
   await expect(toast).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("wa-toast-item", { hasText: name })).toHaveCount(1);
   await toast.getByRole("button", { name: copy.toasts.recreate }).click();
   await expect(page).not.toHaveURL(new RegExp(listId));
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-  await expect(item(page, "Tent")).toBeVisible();
+  for (const thing of ["Tent", "Stove", "Lantern"]) {
+    await expect(item(page, thing)).toBeVisible();
+  }
   await synced(page);
+
+  // One new list on the index.
+  await page.goto("/");
+  await expect(
+    listIndex(page).getByRole("link", {
+      name: new RegExp(`^${escapeRegExp(name)}\\b`),
+    }),
+  ).toHaveCount(1);
 });

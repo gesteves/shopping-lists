@@ -54,6 +54,8 @@ export class WakeLockController {
   #env: WakeLockEnv;
   #sentinel: WakeLockSentinelLike | null = null;
   #on = false;
+  /** The open request. A second acquire waits for it. */
+  #pending: Promise<void> | null = null;
   #onError: (error: unknown) => void;
   #onVisibility = () => {
     if (this.#env.document.visibilityState === "visible") void this.#acquire();
@@ -90,7 +92,19 @@ export class WakeLockController {
     else await this.#release();
   }
 
-  async #acquire() {
+  /**
+   * Gets the lock. One request at a time: else two requests (`set(true)`
+   * and `visibilitychange`) both pass the check, and the first lock is
+   * lost and never released.
+   */
+  #acquire(): Promise<void> {
+    this.#pending ??= this.#request().finally(() => {
+      this.#pending = null;
+    });
+    return this.#pending;
+  }
+
+  async #request() {
     if (!this.#on || this.held || !this.#env.wakeLock) return;
     if (this.#env.document.visibilityState !== "visible") return;
     try {
@@ -112,8 +126,12 @@ export class WakeLockController {
     if (sentinel && !sentinel.released) await sentinel.release();
   }
 
-  /** Stops listening, and releases the lock. The setting stays. */
+  /**
+   * Stops listening, and releases the lock. The saved setting stays. A
+   * request that is open releases its lock when it resolves.
+   */
   dispose() {
+    this.#on = false;
     this.#env.document.removeEventListener(
       "visibilitychange",
       this.#onVisibility,
