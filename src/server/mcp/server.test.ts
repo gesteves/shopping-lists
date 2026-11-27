@@ -17,7 +17,8 @@ import {
 import type { PushPayload } from "@/shared/push";
 import { bus } from "../bus";
 import { Notifier, QUIET_MS } from "../notify/worker";
-import { createMcpRoute, INSTRUCTIONS } from "./server";
+import { prompts } from "@/prompts";
+import { createMcpRoute } from "./server";
 import { TOOLS } from "./tools";
 
 const MODERN = "2026-07-28";
@@ -114,7 +115,7 @@ describe("transport", () => {
     expect(result).toMatchObject({
       resultType: "complete",
       capabilities: { tools: {} },
-      instructions: INSTRUCTIONS,
+      instructions: prompts.mcpInstructions,
       ttlMs: 3_600_000,
       cacheScope: "private",
       _meta: {
@@ -647,7 +648,7 @@ describe("legacy clients (2025-11-25)", () => {
   it("initializes, lists the same tools, and calls a tool", async () => {
     const client = await connect("legacy");
     expect(client.getServerVersion()?.name).toBe("shopping-lists");
-    expect(client.getInstructions()).toBe(INSTRUCTIONS);
+    expect(client.getInstructions()).toBe(prompts.mcpInstructions);
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual(TOOLS.map((t) => t.name));
     const lists = await client.callTool({ name: "list_lists", arguments: {} });

@@ -183,7 +183,7 @@ Code in `src/server/notify/`.
 - `@anthropic-ai/sdk`, model `claude-opus-5-5`, with `output_config: { effort: "low", format: <zod { body: string }> }`.
 - Server-side refusal fallbacks: beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`.
 - 10s timeout and 1 retry. Check `stop_reason`.
-- The prompt asks for one line of at most ~120 characters, in the same voice as the templates, with counts and list names. For example: "Sam added 12 items to the “Whole Foods” list and checked 3 off “Target”".
+- The prompt (`prompts.notificationSummary` in `src/prompts/`, see [Prompts](#prompts)) asks for one line of at most ~120 characters, in the same voice as the templates, with counts and list names. For example: "Sam added 12 items to the “Whole Foods” list and checked 3 off “Target”".
 - On any error or refusal, it falls back to "[Name] made N changes to …".
 
 **Built in #16** (`src/server/notify/`): `startNotifier()` runs from `src/instrumentation.ts` and ticks every 10 s. Rows are grouped by actor and `via`, so "(via Claude)" holds for the whole text. A group is sent after 60 s of quiet, or 3 minutes after its first row. The rows are marked as sent **before** the push: a crash can lose one push but never sends it twice, and rows that a restart leaves are sent at the next tick. For each recipient, rows on muted lists are dropped, then `collapse()` runs, so muted changes do not count. The push title is the list name (one list) or "Shopping Lists", the URL is the list (or `/`), and the tag is the list ID (or `activity`). There are two more templates for a lone restore: “[Name] restored the “[list]” list” and “[Name] put “[item]” back on the “[list]” list”. a/an uses the first letter, and numbers that start with 8, or are 11 or 18, take "an".
@@ -212,7 +212,17 @@ The list page shows no count.
 
 **Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
 
-**Claude** (`summarize.ts`): the same request as the notification summary (`claude-opus-5-5`, `effort: "low"`, structured output `{ summary }`, server-side refusal fallbacks, 10 s timeout, 1 retry). The input is the list name and at most 200 items, with names and quantities only. The prompt asks for at most 60 characters; the server cuts at 90. Any error or refusal gives no summary. `npm run try:summaries` prints two sample lists.
+**Claude** (`summarize.ts`): the same request as the notification summary (`claude-opus-5-5`, `effort: "low"`, structured output `{ summary }`, server-side refusal fallbacks, 10 s timeout, 1 retry). The input is the list name and at most 200 items, with names and quantities only. The prompt (`prompts.listSummary`) asks for at most 60 characters; the server cuts at 90. Any error or refusal gives no summary. `npm run try:summaries` prints two sample lists.
+
+## Prompts
+
+All the prompts for Claude are in one module, `src/prompts/index.ts` (#84), exported as `prompts`. It is `server-only`.
+
+- `notificationSummary`: the system prompt for the push summary (`src/server/notify/summarize.ts`), and the length that it asks for.
+- `listSummary`: the system prompt for the list summary (`src/server/summary/summarize.ts`), and the length that it asks for.
+- `mcpInstructions`: the MCP server instructions (`src/server/mcp/server.ts`).
+
+The prompt text uses the length value, thus you change it in one place. A unit test makes sure that the server cut (`MAX_BODY`, `MAX_SUMMARY`) stays longer than the length that the prompt asks for. The model settings (model, effort, `max_tokens`) and the `summaryInput` functions stay in the modules that send the requests. The MCP tool and field descriptions stay in `TOOLS`, each next to its schema. To try a change, run `npm run try:summaries`.
 
 ## MCP
 Targets spec **2026-07-28**. Code in `src/app/mcp/route.ts` and `src/server/mcp/*`. References: [spec](https://modelcontextprotocol.io/specification/2026-07-28), [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog), [deprecated](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). Re-read them at the start of #18 and #19.
@@ -309,12 +319,12 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 | `clear_checked` | **destructive** | |
 | `uncheck_all` | idempotent | |
 
-**Server instructions** (in `server/discover`) explain the data model, sorting, dedupe (adding an existing item unchecks it), "via Claude" attribution, and that destructive tools should be confirmed with the user.
+**Server instructions** (`prompts.mcpInstructions`, in `server/discover`) explain the data model, sorting, dedupe (adding an existing item unchecks it), "via Claude" attribution, and that destructive tools should be confirmed with the user.
 
 ## UI
 Mobile-first. Routes under `src/app/(app)/`.
 
-- **Copy (#66):** all the text that the app shows is in one typed dictionary, `src/copy/en.ts`, exported as `copy` from `src/copy`. This includes headings, labels, `aria-label` and icon labels, sr-only text, toasts, dialogs, relative times and history lines, the Web Awesome "Fewer"/"More" overrides, push text, page titles, and the manifest. List and item names are data, not copy. The Claude summary prompt (`summarize.ts`) is model input, not copy, and MCP tool text is for the model, thus both stay in their modules.
+- **Copy (#66):** all the text that the app shows is in one typed dictionary, `src/copy/en.ts`, exported as `copy` from `src/copy`. This includes headings, labels, `aria-label` and icon labels, sr-only text, toasts, dialogs, relative times and history lines, the Web Awesome "Fewer"/"More" overrides, push text, page titles, and the manifest. List and item names are data, not copy. The prompts for Claude are model input, not copy: they are in `src/prompts/` (see [Prompts](#prompts)).
   - One module for server and client components, the service worker, and the e2e tests: a static import, so no request-time work under Cache Components. This is the dictionary approach of the Next.js i18n guide, without `server-only` and without a `[lang]` segment.
   - Text with values is a function (`copy.lists.deleted(name)`). Counts use `pluralFor(locale)` (`src/copy/plural.ts`, `Intl.PluralRules`), not `n === 1`. A missing key or a wrong value fails `npm run typecheck`.
   - One locale (`en`). To add one: a new file of type `Dictionary`, added to `dictionaries` in `src/copy/index.ts`. Components do not change. `locale` is also the `<html lang>` and the `Intl` locale.
