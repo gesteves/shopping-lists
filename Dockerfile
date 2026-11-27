@@ -31,7 +31,8 @@ ENV NODE_ENV=production \
   NEXT_TELEMETRY_DISABLED=1 \
   PORT=3000 \
   HOSTNAME=0.0.0.0 \
-  DATABASE_PATH=/data/shopping-lists.db
+  DATABASE_PATH=/data/shopping-lists.db \
+  LITESTREAM_METRICS_URL=http://127.0.0.1:9090/metrics
 # Litestream needs the CA certificates for R2.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \

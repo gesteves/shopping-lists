@@ -1,21 +1,9 @@
-import { sql } from "drizzle-orm";
 import { connection } from "next/server";
-import { getDb } from "@/db/client";
+import { healthResponse } from "@/server/health";
 
-// No auth. The Fly health check and the deploy check (#24) use it.
+// No auth. The database and the replication to R2 (src/server/health.ts).
 export async function GET() {
-  // Do not prerender. The query must run at each request.
+  // Do not prerender. The checks must run at each request.
   await connection();
-  try {
-    getDb().get(sql`select 1`);
-    return Response.json(
-      { ok: true },
-      { headers: { "Cache-Control": "no-store" } },
-    );
-  } catch {
-    return Response.json(
-      { ok: false },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
-  }
+  return healthResponse({ replication: true });
 }

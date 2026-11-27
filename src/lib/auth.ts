@@ -13,6 +13,7 @@ import * as schema from "@/db/schema";
 import { isAllowedEmail } from "./allowlist";
 import { EMAIL_NOT_ALLOWED } from "./auth-errors";
 import { authStub, authStubEnabled } from "./auth-stub";
+import { IP_ADDRESS_OPTIONS } from "./client-ip";
 import {
   ACCESS_TOKEN_TTL,
   ALL_SCOPES,
@@ -85,6 +86,7 @@ export function createAuth(
     advanced: {
       useSecureCookies: baseURL?.startsWith("https://") ?? false,
       defaultCookieAttributes: { httpOnly: true, sameSite: "lax" },
+      ipAddress: IP_ADDRESS_OPTIONS,
     },
     onAPIError: { errorURL: "/sign-in" },
     telemetry: { enabled: false },
