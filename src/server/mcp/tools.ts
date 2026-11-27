@@ -18,6 +18,7 @@ import type { HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
 import {
   ITEM_NAME_MAX,
+  LIST_NAME_MAX,
   itemName,
   listName,
   notes as notesField,
@@ -54,15 +55,19 @@ export class ToolError extends Error {}
 
 // --- shared schemas ----------------------------------------------------------
 
+// A UUID is shorter than each name limit. The limit also keeps a long text
+// out of the error messages, which quote the reference.
 const listRef = z
   .string()
   .trim()
   .min(1)
+  .max(LIST_NAME_MAX)
   .describe("The list_id, or the list name (case-insensitive)");
 const itemRef = z
   .string()
   .trim()
   .min(1)
+  .max(ITEM_NAME_MAX)
   .describe("The item_id, or the item name on that list (case-insensitive)");
 const itemRefs = z
   .array(itemRef)

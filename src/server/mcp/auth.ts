@@ -10,7 +10,12 @@
 //   - the user exists and is still in ALLOWED_EMAILS;
 //   - the grant (the consent of the user for the client) exists and the
 //     client is not disabled. "Connected apps" in settings deletes the grant,
-//     thus a revoke stops the access at once.
+//     thus a revoke stops the access at once;
+//   - the token was issued at or after the last consent. Thus a token from
+//     before a disconnect does not work again when the user connects the
+//     same client again;
+//   - the caller gets only the scopes that are in the token and in the
+//     consent.
 import "server-only";
 import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 import { requireMcpAuth } from "@better-auth/mcp";
@@ -56,6 +61,16 @@ function scopesOf(claims: JWTPayload): Set<string> {
   );
 }
 
+/** The scopes of a consent row: a JSON array of strings. */
+function parseScopes(value: string): string[] {
+  try {
+    const list: unknown = JSON.parse(value);
+    return Array.isArray(list) ? list.filter((s) => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Wraps an MCP route handler with the token checks. */
 export function withMcpAuth(
   deps: { auth: () => Auth; db: () => Db; env?: Env },
@@ -87,7 +102,11 @@ export function withMcpAuth(
           return reject("the user cannot use this app");
         }
         const grant = db
-          .select({ disabled: oauthClients.disabled })
+          .select({
+            disabled: oauthClients.disabled,
+            scopes: oauthConsents.scopes,
+            consentedAt: oauthConsents.updatedAt,
+          })
           .from(oauthConsents)
           .innerJoin(
             oauthClients,
@@ -101,8 +120,19 @@ export function withMcpAuth(
           )
           .get();
         if (!grant || grant.disabled) return reject("access was revoked");
+        // The provider keeps the consent time in whole seconds, as iat.
+        if (
+          typeof claims.iat !== "number" ||
+          claims.iat * 1000 < grant.consentedAt.getTime()
+        ) {
+          return reject("the token is older than the consent");
+        }
+        const granted = new Set(parseScopes(grant.scopes));
+        const scopes = new Set(
+          [...scopesOf(claims)].filter((s) => granted.has(s)),
+        );
 
-        return handler(req, { userId, clientId, scopes: scopesOf(claims) });
+        return handler(req, { userId, clientId, scopes });
       },
       {
         resource: mcpResource(env),

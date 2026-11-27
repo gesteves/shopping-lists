@@ -65,6 +65,10 @@ test("connect an app, then disconnect it in settings", async ({
   ).toBeVisible();
   await expect(page.getByText(copy.consent.loopback)).toBeVisible();
   await expect(page.getByText(copy.consent.scopes.read)).toBeVisible();
+  // A DCR client has no host to check.
+  await expect(
+    page.getByText(copy.consent.unverified, { exact: true }),
+  ).toBeVisible();
 
   await page
     .getByRole("button", { name: copy.consent.connect, exact: true })

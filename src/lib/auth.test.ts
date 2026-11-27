@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openDatabase, type Db } from "@/db/client";
 import { runMigrations } from "@/db/migrate";
 import { users } from "@/db/schema";
-import { createAuth } from "./auth";
+import { DISABLED_PATHS, createAuth } from "./auth";
 import { EMAIL_NOT_ALLOWED } from "./auth-errors";
 import { authStubEnabled } from "./auth-stub";
 
@@ -123,6 +123,111 @@ describe("sign-in", () => {
       expect(res.headers.getSetCookie()).toEqual([]);
     } finally {
       env.ALLOWED_EMAILS = "allowed@example.com";
+    }
+  });
+
+  it("refuses the session of a removed user, except for sign-in and get-session", async () => {
+    const res = await stubSignIn(auth, "allowed@example.com");
+    const cookie = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith("better-auth.session_token="))!
+      .split(";")[0];
+    const call = (path: string, init: RequestInit = {}) =>
+      auth.handler(
+        new Request(new URL(path, BASE), {
+          ...init,
+          headers: {
+            cookie,
+            origin: BASE,
+            "content-type": "application/json",
+          },
+        }),
+      );
+    const consent = () =>
+      call("/api/auth/oauth2/consent", {
+        method: "POST",
+        body: JSON.stringify({ accept: true, oauth_query: "" }),
+      });
+    const authorize = () =>
+      call("/api/auth/oauth2/authorize?client_id=x&resource=x");
+
+    // An allowed user gets past the rule (the request itself is not valid).
+    expect((await consent()).status).not.toBe(403);
+    expect((await authorize()).status).not.toBe(403);
+
+    env.ALLOWED_EMAILS = "";
+    try {
+      for (const res of [await consent(), await authorize()]) {
+        expect(res.status).toBe(403);
+        expect(await res.json()).toMatchObject({ code: EMAIL_NOT_ALLOWED });
+      }
+      const session = await call("/api/auth/get-session");
+      expect(session.status).toBe(200);
+      expect((await session.json())?.user.email).toBe("allowed@example.com");
+      // The sign-in flow works: Google (here the stub) refuses the account.
+      const again = await stubSignIn(auth, "allowed@example.com");
+      expect(again.headers.get("location")).toBe(
+        `/sign-in?error=${EMAIL_NOT_ALLOWED}`,
+      );
+      const social = await call("/api/auth/sign-in/social", {
+        method: "POST",
+        body: JSON.stringify({ provider: "google" }),
+      });
+      expect(social.status).toBe(200);
+      const callback = await call("/api/auth/callback/google?state=x");
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get("location")).not.toContain(EMAIL_NOT_ALLOWED);
+      const out = await call("/api/auth/sign-out", { method: "POST" });
+      expect(out.status).toBe(200);
+    } finally {
+      env.ALLOWED_EMAILS = "allowed@example.com";
+    }
+  });
+
+  it.each([
+    "/update-user",
+    "/update-session",
+    "/delete-user",
+    "/change-email",
+    "/link-social",
+    "/unlink-account",
+    "/list-accounts",
+    "/list-sessions",
+    "/oauth2/create-client",
+    "/oauth2/get-clients",
+    "/oauth2/update-consent",
+  ])("gives 404 for %s", async (path) => {
+    expect(DISABLED_PATHS).toContain(path);
+    const cookie = (await stubSignIn(auth, "allowed@example.com")).headers
+      .getSetCookie()
+      .find((c) => c.startsWith("better-auth.session_token="))!
+      .split(";")[0];
+    const res = await auth.handler(
+      new Request(new URL(`/api/auth${path}`, BASE), {
+        method: "POST",
+        headers: { cookie, origin: BASE, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Mallory", image: "https://x.test/a" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(db.select().from(users).get()?.name).toBe("Ana");
+  });
+
+  it("keeps the endpoints of the sign-in and OAuth flows", () => {
+    for (const path of [
+      "/sign-in/social",
+      "/get-session",
+      "/sign-out",
+      "/oauth2/authorize",
+      "/oauth2/consent",
+      "/oauth2/continue",
+      "/oauth2/token",
+      "/oauth2/register",
+      "/oauth2/revoke",
+      "/oauth2/introspect",
+      "/oauth2/public-client",
+    ]) {
+      expect(DISABLED_PATHS).not.toContain(path);
     }
   });
 

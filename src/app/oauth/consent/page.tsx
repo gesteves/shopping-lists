@@ -84,11 +84,16 @@ async function Consent({
         {copy.consent.heading(name)}
       </h1>
       <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-ink-muted">
-        {clientHost && (
-          <>
-            <dt>{copy.consent.appFrom}</dt>
-            <dd className="font-medium break-all text-ink">{clientHost}</dd>
-          </>
+        <dt>{copy.consent.appFrom}</dt>
+        {clientHost ? (
+          <dd className="font-medium break-all text-ink">{clientHost}</dd>
+        ) : (
+          // A DCR client: nothing proves where it comes from, or its name.
+          <dd>
+            <wa-badge variant="warning" appearance="filled">
+              {copy.consent.unverified}
+            </wa-badge>
+          </dd>
         )}
         <dt>{copy.consent.sendsYouTo}</dt>
         <dd className="font-medium break-all text-ink">

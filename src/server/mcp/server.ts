@@ -90,12 +90,21 @@ function register(server: McpServer, ctx: ToolContext, tool: ToolDef) {
   );
 }
 
+/**
+ * The largest request body, in bytes. The SDK default is 4 MiB. The largest
+ * call (add_items with 100 items of normal text at the name and notes
+ * limits) is less than 1 MiB.
+ */
+export const MAX_MCP_BODY_BYTES = 1_048_576;
+
 /** The HTTP handler. Give it a verified AuthInfo with McpAuthExtra. */
 export function createHandler(deps: { db: () => Db }) {
   // The default response mode gives JSON: the tools send no progress
   // notifications, thus no response becomes an SSE stream.
-  return createMcpHandler(({ authInfo }) =>
-    buildMcpServer({ db: deps.db(), userId: userIdOf(authInfo) }),
+  return createMcpHandler(
+    ({ authInfo }) =>
+      buildMcpServer({ db: deps.db(), userId: userIdOf(authInfo) }),
+    { maxRequestBodySize: MAX_MCP_BODY_BYTES },
   );
 }
 

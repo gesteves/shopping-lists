@@ -42,9 +42,7 @@ export function createAuth(
     appName: "Shopping Lists",
     baseURL,
     secret: env.BETTER_AUTH_SECRET,
-    // The JWT plugin must not give session JWTs: they have the same signing
-    // key as the access tokens.
-    disabledPaths: ["/token"],
+    disabledPaths: DISABLED_PATHS,
     database: drizzleAdapter(db, {
       provider: "sqlite",
       schema,
@@ -93,7 +91,7 @@ export function createAuth(
     // The limit is for each IP, and all the e2e requests come from one IP.
     // Parallel tests then get 429. The stub is never on in production.
     ...(authStubEnabled(env) && { rateLimit: { enabled: false } }),
-    hooks: { before: oauthRequestRules },
+    hooks: { before: beforeHook(env) },
     plugins: [
       ...(authStubEnabled(env) ? [authStub(env)] : []),
       // The OAuth server for MCP clients (#18). See "Authorization" in
@@ -122,8 +120,9 @@ export function createAuth(
               allowDynamicClientRegistration: true,
               allowUnauthenticatedClientRegistration: true,
               clientRegistrationDefaultScopes: ALL_SCOPES,
-              // Clients come only from CIMD and DCR. Users cannot read or
-              // change clients or resources through the API.
+              // A DCR request with a session cookie checks "create", thus
+              // keep it. The other client endpoints, and create-client, are
+              // in DISABLED_PATHS. Thus clients come only from CIMD and DCR.
               clientPrivileges: ({ action }) => action === "create",
               resourcePrivileges: () => false,
               // The e2e tests register more than 5 clients a minute from one
@@ -145,6 +144,104 @@ export function createAuth(
 }
 
 /**
+ * The endpoints that the app does not use. They give 404 over HTTP. The
+ * server code can still call them through `auth.api`.
+ */
+export const DISABLED_PATHS = [
+  // The JWT plugin must not give session JWTs: they have the same signing
+  // key as the access tokens.
+  "/token",
+  // The name and the avatar come only from Google. The name goes into push
+  // text, the Claude prompts, and the MCP output.
+  "/update-user",
+  "/update-session",
+  "/change-email",
+  "/delete-user",
+  "/delete-user/callback",
+  // Google is the only sign-in method, with one account for each user.
+  "/sign-up/email",
+  "/sign-in/email",
+  "/change-password",
+  "/request-password-reset",
+  "/reset-password",
+  "/verify-password",
+  "/verify-email",
+  "/send-verification-email",
+  "/link-social",
+  "/unlink-account",
+  "/list-accounts",
+  "/account-info",
+  "/get-access-token",
+  "/refresh-token",
+  "/list-sessions",
+  "/revoke-session",
+  "/revoke-sessions",
+  "/revoke-other-sessions",
+  // Clients come from CIMD and DCR (/oauth2/register). create-client skips
+  // the DCR rules: the application_type hook and the rate limit.
+  "/oauth2/create-client",
+  "/oauth2/get-client",
+  "/oauth2/get-clients",
+  "/oauth2/update-client",
+  "/oauth2/delete-client",
+  "/oauth2/client/rotate-secret",
+  "/oauth2/client/rotate-keys",
+  // "Connected apps" in settings uses its own code (#18).
+  "/oauth2/get-consent",
+  "/oauth2/get-consents",
+  "/oauth2/update-consent",
+  "/oauth2/delete-consent",
+  // OpenID Connect. The app gives no openid scope.
+  "/oauth2/userinfo",
+  "/oauth2/end-session",
+  "/oauth2/end-session/confirm",
+];
+
+/**
+ * The paths that a session of a user who is not in `ALLOWED_EMAILS` can
+ * use: the sign-in flow, get-session, and sign-out.
+ */
+const PATHS_FOR_ANY_SESSION = new Set([
+  "/sign-in/social",
+  "/callback/:id",
+  "/get-session",
+  "/sign-out",
+  "/e2e/sign-in",
+  "/ok",
+  "/error",
+]);
+
+function beforeHook(env: Env) {
+  return createAuthMiddleware(async (ctx) => {
+    await allowlistRule(ctx, env);
+    oauthRequestRules(ctx);
+  });
+}
+
+type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
+/**
+ * A user who is removed from `ALLOWED_EMAILS` can keep a session for up to
+ * 180 days. Refuse that session on each other path, for example the
+ * approval of an OAuth client. `getCurrentUser` does the same for the app.
+ */
+async function allowlistRule(ctx: HookContext, env: Env) {
+  if (PATHS_FOR_ANY_SESSION.has(ctx.path)) return;
+  const token = await ctx.getSignedCookie(
+    ctx.context.authCookies.sessionToken.name,
+    ctx.context.secret,
+  );
+  if (!token) return;
+  const found = await ctx.context.internalAdapter.findSession(token);
+  if (found && !isAllowedEmail(found.user.email, env.ALLOWED_EMAILS)) {
+    throw new APIError("FORBIDDEN", {
+      code: EMAIL_NOT_ALLOWED,
+      message: "This account cannot use this app.",
+    });
+  }
+}
+
+/**
  * Extra rules of MCP 2026-07-28 for the OAuth endpoints:
  *   - An authorization request must have `resource` (RFC 8707). Without it,
  *     the provider gives an opaque token with no `aud`. A token request can
@@ -152,7 +249,7 @@ export function createAuth(
  *   - A DCR client must send `application_type` (SEP-837). The provider uses
  *     "web" if it is missing.
  */
-const oauthRequestRules = createAuthMiddleware(async (ctx) => {
+function oauthRequestRules(ctx: HookContext) {
   if (ctx.path === "/oauth2/authorize") {
     // GET has a query, POST has a form body.
     const params = { ...ctx.query, ...(ctx.body as object | undefined) };
@@ -176,7 +273,7 @@ const oauthRequestRules = createAuthMiddleware(async (ctx) => {
       });
     }
   }
-});
+}
 
 export type Auth = ReturnType<typeof createAuth>;
 
