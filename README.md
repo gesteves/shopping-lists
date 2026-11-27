@@ -31,7 +31,7 @@ Only the Google accounts on an allowlist can sign in.
 
 - Push notifications when the other person changes a list, on the installed iPhone app and on desktop browsers.
 - The app waits until the other person stops for a minute, then sends one notification. One change gets a fixed sentence, such as "Sam added “Milk” to the “Costco” list". More than one change gets a one-line summary that Claude writes.
-- Turn notifications on or off for each device, and mute each list.
+- Turn notifications on or off for each device, and mute each list from the list page or from Settings.
 
 **Claude**
 
@@ -42,7 +42,7 @@ Only the Google accounts on an allowlist can sign in.
 **Other**
 
 - Light and dark mode, from the system setting.
-- "Keep screen on", so the phone does not lock while you shop.
+- "Keep screen on", so the phone does not lock while you shop. The switch is on each list page and in Settings.
 - Continuous backups of the database to Cloudflare R2, with Litestream.
 
 ## How it works

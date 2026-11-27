@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { base64UrlToBytes, deviceLabel, isIos } from "@/client/device";
 import { useLists } from "@/client/hooks";
+import { useMutedLists } from "@/client/mutes";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import type { SubscriptionInfo } from "@/shared/push";
@@ -234,27 +235,7 @@ export function NotificationSettings({
 /** A switch for each list: notifications about it, or not. */
 function MutedLists() {
   const lists = useLists();
-  const [muted, setMuted] = useState<Set<string>>();
-
-  useEffect(() => {
-    void api("/api/push/mutes")
-      .then(({ listIds }) => setMuted(new Set(listIds)))
-      .catch(() => undefined);
-  }, []);
-
-  async function toggle(listId: string) {
-    const next = !muted?.has(listId);
-    await api("/api/push/mutes", {
-      method: "PUT",
-      body: JSON.stringify({ listId, muted: next }),
-    });
-    setMuted((m) => {
-      const copy = new Set(m);
-      if (next) copy.add(listId);
-      else copy.delete(listId);
-      return copy;
-    });
-  }
+  const { muted, setListMuted } = useMutedLists();
 
   if (!lists || !muted || lists.length === 0) return null;
   return (
@@ -272,7 +253,7 @@ function MutedLists() {
               </span>
               <wa-switch
                 checked={!muted.has(list.id)}
-                onChange={() => void toggle(list.id)}
+                onChange={() => void setListMuted(list.id, !muted.has(list.id))}
               >
                 <span className="sr-only">
                   {copy.settings.listSwitch(list.name)}

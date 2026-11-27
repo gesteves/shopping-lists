@@ -9,8 +9,9 @@ import {
   wakeLockSupported,
 } from "@/client/wake-lock";
 
-// "Keep screen on" (#20). The switch is in Settings. The keeper is in the
-// app layout: it holds the lock on every page while the setting is on.
+// "Keep screen on" (#20). The switch is in Settings and on the list page
+// (#82). The keeper is in the app layout: it holds the lock on every page
+// while the setting is on.
 
 let shared: WakeLockController | undefined;
 
@@ -30,36 +31,50 @@ export function WakeLockKeeper() {
   return null;
 }
 
-/** The setting in Settings. Hidden where the Wake Lock API is missing. */
-export function KeepScreenOnSetting() {
-  const [state, setState] = useState<{ supported: boolean; on: boolean }>();
+/**
+ * The setting of this device, and a function that turns it on or off.
+ * Undefined until mount, and where the Wake Lock API is missing.
+ */
+function useKeepScreenOn() {
+  const [on, setOn] = useState<boolean>();
 
   useEffect(() => {
     // Read the browser state one time at mount, then show it.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState({ supported: wakeLockSupported(), on: readWakeLockSetting() });
+    if (wakeLockSupported()) setOn(readWakeLockSetting());
   }, []);
 
-  if (!state?.supported) return null;
+  if (on === undefined) return undefined;
+  return {
+    on,
+    toggle() {
+      setOn(!on);
+      void wakeLock().set(!on);
+    },
+  };
+}
 
-  function toggle() {
-    const on = !state!.on;
-    setState({ supported: true, on });
-    void wakeLock().set(on);
-  }
+/** The switch. Hidden where the Wake Lock API is missing. */
+export function KeepScreenOnSwitch({ hint }: { hint?: string }) {
+  const setting = useKeepScreenOn();
+  if (!setting) return null;
+  return (
+    <wa-switch checked={setting.on} onChange={setting.toggle} hint={hint}>
+      {copy.settings.keepScreenOn}
+    </wa-switch>
+  );
+}
 
+/** The setting in Settings. Hidden where the Wake Lock API is missing. */
+export function KeepScreenOnSetting() {
+  const setting = useKeepScreenOn();
+  if (!setting) return null;
   return (
     <section aria-labelledby="screen" className="flex flex-col gap-3">
       <h2 id="screen" className="text-xl font-semibold">
         {copy.settings.screen}
       </h2>
-      <wa-switch
-        checked={state.on}
-        onChange={toggle}
-        hint={copy.settings.keepScreenOnHint}
-      >
-        {copy.settings.keepScreenOn}
-      </wa-switch>
+      <KeepScreenOnSwitch hint={copy.settings.keepScreenOnHint} />
     </section>
   );
 }

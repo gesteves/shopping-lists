@@ -143,6 +143,9 @@ export const en = {
     allChecked: "Everything is checked off.",
     items: "Items",
     actions: "List actions",
+    notifications: "Notifications",
+    notificationsFailed:
+      "Notifications for this list didn’t change. Try again.",
     checkAll: "Check all",
     uncheckAll: "Uncheck all",
     deleteChecked: "Delete checked items",

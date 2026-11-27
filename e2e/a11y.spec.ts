@@ -138,10 +138,8 @@ test("the item sheet opens at once with reduced motion", async ({
   }
 });
 
-test("Keep screen on holds the wake lock and is remembered", async ({
-  page,
-}) => {
-  // A fake Wake Lock API: headless browsers have none.
+/** A fake Wake Lock API: headless browsers have none. Gives the lock count. */
+async function fakeWakeLock(page: Page) {
   await page.addInitScript(() => {
     const state = { held: 0, requests: 0 };
     (window as unknown as { __wake: typeof state }).__wake = state;
@@ -166,10 +164,16 @@ test("Keep screen on holds the wake lock and is remembered", async ({
       },
     });
   });
-  const wake = () =>
+  return () =>
     page.evaluate(
       () => (window as unknown as { __wake: { held: number } }).__wake.held,
     );
+}
+
+test("Keep screen on holds the wake lock and is remembered", async ({
+  page,
+}) => {
+  const wake = await fakeWakeLock(page);
 
   await signIn(page);
   await page.goto("/settings");
@@ -212,4 +216,46 @@ test("Keep screen on is hidden without the Wake Lock API", async ({ page }) => {
   await expect(
     page.getByRole("switch", { name: copy.settings.keepScreenOn }),
   ).toHaveCount(0);
+});
+
+test("Keep screen on is on the list page too", async ({ page }) => {
+  const wake = await fakeWakeLock(page);
+  await signIn(page);
+  const name = `Screen ${randomUUID().slice(0, 8)}`;
+  const index = page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true });
+  await index.getByLabel(copy.lists.newName).fill(name);
+  await index.getByRole("button", { name: copy.lists.create }).click();
+  await index.getByRole("link", { name }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+
+  const setting = page.getByRole("switch", {
+    name: copy.settings.keepScreenOn,
+  });
+  const screenSwitch = switchControl(page, copy.settings.keepScreenOn).locator(
+    '[part~="control"]',
+  );
+  await expect(setting).not.toBeChecked();
+  await expect(async () => {
+    await screenSwitch.click();
+    await expect(setting).toBeChecked({ timeout: 1_000 });
+  }).toPass();
+  await expect.poll(wake).toBe(1);
+
+  // Settings shows the same setting. Wait for the page: the hidden list page
+  // keeps its switch in the DOM.
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: copy.settings.title }),
+  ).toBeVisible();
+  await expect(setting).toBeChecked();
+  await screenSwitch.click();
+  await expect(setting).not.toBeChecked();
+  await expect.poll(wake).toBe(0);
+
+  // Back on the list page, the switch shows the change.
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await expect(setting).not.toBeChecked();
 });

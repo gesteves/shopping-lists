@@ -102,6 +102,27 @@ test("mute and unmute a list", async ({ page }) => {
   await expect(toggle).toBeChecked();
   await page.reload();
   await expect(toggle).toBeChecked();
+
+  // The list page has the same switch, below the list name (#82).
+  await page.goto("/");
+  await index.getByRole("link", { name }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  const listName = copy.list.notifications;
+  const listToggle = page.getByRole("switch", { name: listName, exact: true });
+  await expect(listToggle).toBeChecked();
+  await switchControl(page, listName).click();
+  // The switch changes at once. Wait for the server to save the mute.
+  const listId = new URL(page.url()).pathname.split("/").pop();
+  await expect
+    .poll(async () => {
+      const res = await page.request.get("/api/push/mutes");
+      return (await res.json()).listIds;
+    })
+    .toContain(listId);
+  await page.reload();
+  await expect(listToggle).not.toBeChecked();
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  await expect(toggle).not.toBeChecked();
 });
 
 test("this device: Safari on iPhone asks for the Home Screen app", async ({
