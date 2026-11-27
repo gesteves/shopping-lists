@@ -10,6 +10,21 @@ test("the sign-in page loads", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: copy.signIn.button }),
   ).toBeVisible();
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    "noindex, nofollow",
+  );
+});
+
+test("robots.txt needs no session and stops all crawlers", async ({
+  request,
+}) => {
+  const res = await request.get("/robots.txt", { maxRedirects: 0 });
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("text/plain");
+  const lines = (await res.text()).split("\n").map((l) => l.trim());
+  expect(lines).toContain("User-Agent: *");
+  expect(lines).toContain("Disallow: /");
 });
 
 test("the health check needs no session", async ({ request }) => {
