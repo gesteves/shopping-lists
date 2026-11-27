@@ -150,7 +150,10 @@ test("the connector URL shows, and the copy button copies it", async ({
     page.getByRole("textbox", { name: copy.settings.connectorUrl }),
   ).toHaveValue(url);
   await page.getByRole("button", { name: copy.settings.copyUrl }).click();
-  await expect(page.getByText(copy.settings.copied)).toBeVisible();
+  // The toaster also puts the text in a live region, thus find the toast.
+  await expect(
+    page.locator("wa-toast-item").filter({ hasText: copy.settings.copied }),
+  ).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as { copied?: string }).copied))
     .toBe(url);
