@@ -183,7 +183,7 @@ Because of this, realtime updates, notifications and attribution behave the same
 ## Notifications
 Code in `src/server/notify/`.
 
-**Worker:** an in-process interval (~10s) scans for `activity` rows with no `notified_at`. It sends a group of (actor, recipient) once the actor has been quiet for 60s, or 3 minutes after the first event at most. Pending state lives in the database, so a restart loses nothing.
+**Worker:** an in-process interval (~10s) scans for `activity` rows with no `notified_at`. It groups the rows per actor and `via` (`app` or `mcp`), because "(via Claude)" is for all of the text. It sends a group once it has had no new row for 60s, or 3 minutes after its first row at most. It marks the rows as sent, then makes one push for each recipient from the rows of the group (see Recipients), after `collapse()`. Pending state lives in the database, so a restart loses nothing.
 
 **Recipients:** every user except the actor who is still in `ALLOWED_EMAILS` (#100). Muted lists are left out per recipient, and so are disabled devices. A recipient with no enabled device, or a server with no VAPID keys, gets no text and thus no Claude call (`canPushTo()`, #118).
 
@@ -353,7 +353,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 
 - **`/sign-in`:** one "Sign in with Google" button. `src/proxy.ts` (Next 16 renamed middleware to proxy) sends signed-out users here, and allowlist rejections show a short error.
 - **`/`:** the lists. Create, rename, delete with undo, and presence dots. On desktop it's a two-pane layout: a list sidebar beside the open list.
-- **Shell (#8):** `src/app/(app)/layout.tsx`. The header (app name, sync status, avatar, sign out) is sticky, and every edge has the safe-area insets (`viewportFit: "cover"`). At `lg` and wider, the lists are a sidebar; `/` then shows a prompt to pick a list. Each list row has a "More" button with Rename (inline form) and Delete (a `<dialog>` to confirm). Components are in `src/app/(app)/_components/`.
+- **Shell (#8):** `src/app/(app)/layout.tsx`. The header (app name, sync status, a Settings link, avatar) is sticky, and every edge has the safe-area insets (`viewportFit: "cover"`). At `lg` and wider, the lists are a sidebar; `/` then shows a prompt to pick a list. Each list row has a "More" button with Rename (inline form) and Delete (a `<dialog>` to confirm). Components are in `src/app/(app)/_components/`.
 - **`/lists/[id]`:**
   - an add bar fixed to the bottom, with autocomplete and dedupe;
   - large tap targets to check items;

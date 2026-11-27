@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx src/db/migrate.ts",
     "icons": "node scripts/build-icons.mjs",
     "predev": "npm run assets",
     "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs && node scripts/build-base-css.mjs",

@@ -1,6 +1,7 @@
 // The notifier (#16): an interval in the server process. It groups the
-// activity rows that were not sent by person, waits for a quiet time, then
-// sends one push to each other person. See "Notifications" in docs/PLAN.md.
+// activity rows that were not sent by person and `via`, waits for a quiet
+// time, then sends one push to each other person. See "Notifications" in
+// docs/PLAN.md.
 import "server-only";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { copy } from "@/copy";
