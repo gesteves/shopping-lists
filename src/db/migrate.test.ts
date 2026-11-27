@@ -197,19 +197,29 @@ describe("runMigrations", () => {
     expect(() => runMigrations(path, folder)).toThrow(/Foreign key check/);
   });
 
-  it("migrates with foreign keys off, and the app keeps them on", () => {
+  it("migrates with foreign keys off, and the app keeps them on, with synchronous NORMAL", () => {
     dir = mkdtempSync(join(tmpdir(), "shopping-lists-"));
     const path = join(dir, "test.db");
     const migration = openMigrationConnection(path);
     const pragmas = (db: Database.Database) => ({
       foreignKeys: db.pragma("foreign_keys", { simple: true }),
       busyTimeout: db.pragma("busy_timeout", { simple: true }),
+      // 1 is NORMAL: the Litestream setting for WAL.
+      synchronous: db.pragma("synchronous", { simple: true }),
     });
-    expect(pragmas(migration)).toEqual({ foreignKeys: 0, busyTimeout: 5000 });
+    expect(pragmas(migration)).toEqual({
+      foreignKeys: 0,
+      busyTimeout: 5000,
+      synchronous: 1,
+    });
     migration.close();
 
     const app = openDatabase(path).$client;
-    expect(pragmas(app)).toEqual({ foreignKeys: 1, busyTimeout: 5000 });
+    expect(pragmas(app)).toEqual({
+      foreignKeys: 1,
+      busyTimeout: 5000,
+      synchronous: 1,
+    });
     app.close();
   });
 });

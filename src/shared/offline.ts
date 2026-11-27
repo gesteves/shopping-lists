@@ -6,3 +6,9 @@
  * from the URL, thus the shell shows each list.
  */
 export const LIST_SHELL_PATH = "/lists/shell";
+
+/**
+ * The message that the sign-out sends to the service worker: delete the
+ * cached pages, and do not cache a fetch that started before it (#119).
+ */
+export const CLEAR_PAGES_MESSAGE = "CLEAR_PAGES";

@@ -1,6 +1,7 @@
 // The client part of sign-out (#103). It runs before the server sign-out,
 // thus the next person on this device gets no data, no pages, and no pushes
 // of the last user.
+import { CLEAR_PAGES_MESSAGE } from "@/shared/offline";
 import type { SubscriptionInfo } from "@/shared/push";
 import { getClientDb } from "./db";
 import { getSyncEngine, stopSync } from "./sync";
@@ -33,12 +34,37 @@ async function removePush() {
   await subscription.unsubscribe();
 }
 
+/** The time that the sign-out waits for the service worker. */
+const WORKER_TIMEOUT_MS = 5000;
+
+/**
+ * Tell the service worker to delete its page caches, and wait for its
+ * answer. A fetch of the worker that started before (for example the list
+ * shell of a CACHE_URLS message) then does not put a page back (#119).
+ */
+async function clearWorkerCaches() {
+  const worker = (await navigator.serviceWorker?.getRegistration())?.active;
+  if (!worker) return;
+  const channel = new MessageChannel();
+  await Promise.race([
+    new Promise((resolve) => {
+      channel.port1.onmessage = resolve;
+      worker.postMessage({ type: CLEAR_PAGES_MESSAGE }, [channel.port2]);
+    }),
+    new Promise((resolve) => setTimeout(resolve, WORKER_TIMEOUT_MS)),
+  ]);
+  channel.port1.close();
+}
+
 /**
  * Delete the runtime caches of the service worker: the pages of the user.
  * The precache has only the build files and the offline page: it stays.
+ * The worker deletes them first. Then this page deletes them too, also if
+ * the worker did not answer.
  */
 async function clearPageCaches() {
   if (typeof caches === "undefined") return;
+  await step("worker caches", clearWorkerCaches);
   for (const name of await caches.keys()) {
     if (!name.includes("precache")) await caches.delete(name);
   }

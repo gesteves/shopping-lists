@@ -110,20 +110,42 @@ export function applyOps(
 }
 
 /**
- * Write the summary of a list (src/server/summary/). This is the one write
- * that does not go through applyOps: the summary comes from the items, not
- * from a person. It gets a seq and a poke, so the clients pull it, but no
- * clocks, no attribution, and no activity row. It writes nothing to a
- * deleted or missing list. It returns true if it wrote the summary.
+ * Make each item row a tombstone, with no actor. Each row gets the server
+ * HLC as its delete clock (a newer edit brings it back, an older one does
+ * not), `now` (server time) in `deletedAt` and `tombstonedAt`, and a new
+ * seq. It writes no processed_ops and no activity rows. It returns the last
+ * seq, or null if there are no rows. The caller pokes after the
+ * transaction. expireCheckedItems() and the purge use it.
  */
+export function tombstoneItems(
+  tx: Tx,
+  rows: readonly Pick<ItemRow, "id" | "clocks">[],
+  clock: HlcClock,
+  now: Date,
+): number | null {
+  let seq: number | null = null;
+  for (const row of rows) {
+    seq = bumpSeq(tx);
+    tx.update(items)
+      .set({
+        clocks: { ...row.clocks, deleted: clock.now() },
+        deletedAt: now,
+        tombstonedAt: now,
+        seq,
+      })
+      .where(eq(items.id, row.id))
+      .run();
+  }
+  return seq;
+}
+
 /**
  * Delete each checked item whose check is older than EXPIRE_AFTER_DAYS
  * (#112). This is a write-path exception (CLAUDE.md): there is no person to
  * be the actor, thus it writes no processed_ops and no activity rows, and
- * sends no push. Each row gets the server HLC as its delete clock (a newer
- * uncheck or edit brings it back, an older one does not), the server time in
- * `deletedAt` and `tombstonedAt`, and a new seq. The normal purge removes
- * the row 30 days later. It returns the number of deleted items.
+ * sends no push. Each row becomes a tombstone (tombstoneItems), thus a newer
+ * uncheck or edit brings it back. The normal purge removes the row 30 days
+ * later. It returns the number of deleted items.
  */
 export function expireCheckedItems(
   options: { db?: Db; clock?: HlcClock; now?: () => number } = {},
@@ -144,25 +166,19 @@ export function expireCheckedItems(
         ),
       )
       .all();
-    let seq: number | null = null;
-    for (const row of rows) {
-      seq = bumpSeq(tx);
-      tx.update(items)
-        .set({
-          clocks: { ...row.clocks, deleted: clock.now() },
-          deletedAt: now,
-          tombstonedAt: now,
-          seq,
-        })
-        .where(eq(items.id, row.id))
-        .run();
-    }
-    return { count: rows.length, seq };
+    return { count: rows.length, seq: tombstoneItems(tx, rows, clock, now) };
   });
   if (last.seq !== null) bus.emit("poke", { seq: last.seq });
   return last.count;
 }
 
+/**
+ * Write the summary of a list (src/server/summary/). This write does not go
+ * through applyOps (CLAUDE.md): the summary comes from the items, not
+ * from a person. It gets a seq and a poke, so the clients pull it, but no
+ * clocks, no attribution, and no activity row. It writes nothing to a
+ * deleted or missing list. It returns true if it wrote the summary.
+ */
 export function setListSummary(
   listId: string,
   summary: string,
@@ -219,7 +235,12 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
 
   ctx.tx
     .insert(processedOps)
-    .values({ opId: op.opId, userId: ctx.actor.id, result: outcome.result })
+    .values({
+      opId: op.opId,
+      userId: ctx.actor.id,
+      result: outcome.result,
+      processedAt: ctx.now,
+    })
     .run();
 
   if (outcome.activity) {
@@ -336,7 +357,6 @@ function getItem(ctx: Ctx, id: string): ItemRow | undefined {
   return ctx.tx.select().from(items).where(eq(items.id, id)).get();
 }
 
-/** Save the new clocks, and the fields in `set` if there are any. */
 /**
  * A new delete gets the server time in `tombstonedAt`, and a restore clears
  * it. The purge uses the server time, not the op time (#101).
@@ -346,6 +366,7 @@ function markTombstone(ctx: Ctx, set: ListSet | ItemSet) {
   else if (set.deletedAt === null) set.tombstonedAt = null;
 }
 
+/** Save the new clocks, and the fields in `set` if there are any. */
 function saveList(
   ctx: Ctx,
   op: Op,
@@ -734,5 +755,3 @@ function changeAllItems(
     activity: { listId: list.id, snapshot: { listName: list.name, count } },
   };
 }
-
-// Purge
