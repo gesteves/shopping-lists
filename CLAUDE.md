@@ -75,6 +75,8 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 
 - All writes go through `applyOps` in `src/server/ops.ts`. This applies to the app, sync, and MCP.
 - `src/proxy.ts` only looks for the session cookie. Each page must call `requireUser()`, and each API route must call `requireApiUser()` (`src/lib/session.ts`). Call them in a `<Suspense>` boundary.
+- `/mcp` does not use the session. Wrap its handler in `withMcpAuth` and check the scopes of each method with `requireScopes` (`src/server/mcp/auth.ts`). Accept no other tokens.
+- The OAuth server for MCP clients is Better Auth (`mcp()`, `cimd()`, `jwt()` in `src/lib/auth.ts`). Its tables are in `src/db/schema.ts`. If a Better Auth update changes the plugin schema, compare it with the output of `npx auth generate`.
 - The repository and the issues are public. Do not put emails, domains, IDs, or secrets in them. Put secrets in Fly secrets or `.env.local`.
 - Use the `cf` CLI for Cloudflare. Run each change with `--dry-run` first.
 - The MCP server follows spec 2026-07-28. Read the spec again before MCP work.

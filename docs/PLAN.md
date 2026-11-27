@@ -64,7 +64,7 @@ Claude (MCP client) ──OAuth──> /mcp ────────────
 - @anthropic-ai/sdk
 - zod
 - @modelcontextprotocol/sdk, only if it supports 2026-07-28; otherwise a small custom handler
-- jose, and possibly oidc-provider
+- better-auth plugins for the MCP OAuth server: `@better-auth/mcp`, `@better-auth/cimd`, `@better-auth/oauth-provider`; jose
 - vitest, playwright
 
 ## Data model
@@ -227,37 +227,42 @@ Streamable HTTP at `/mcp`, stateless.
 - Not used: sampling, roots and logging (all deprecated); `subscriptions/listen` and the tasks extension (not needed); elicitation (Duet's own approval step covers destructive actions).
 
 ### Implementation
-Use the official `@modelcontextprotocol/sdk` if, at ticket time, it supports 2026-07-28 statelessly alongside a 2025-11-25 fallback. Otherwise write a small JSON-RPC handler covering `server/discover`, `tools/list`, `tools/call` and legacy `initialize`, validated with zod and contract tests.
+Use the official SDK if, at ticket time, it supports 2026-07-28 statelessly alongside a 2025-11-25 fallback. Otherwise write a small JSON-RPC handler covering `server/discover`, `tools/list`, `tools/call` and legacy `initialize`, validated with zod and contract tests.
+
+At #18, the Better Auth MCP docs use `@modelcontextprotocol/server` v2 (`createMcpHandler`) for the stateless transport; check it first. #18 made `src/app/mcp/route.ts` with the token checks only (`withMcpAuth` and `requireScopes` in `src/server/mcp/auth.ts`).
 
 ### Authorization
 OAuth 2.1. The app is both the authorization server (AS) and the resource server.
 
+**Library (decided in #18):** Better Auth. `@better-auth/mcp` (`mcp()`, the OAuth provider set up for MCP), `@better-auth/cimd` with the `mcp-2026-07-28` profile, and the JWT plugin. It passes the whole checklist below, thus no `oidc-provider` and no AS of our own. Config: `src/lib/auth.ts`, `src/lib/oauth.ts`. The endpoints are under `/api/auth/oauth2/*` (authorize, token, register, revoke). The tables are in `src/db/schema.ts` (`jwks`, `oauth_*`).
+
 **Discovery:**
-- Protected Resource Metadata (RFC 9728) at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`, with `authorization_servers`.
-- A 401 sends `WWW-Authenticate: Bearer resource_metadata="…"`. A missing scope gets 403 `insufficient_scope` naming every scope the request needs.
-- AS metadata (RFC 8414) at `/.well-known/oauth-authorization-server`. The `issuer` must match exactly. It advertises:
+- The issuer is the app origin (`jwt.issuer`), thus the AS metadata (RFC 8414) is at `/.well-known/oauth-authorization-server`. The `issuer` must match exactly. It advertises:
   - `client_id_metadata_document_supported: true`;
   - `registration_endpoint` (DCR is deprecated, but older clients still use it);
   - `authorization_response_iss_parameter_supported: true`;
-  - PKCE S256;
-  - `scopes_supported: ["lists:read", "lists:write", "offline_access"]`.
+  - PKCE S256 only;
+  - `scopes_supported: ["lists:read", "lists:write", "offline_access"]`;
+  - the grants `authorization_code` and `refresh_token` only.
+- Protected Resource Metadata (RFC 9728) at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`, with `authorization_servers`. Its `scopes_supported` has no `offline_access`: the spec says refresh tokens are not a resource need.
+- A 401 sends `WWW-Authenticate: Bearer resource_metadata="…", scope="lists:read lists:write"`. A missing scope gets 403 `insufficient_scope` naming every scope the request needs.
 
 **Client registration:**
-- Client ID Metadata Documents first: fetch the https `client_id` URL, check that `client_id` matches exactly, use its `redirect_uris`, and cache it. Guard against SSRF: https only, timeouts, size limits, no private IPs.
-- DCR as a fallback, requiring `application_type`.
+- Client ID Metadata Documents first. The plugin fetches the https `client_id` URL, checks that `client_id` matches exactly, uses its `redirect_uris`, and caches it. SSRF guard: https only, a public host (DNS resolved one time, the connection pinned to the checked address), no redirects, a 5-second timeout, a 5 KB limit, and fetch rate limits.
+- DCR as a fallback. Anyone can register (5 a minute for each IP), but a client gets nothing until an allowlisted user approves it. A hook refuses a registration without `application_type` (the provider would use "web").
+- Users cannot read or change clients or resources through the API (`clientPrivileges`, `resourcePrivileges`).
 
 **Tokens:**
 - `iss` (RFC 9207) goes in every authorization response, errors included.
-- The `resource` parameter (RFC 8707) is required. Each token's `aud` is bound to the canonical `https://<host>/mcp` and checked on every call.
+- An authorization request must have `resource` (RFC 8707); a hook refuses it without. The token request can omit it: the code keeps the resource. Each access token's `aud` is the canonical `https://<host>/mcp`, and a client is linked only to that resource.
 - Google tokens never reach the MCP endpoint.
-- Access tokens are short-lived (opaque, or JWTs signed with `jose`).
-- Refresh tokens last ~90 days, rotate on use, and are issued when `offline_access` is granted, so Duet keeps working in the background.
+- Access tokens are JWTs (`typ: at+jwt`) for 15 minutes.
+- Refresh tokens last 90 days from the last refresh and are issued only with `offline_access`, so Duet keeps working in the background. Each refresh rotates the token. A retry in 30 seconds gets the same answer (the `mcp()` default, for lost responses); a later reuse is a replay and revokes all the refresh tokens of the grant.
+- `/mcp` (`src/server/mcp/auth.ts`) checks the signature, `iss`, `aud`, `exp`, `azp`, `typ` and the scopes. A JWT stays valid until it expires, thus it also checks the database at each request: the user is still in `ALLOWED_EMAILS`, and the grant (consent) of the user for the client exists. A revoke deletes the grant, thus it stops a token at once.
 
-**Consent:** Google sign-in (allowlist), then a consent screen that names the client. The token belongs to that user, and its ops are recorded with `via: "mcp"`.
+**Consent:** Google sign-in (allowlist), then `/oauth/consent`. The client name is the client's own claim, thus the page also shows the hosts the user can check: the client ID host (CIMD) and the redirect host, with a warning for a localhost redirect. The token belongs to that user, and its ops are recorded with `via: "mcp"`.
 
-**Library:** #18 starts by checking Better Auth's OAuth provider against the lists above: RFC 8707 audience binding, CIMD, RFC 9207 `iss`, PRM. If it falls short, use `oidc-provider` (resource indicators and `iss`, with CIMD added through its client lookup), or a minimal AS of our own on `jose`. Better Auth stays for the app's own Google sessions either way.
-
-**Connected apps:** a settings section lists the authorized clients and lets you revoke each one.
+**Connected apps:** Settings lists the approved clients. "Disconnect" deletes the grant, revokes the refresh tokens, and deletes the opaque access tokens (`src/server/connected-apps.ts`).
 
 ### Tools
 - `tools/list` returns tools in a fixed order, with `ttlMs` and `cacheScope: "private"`.

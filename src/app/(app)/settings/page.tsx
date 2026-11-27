@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { requireUser } from "@/lib/session";
+import { getDb } from "@/db/client";
+import { listConnectedApps } from "@/server/connected-apps";
 import { getVapidConfig } from "@/server/push";
 import { signOut } from "../../actions";
+import { ConnectedApps } from "./connected-apps";
 import { NotificationSettings } from "./notification-settings";
 
 export const metadata: Metadata = { title: "Settings – Shopping Lists" };
@@ -25,6 +28,7 @@ async function Settings() {
   return (
     <>
       <NotificationSettings publicKey={publicKey} />
+      <ConnectedApps apps={listConnectedApps(getDb(), user.id)} />
       <section aria-labelledby="account" className="flex flex-col gap-3">
         <h2 id="account" className="text-xl font-semibold">
           Account

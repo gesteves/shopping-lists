@@ -9,6 +9,10 @@ const PUBLIC_PATHS = [
   "/sign-in",
   "/api/auth",
   "/api/health",
+  // OAuth metadata and the MCP endpoint (#18). /mcp checks its own bearer
+  // token (src/server/mcp/auth.ts).
+  "/.well-known",
+  "/mcp",
   // The service worker and its offline page (#10).
   "/sw.js",
   "/~offline",
