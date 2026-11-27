@@ -25,7 +25,7 @@ interface Entry {
 
 /**
  * The add bar at the bottom of a list. The name is required. The quantity
- * and the notes are behind "Details". Typing shows suggestions from past
+ * and the notes are behind the "Quantity and notes" button, below the name. Typing shows suggestions from past
  * items (#14). A name that is already on the list asks first.
  */
 export function AddBar({
@@ -146,7 +146,8 @@ export function AddBar({
     <form
       onSubmit={submit}
       aria-label="Add an item"
-      className="sticky bottom-0 -mx-4 mt-auto border-t border-line bg-canvas/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:mx-0 lg:rounded-t-2xl lg:border-x"
+      // -mb-(--main-pb): no gap below the bar (layout.tsx).
+      className="sticky bottom-0 -mx-4 mt-auto -mb-(--main-pb) border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:mx-0 lg:rounded-t-2xl lg:border-x"
     >
       {open && (
         <ul
@@ -170,23 +171,6 @@ export function AddBar({
             </li>
           ))}
         </ul>
-      )}
-      {details && (
-        <div id={ids.details} className="mb-3 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="font-medium text-ink-muted">Quantity</span>
-            <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
-          </div>
-          <wa-textarea
-            label="Notes"
-            className="wa-sr-label"
-            value={notes}
-            onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
-            placeholder="Notes, for example the brand or the size"
-            maxlength={NOTES_MAX}
-            rows={2}
-          ></wa-textarea>
-        </div>
       )}
       <div className="flex gap-2">
         <label htmlFor={ids.name} className="sr-only">
@@ -215,7 +199,9 @@ export function AddBar({
           maxLength={ITEM_NAME_MAX}
           enterKeyHint="enter"
           autoComplete="off"
-          className="min-h-12 min-w-0 flex-1 rounded-xl border border-ink-muted bg-surface px-4 text-lg placeholder:text-ink-muted"
+          // A native input (the suggestions need aria-activedescendant),
+          // with the look of a large <wa-input>.
+          className="h-(--wa-form-control-height) min-w-0 flex-1 rounded-(--wa-form-control-border-radius) border-(length:--wa-form-control-border-width) border-(--wa-form-control-border-color) bg-(--wa-form-control-background-color) px-(--wa-form-control-padding-inline) text-(length:--wa-font-size-l) text-(--wa-form-control-value-color) placeholder:text-(--wa-form-control-placeholder-color)"
         />
         <wa-button
           appearance="plain"
@@ -224,7 +210,7 @@ export function AddBar({
           aria-controls={ids.details}
           onClick={() => setDetails(!details)}
         >
-          Details
+          <wa-icon name="sliders" label="Quantity and notes"></wa-icon>
         </wa-button>
         <wa-button
           type="submit"
@@ -236,6 +222,19 @@ export function AddBar({
           Add
         </wa-button>
       </div>
+      {details && (
+        <div id={ids.details} className="mt-3 flex flex-col gap-3">
+          <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
+          <wa-textarea
+            label="Notes"
+            value={notes}
+            onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
+            placeholder="For example, the brand or the size"
+            maxlength={NOTES_MAX}
+            rows={2}
+          ></wa-textarea>
+        </div>
+      )}
       <ConfirmDialog
         open={duplicate !== null}
         label={

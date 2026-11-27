@@ -26,7 +26,8 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         >
           <ListIndex headingLevel={2} />
         </aside>
-        <main className="flex w-full flex-1 flex-col pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] lg:px-10">
+        {/* --main-pb: the add bar of a list cancels it, to sit at the bottom. */}
+        <main className="flex w-full flex-1 flex-col pr-[max(1rem,env(safe-area-inset-right))] pb-(--main-pb) pl-[max(1rem,env(safe-area-inset-left))] [--main-pb:max(1.5rem,env(safe-area-inset-bottom))] lg:px-10">
           {children}
         </main>
       </div>

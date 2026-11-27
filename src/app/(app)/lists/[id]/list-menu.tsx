@@ -100,6 +100,7 @@ export function ListHeader({ view }: { view: ListView }) {
             <wa-icon slot="icon" name="broom"></wa-icon>
             Clear checked items
           </wa-dropdown-item>
+          <wa-divider></wa-divider>
           <wa-dropdown-item value="delete" variant="danger">
             <wa-icon slot="icon" name="trash-can"></wa-icon>
             Delete list

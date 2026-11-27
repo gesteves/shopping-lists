@@ -1,4 +1,10 @@
-@import "tailwindcss";
+/* Tailwind in parts: the stock preflight resets the padding and the
+   borders of Web Awesome components. generated/base.css has a preflight
+   that skips their tags (scripts/build-base-css.mjs). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "./generated/base.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
 /* The Web Awesome theme with its imports inlined, and its .wa-dark tokens
    under prefers-color-scheme (made by scripts/build-wa-dark.mjs). */
 @import "./generated/wa-theme.css";
@@ -40,6 +46,14 @@
     --wa-color-danger-fill-loud: #b3261e;
     --wa-color-danger-on-loud: #ffffff;
     --wa-color-danger-on-quiet: #b3261e;
+    /* Neutral fills (hover of plain buttons and menu items) and control
+       borders in the green-gray of the palette, not the default blue-gray. */
+    --wa-color-neutral-fill-quiet: #e7ece5;
+    --wa-color-neutral-fill-normal: #dbe3da;
+    --wa-color-neutral-border-loud: #7a887e;
+    --wa-color-neutral-on-quiet: #3c4a41;
+    /* Fields are raised, like the cards: the default is the page color. */
+    --wa-form-control-background-color: var(--wa-color-surface-raised);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -62,6 +76,10 @@
       --wa-color-danger-fill-loud: #ff8f85;
       --wa-color-danger-on-loud: #16241c;
       --wa-color-danger-on-quiet: #ff8f85;
+      --wa-color-neutral-fill-quiet: #1c2b22;
+      --wa-color-neutral-fill-normal: #24362b;
+      --wa-color-neutral-border-loud: #6b7d71;
+      --wa-color-neutral-on-quiet: #c4d1c7;
     }
   }
 }
@@ -100,42 +118,16 @@
     accent-color: var(--wa-color-brand-fill-loud);
   }
 
-  :focus-visible {
-    outline: 2px solid var(--wa-color-focus);
-    outline-offset: 2px;
+  /* Native controls only: Web Awesome components draw their own focus
+     ring, and a page rule on a host wins over it. */
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: var(--wa-focus-ring);
+    outline-offset: var(--wa-focus-ring-offset);
   }
 
   ::selection {
     background-color: var(--wa-color-brand-fill-quiet);
     color: var(--wa-color-text-normal);
-  }
-
-  /* No flash of unstyled components: hide each Web Awesome tag until it
-     upgrades (src/app/web-awesome.ts). Not .wa-cloak: it hides the whole
-     page while any custom element is not defined, also the route announcer
-     of Next.js. Add a new tag to this list. */
-  :where(
-    wa-avatar,
-    wa-badge,
-    wa-button,
-    wa-callout,
-    wa-dropdown,
-    wa-dropdown-item,
-    wa-icon,
-    wa-input,
-    wa-number-input,
-    wa-option,
-    wa-select,
-    wa-switch,
-    wa-textarea,
-    wa-toast,
-    wa-toast-item
-  ):not(:defined) {
-    visibility: hidden;
-  }
-  wa-dialog:not(:defined),
-  wa-drawer:not(:defined) {
-    display: none;
   }
 }
 

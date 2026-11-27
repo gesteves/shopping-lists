@@ -23,14 +23,15 @@ const REJECTED: Record<RejectedDetail["reason"], string> = {
 interface WaToast extends HTMLElement {
   create(
     message: string,
-    options?: { duration?: number; variant?: string },
+    options?: { duration?: number; variant?: string; icon?: string },
   ): Promise<HTMLElement & { hide(): Promise<void> }>;
 }
 
 /**
- * The toasts (src/client/toasts.ts) in a <wa-toast>. The store keeps the
- * time (5 s) and the limit (3). Also a toast for each change that the
- * server refused, and for each add that it merged.
+ * The toasts (src/client/toasts.ts) in a <wa-toast>. Each item closes
+ * itself after its duration; the store keeps the limit (3). Also a toast
+ * for each change that the server refused, and for each add that it
+ * merged.
  */
 export function Toaster() {
   const toasts = useSyncExternalStore(
@@ -85,22 +86,29 @@ export function Toaster() {
 
 async function show(el: WaToast, toast: Toast) {
   await customElements.whenDefined("wa-toast");
-  // The store closes the toast: no time limit here.
-  const item = await el.create(toast.message, { duration: 0 });
+  // Text only (no allowHtml): list and item names come from users.
+  // create() spreads the options over its defaults: leave out each unset one.
+  const item = await el.create(toast.message, {
+    ...(toast.duration !== undefined && { duration: toast.duration }),
+    ...(toast.variant && { variant: toast.variant }),
+    ...(toast.icon && { icon: toast.icon }),
+  });
   item.addEventListener("wa-after-hide", () => dismissToast(toast.id));
   if (toast.action) {
+    // The action goes on its own line, below the message.
+    const actions = document.createElement("div");
+    actions.style.marginBlockStart = "var(--wa-space-xs)";
     const button = document.createElement("wa-button");
     button.setAttribute("size", "s");
-    button.setAttribute("appearance", "plain");
     button.setAttribute("variant", "brand");
-    button.className = "ml-2";
     button.textContent = toast.action.label;
     const { run } = toast.action;
     button.addEventListener("click", () => {
       dismissToast(toast.id);
       void run();
     });
-    item.append(button);
+    actions.append(button);
+    item.append(actions);
   }
   return item;
 }
