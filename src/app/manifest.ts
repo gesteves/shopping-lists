@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { copy } from "@/copy";
 
 // The web app manifest. Make the icons again from assets/icon.svg if it
 // changes: rsvg-convert -w <size> -h <size> assets/icon.svg -o <file>. The
@@ -6,9 +7,9 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Shopping Lists",
-    description: "Shared shopping lists that work offline.",
-    short_name: "Lists",
+    name: copy.app.name,
+    description: copy.app.manifestDescription,
+    short_name: copy.app.shortName,
     start_url: "/",
     scope: "/",
     display: "standalone",

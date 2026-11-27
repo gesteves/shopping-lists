@@ -1,13 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { copy } from "../src/copy";
 
 test("the sign-in page loads", async ({ page }) => {
   await page.goto("/sign-in");
-  await expect(page).toHaveTitle("Sign in – Shopping Lists");
+  await expect(page).toHaveTitle(copy.app.pageTitle(copy.signIn.title));
   await expect(
-    page.getByRole("heading", { name: "Shopping Lists" }),
+    page.getByRole("heading", { name: copy.app.name }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Sign in with Google" }),
+    page.getByRole("button", { name: copy.signIn.button }),
   ).toBeVisible();
 });
 

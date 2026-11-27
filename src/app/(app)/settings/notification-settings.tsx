@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { base64UrlToBytes, deviceLabel, isIos } from "@/client/device";
 import { useLists } from "@/client/hooks";
 import { showToast } from "@/client/toasts";
+import { copy } from "@/copy";
 import type { SubscriptionInfo } from "@/shared/push";
 
 type Support =
@@ -94,7 +95,7 @@ export function NotificationSettings({
       setEndpoint(sub.endpoint);
       await loadDevices();
     } catch {
-      showToast({ message: "Notifications couldn’t be turned on. Try again." });
+      showToast({ message: copy.settings.enableFailed });
     } finally {
       setBusy(false);
     }
@@ -126,13 +127,13 @@ export function NotificationSettings({
       showToast({
         message:
           sent > 0
-            ? `Sent a test notification to ${sent} ${sent === 1 ? "device" : "devices"}.`
+            ? copy.settings.testSent(sent)
             : failed > 0
-              ? "The test notification didn’t reach your devices. Try again later."
-              : "No device has notifications on.",
+              ? copy.settings.testUndelivered
+              : copy.settings.testNoDevices,
       });
     } catch {
-      showToast({ message: "The test notification didn’t send." });
+      showToast({ message: copy.settings.testFailed });
     }
   }
 
@@ -143,40 +144,24 @@ export function NotificationSettings({
     <div className="flex flex-col gap-10">
       <section aria-labelledby="this-device" className="flex flex-col gap-3">
         <h2 id="this-device" className="text-xl font-semibold">
-          This device
+          {copy.settings.thisDevice}
         </h2>
         {!publicKey ? (
-          <p className="text-ink-muted">
-            Notifications aren’t set up on the server yet.
-          </p>
+          <p className="text-ink-muted">{copy.settings.pushNotConfigured}</p>
         ) : support === "needs-install" ? (
-          <p className="text-ink-muted">
-            On iPhone and iPad, notifications work only in the app on your Home
-            Screen. In Safari, tap Share, then Add to Home Screen. Open the app
-            from there and come back to this page.
-          </p>
+          <p className="text-ink-muted">{copy.settings.pushNeedsInstall}</p>
         ) : support === "unsupported" ? (
-          <p className="text-ink-muted">
-            This browser can’t get notifications.
-          </p>
+          <p className="text-ink-muted">{copy.settings.pushUnsupported}</p>
         ) : permission === "denied" ? (
-          <p className="text-ink-muted">
-            Notifications are blocked for this app. Allow them in your browser
-            or system settings, then come back.
-          </p>
+          <p className="text-ink-muted">{copy.settings.pushBlocked}</p>
         ) : subscribedHere ? (
-          <p className="text-ink-muted">
-            This device gets a notification when the other person changes a
-            list.
-          </p>
+          <p className="text-ink-muted">{copy.settings.pushOn}</p>
         ) : support === "ok" ? (
           <div className="flex flex-col items-start gap-2">
-            <p className="text-ink-muted">
-              Get a notification when the other person changes a list.
-            </p>
+            <p className="text-ink-muted">{copy.settings.pushOffer}</p>
             <wa-button variant="brand" size="l" onClick={enable} loading={busy}>
               <wa-icon slot="start" name="bell"></wa-icon>
-              Enable notifications
+              {copy.settings.enablePush}
             </wa-button>
           </div>
         ) : null}
@@ -184,14 +169,14 @@ export function NotificationSettings({
 
       <section aria-labelledby="devices" className="flex flex-col gap-3">
         <h2 id="devices" className="text-xl font-semibold">
-          Your devices
+          {copy.settings.devices}
         </h2>
         {devices === undefined ? null : devices.length === 0 ? (
-          <p className="text-ink-muted">No device gets notifications yet.</p>
+          <p className="text-ink-muted">{copy.settings.noDevices}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {devices.map((device) => {
-              const label = device.deviceLabel ?? "Unnamed device";
+              const label = device.deviceLabel ?? copy.settings.unnamedDevice;
               return (
                 <li
                   key={device.id}
@@ -201,7 +186,7 @@ export function NotificationSettings({
                     {label}
                     {device.endpoint === endpoint && (
                       <span className="ml-2 text-sm font-normal text-ink-muted">
-                        This device
+                        {copy.settings.currentDevice}
                       </span>
                     )}
                   </span>
@@ -209,9 +194,11 @@ export function NotificationSettings({
                     checked={device.enabled}
                     onChange={() => void toggle(device)}
                   >
-                    <span className="sr-only">Notifications on {label}</span>
+                    <span className="sr-only">
+                      {copy.settings.deviceSwitch(label)}
+                    </span>
                     <span aria-hidden="true" className="text-sm text-ink-muted">
-                      {device.enabled ? "On" : "Off"}
+                      {device.enabled ? copy.settings.on : copy.settings.off}
                     </span>
                   </wa-switch>
                   <wa-button
@@ -219,7 +206,8 @@ export function NotificationSettings({
                     appearance="plain"
                     onClick={() => void remove(device)}
                   >
-                    Remove<span className="sr-only"> {label}</span>
+                    {copy.settings.remove}
+                    <span className="sr-only"> {label}</span>
                   </wa-button>
                 </li>
               );
@@ -233,7 +221,7 @@ export function NotificationSettings({
             className="self-start"
           >
             <wa-icon slot="start" name="bell"></wa-icon>
-            Send a test notification
+            {copy.settings.sendTest}
           </wa-button>
         )}
       </section>
@@ -272,11 +260,9 @@ function MutedLists() {
   return (
     <section aria-labelledby="lists" className="flex flex-col gap-3">
       <h2 id="lists" className="text-xl font-semibold">
-        Lists
+        {copy.settings.lists}
       </h2>
-      <p className="text-ink-muted">
-        Turn off a list to get no notifications about it, on all your devices.
-      </p>
+      <p className="text-ink-muted">{copy.settings.listsHint}</p>
       <ul className="flex flex-col gap-2">
         {lists.map((list) => (
           <li key={list.id}>
@@ -288,7 +274,9 @@ function MutedLists() {
                 checked={!muted.has(list.id)}
                 onChange={() => void toggle(list.id)}
               >
-                <span className="sr-only">Notifications about {list.name}</span>
+                <span className="sr-only">
+                  {copy.settings.listSwitch(list.name)}
+                </span>
               </wa-switch>
             </div>
           </li>

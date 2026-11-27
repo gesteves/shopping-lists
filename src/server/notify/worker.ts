@@ -3,6 +3,7 @@
 // sends one push to each other person. See "Notifications" in docs/PLAN.md.
 import "server-only";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { copy } from "@/copy";
 import { getDb, type Db } from "@/db/client";
 import { activity, listMutes, users } from "@/db/schema";
 import type { PushPayload } from "@/shared/push";
@@ -48,7 +49,7 @@ export async function buildPayload(
     (e) => e.type === "deleteList" && e.listId === listIds[0],
   );
   return {
-    title: oneList ? events.at(-1)!.snapshot.listName : "Shopping Lists",
+    title: oneList ? events.at(-1)!.snapshot.listName : copy.push.title,
     body,
     url: oneList && !deleted ? `/lists/${listIds[0]}` : "/",
     // One notification for each list: a new burst replaces the last one.
@@ -156,7 +157,7 @@ export class Notifier {
       try {
         const payload = await buildPayload(
           events,
-          actor?.name ?? "Someone",
+          actor?.name ?? copy.people.someone,
           this.#summarize,
         );
         if (payload) await this.#send(recipient.id, payload);

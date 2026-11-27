@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, switchControl } from "./helpers";
+import { copy } from "../src/copy";
+import { anyCount, escapeRegExp, signIn, switchControl } from "./helpers";
 
 /** A device with a fake push endpoint, saved through the API. */
 async function fakeDevice(page: Page) {
@@ -34,10 +35,12 @@ test("turn a device off and on, send a test, and remove it", async ({
 }) => {
   await signIn(page);
   const label = await fakeDevice(page);
-  await page.getByRole("link", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  await expect(
+    page.getByRole("heading", { name: copy.settings.title }),
+  ).toBeVisible();
 
-  const toggleName = `Notifications on ${label}`;
+  const toggleName = copy.settings.deviceSwitch(label);
   const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
   await switchControl(page, toggleName).click();
@@ -48,18 +51,22 @@ test("turn a device off and on, send a test, and remove it", async ({
   await expect(toggle).toBeChecked();
 
   // The fake endpoint refuses, so the push does not arrive.
-  await page.getByRole("button", { name: "Send a test notification" }).click();
+  await page.getByRole("button", { name: copy.settings.sendTest }).click();
   await expect(
     page.locator("wa-toast-item").filter({
-      hasText: /Sent a test notification|didn’t reach your devices/,
+      hasText: new RegExp(
+        `${anyCount(copy.settings.testSent).source}|${escapeRegExp(copy.settings.testUndelivered)}`,
+      ),
     }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: `Remove ${label}` }).click();
+  await page
+    .getByRole("button", { name: `${copy.settings.remove} ${label}` })
+    .click();
   await expect(toggle).toHaveCount(0);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Your devices" }),
+    page.getByRole("heading", { name: copy.settings.devices }),
   ).toBeVisible();
   await expect(toggle).toHaveCount(0);
 });
@@ -68,10 +75,10 @@ test("mute and unmute a list", async ({ page }) => {
   await signIn(page);
   const name = `Mute ${randomUUID().slice(0, 8)}`;
   const index = page
-    .getByRole("region", { name: "Lists" })
+    .getByRole("region", { name: copy.lists.heading })
     .filter({ visible: true });
-  await index.getByLabel("New list name").fill(name);
-  await index.getByRole("button", { name: "Create" }).click();
+  await index.getByLabel(copy.lists.newName).fill(name);
+  await index.getByRole("button", { name: copy.lists.create }).click();
   await expect(index.getByRole("link", { name })).toBeVisible();
   await expect
     .poll(async () => {
@@ -82,8 +89,8 @@ test("mute and unmute a list", async ({ page }) => {
     })
     .toBe(true);
 
-  await page.getByRole("link", { name: "Settings" }).click();
-  const toggleName = `Notifications about ${name}`;
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  const toggleName = copy.settings.listSwitch(name);
   const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
   await switchControl(page, toggleName).click();
@@ -106,17 +113,17 @@ test("this device: Safari on iPhone asks for the Home Screen app", async ({
   }
   await signIn(page);
   await page.goto("/settings");
-  const section = page.getByRole("region", { name: "This device" });
+  const section = page.getByRole("region", { name: copy.settings.thisDevice });
   if (testInfo.project.name === "mobile") {
-    await expect(section).toContainText("Add to Home Screen");
+    await expect(section).toContainText(copy.settings.pushNeedsInstall);
   } else {
     // Headless Chromium can keep notifications blocked. Both states are
     // right here; the iPhone message is not.
     await expect(
       section
-        .getByRole("button", { name: "Enable notifications" })
-        .or(section.getByText("Notifications are blocked")),
+        .getByRole("button", { name: copy.settings.enablePush })
+        .or(section.getByText(copy.settings.pushBlocked)),
     ).toBeVisible();
-    await expect(section).not.toContainText("Add to Home Screen");
+    await expect(section).not.toContainText(copy.settings.pushNeedsInstall);
   }
 });

@@ -1,13 +1,18 @@
 import type { Metadata, Viewport } from "next";
+import { copy, locale } from "@/copy";
 import "./globals.css";
 import { WebAwesome } from "./web-awesome";
 
 export const metadata: Metadata = {
-  title: "Shopping Lists",
-  description: "Shared shopping lists.",
+  title: copy.app.name,
+  description: copy.app.description,
   // Open as a standalone app from the iOS Home Screen. "default" gives dark
   // status bar text on the light theme color and light text on the dark one.
-  appleWebApp: { capable: true, title: "Lists", statusBarStyle: "default" },
+  appleWebApp: {
+    capable: true,
+    title: copy.app.shortName,
+    statusBarStyle: "default",
+  },
 };
 
 // The server-rendered <head> must have the color scheme: never set it with
@@ -24,7 +29,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang={locale} className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-canvas text-ink">
         <WebAwesome />
         {children}

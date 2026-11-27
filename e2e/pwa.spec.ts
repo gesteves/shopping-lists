@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, synced } from "./helpers";
+import { copy } from "../src/copy";
+import { escapeRegExp, signIn, synced } from "./helpers";
 
 /** Wait until the service worker controls the page. */
 async function controlled(page: Page) {
@@ -20,8 +21,8 @@ test("the service worker file needs no session and is not cached", async ({
 test("the manifest has what an install needs", async ({ request }) => {
   const manifest = await (await request.get("/manifest.webmanifest")).json();
   expect(manifest).toMatchObject({
-    name: "Shopping Lists",
-    short_name: "Lists",
+    name: copy.app.name,
+    short_name: copy.app.shortName,
     start_url: "/",
     display: "standalone",
   });
@@ -56,10 +57,10 @@ test("the app opens offline, takes a change, and syncs it online", async ({
 
   const name = `Camping ${randomUUID().slice(0, 8)}`;
   const index = page
-    .getByRole("region", { name: "Lists" })
+    .getByRole("region", { name: copy.lists.heading })
     .filter({ visible: true });
-  await index.getByLabel("New list name").fill(name);
-  await index.getByRole("button", { name: "Create" }).click();
+  await index.getByLabel(copy.lists.newName).fill(name);
+  await index.getByRole("button", { name: copy.lists.create }).click();
   await index.getByRole("link", { name }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   const listUrl = page.url();
@@ -72,20 +73,24 @@ test("the app opens offline, takes a change, and syncs it online", async ({
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await expect(
-    page.getByRole("status").filter({ hasText: /^Offline/ }),
+    page
+      .getByRole("status")
+      .filter({ hasText: new RegExp(`^${escapeRegExp(copy.sync.offline)}`) }),
   ).toBeVisible();
 
-  await page.getByLabel("Item name").fill("Candles");
-  await page.getByLabel("Item name").press("Enter");
+  await page.getByLabel(copy.addBar.name).fill("Candles");
+  await page.getByLabel(copy.addBar.name).press("Enter");
   await expect(page.getByRole("checkbox", { name: /^Candles/ })).toBeVisible();
   await expect(
-    page.getByRole("status").filter({ hasText: "Offline · 1 change to sync" }),
+    page
+      .getByRole("status")
+      .filter({ hasText: copy.sync.offlineWithChanges(1) }),
   ).toBeVisible();
 
   // A page that this device never opened gets the offline page.
   await page.goto("/lists/00000000-0000-4000-8000-000000000000");
   await expect(
-    page.getByRole("heading", { name: "You’re offline" }),
+    page.getByRole("heading", { name: copy.offline.heading }),
   ).toBeVisible();
 
   await context.setOffline(false);

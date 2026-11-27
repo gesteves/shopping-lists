@@ -1,12 +1,12 @@
 "use client";
 
 import { usePendingCount, useSyncStatus } from "@/client/hooks";
+import { copy } from "@/copy";
 
 /** A short line about sync. #10 adds the full offline indicator. */
 export function SyncStatus() {
   const { state } = useSyncStatus();
   const pending = usePendingCount() ?? 0;
-  const changes = `${pending} ${pending === 1 ? "change" : "changes"}`;
 
   if (state === "unauthorized") {
     return (
@@ -15,18 +15,18 @@ export function SyncStatus() {
         className="rounded-sm text-sm font-medium text-danger underline underline-offset-4"
       >
         {pending > 0
-          ? `Sign in again to sync ${changes}`
-          : "Sign in again to sync"}
+          ? copy.sync.signInAgainWithChanges(pending)
+          : copy.sync.signInAgain}
       </a>
     );
   }
   const text =
     state === "offline"
       ? pending > 0
-        ? `Offline · ${changes} to sync`
-        : "Offline"
+        ? copy.sync.offlineWithChanges(pending)
+        : copy.sync.offline
       : pending > 0
-        ? `${changes} to sync`
+        ? copy.sync.changesToSync(pending)
         : null;
   if (!text) return null;
   return (

@@ -6,6 +6,7 @@ import { useLists, useUsers } from "@/client/hooks";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
 import { useMedia } from "@/client/use-media";
+import { copy } from "@/copy";
 import { ITEM_NAME_MAX, NOTES_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
 import { Stepper } from "../../_components/stepper";
@@ -39,14 +40,19 @@ export function ItemSheet({
     <SheetForm key={shown.id} item={shown} onDone={onClose} />
   );
   return large ? (
-    <wa-dialog ref={ref} open={item !== null} label="Edit item" light-dismiss>
+    <wa-dialog
+      ref={ref}
+      open={item !== null}
+      label={copy.itemSheet.title}
+      light-dismiss
+    >
       {content}
     </wa-dialog>
   ) : (
     <wa-drawer
       ref={ref}
       open={item !== null}
-      label="Edit item"
+      label={copy.itemSheet.title}
       placement="bottom"
       light-dismiss
       style={{ "--size": "auto" }}
@@ -84,9 +90,9 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
     await mutate({ type: "deleteItem", args: { itemId: item.id } });
     onDone();
     showToast({
-      message: `Deleted “${item.name}”.`,
+      message: copy.itemSheet.deleted(item.name),
       action: {
-        label: "Undo",
+        label: copy.common.undo,
         run: () =>
           void mutate({ type: "restoreItem", args: { itemId: item.id } }),
       },
@@ -99,9 +105,9 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
     await mutate({ type: "moveItem", args: { itemId: item.id, toListId } });
     onDone();
     showToast({
-      message: `Moved “${item.name}” to the “${target.name}” list.`,
+      message: copy.itemSheet.moved(item.name, target.name),
       action: {
-        label: "Undo",
+        label: copy.common.undo,
         run: () =>
           void mutate({
             type: "moveItem",
@@ -118,7 +124,7 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
     >
       <Field>
         <wa-input
-          label="Name"
+          label={copy.itemSheet.name}
           value={name}
           onInput={(e) => setName((e.target as HTMLInputElement).value)}
           required
@@ -126,11 +132,15 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
         ></wa-input>
       </Field>
       <div className="flex items-center justify-between gap-3">
-        <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
+        <Stepper
+          value={quantity}
+          onChange={setQuantity}
+          label={copy.itemSheet.quantity}
+        />
       </div>
       <Field>
         <wa-textarea
-          label="Notes"
+          label={copy.itemSheet.notes}
           value={notes}
           onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
           maxlength={NOTES_MAX}
@@ -140,8 +150,8 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
       </Field>
       {others.length > 0 && (
         <wa-select
-          label="Move to"
-          placeholder="Pick a list"
+          label={copy.itemSheet.moveTo}
+          placeholder={copy.itemSheet.pickList}
           value=""
           onChange={(e) => void move((e.target as HTMLSelectElement).value)}
         >
@@ -159,14 +169,14 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
       <div className="flex items-center gap-2">
         <wa-button variant="danger" appearance="plain" onClick={remove}>
           <wa-icon slot="start" name="trash-can"></wa-icon>
-          Delete
+          {copy.common.delete}
         </wa-button>
         <span className="flex-1" />
         <wa-button appearance="plain" onClick={onDone}>
-          Cancel
+          {copy.common.cancel}
         </wa-button>
         <wa-button type="submit" variant="brand">
-          Save
+          {copy.common.save}
         </wa-button>
       </div>
     </form>

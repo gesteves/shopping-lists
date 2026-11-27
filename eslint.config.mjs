@@ -7,6 +7,25 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   prettier,
+  {
+    // UI copy lives in the dictionary (src/copy, #66). These rules find
+    // text in JSX, and text in the props that show text.
+    files: ["src/app/**/*.tsx", "src/client/**/*.tsx"],
+    rules: {
+      "react/jsx-no-literals": [
+        "error",
+        { noStrings: false, ignoreProps: true },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "JSXAttribute[name.name=/^(label|placeholder|hint|title|alt|aria-label|confirmLabel)$/] > Literal",
+          message: "Put UI text in the dictionary (src/copy).",
+        },
+      ],
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

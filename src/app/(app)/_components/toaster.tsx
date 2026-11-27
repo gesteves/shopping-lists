@@ -3,22 +3,13 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMergedOps, useRejectedOps } from "@/client/hooks";
 import type { MergedDetail, RejectedDetail } from "@/client/sync";
+import { copy } from "@/copy";
 import {
   dismissToast,
   showToast,
   toastStore,
   type Toast,
 } from "@/client/toasts";
-
-const REJECTED: Record<RejectedDetail["reason"], string> = {
-  list_deleted: "the list was deleted",
-  list_not_found: "the list doesn’t exist anymore",
-  list_exists: "that list already exists",
-  item_not_found: "the item doesn’t exist anymore",
-  item_exists: "that item already exists",
-  clock_ahead: "this device’s clock is wrong",
-  invalid: "the change wasn’t valid",
-};
 
 interface WaToast extends HTMLElement {
   create(
@@ -60,7 +51,9 @@ export function Toaster() {
 
   useRejectedOps(
     useCallback(({ reason }: RejectedDetail) => {
-      showToast({ message: `A change didn’t save: ${REJECTED[reason]}.` });
+      showToast({
+        message: copy.toasts.rejected(copy.toasts.reasons[reason]),
+      });
     }, []),
   );
   useMergedOps(
@@ -68,8 +61,8 @@ export function Toaster() {
       if (op.type !== "addItem") return;
       showToast({
         message: changed
-          ? `“${op.args.name}” was already on the list. It’s unchecked now.`
-          : `“${op.args.name}” was already on the list.`,
+          ? copy.toasts.mergedUnchecked(op.args.name)
+          : copy.toasts.merged(op.args.name),
       });
     }, []),
   );

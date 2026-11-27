@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { copy } from "@/copy";
 import { EMAIL_NOT_ALLOWED } from "@/lib/auth-errors";
 import { getCurrentUser } from "@/lib/session";
 import { GoogleSignInButton } from "./google-sign-in-button";
 
-export const metadata: Metadata = { title: "Sign in – Shopping Lists" };
+export const metadata: Metadata = {
+  title: copy.app.pageTitle(copy.signIn.title),
+};
 
 export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-16">
       <h1 className="text-5xl leading-[0.95] font-semibold tracking-tight text-balance text-accent">
-        Shopping Lists
+        {copy.app.name}
       </h1>
-      <p className="mt-4 text-lg text-ink-muted">
-        Sign in to see the lists you share.
-      </p>
+      <p className="mt-4 text-lg text-ink-muted">{copy.signIn.intro}</p>
       <Suspense>
         <RedirectIfSignedIn searchParams={searchParams} />
         <SignInError searchParams={searchParams} />
@@ -42,8 +43,8 @@ async function SignInError({
   if (!error) return null;
   const message =
     error === EMAIL_NOT_ALLOWED
-      ? "This Google account can’t use Shopping Lists. Sign in with the account you use for the lists."
-      : "Sign-in didn’t finish. Try again.";
+      ? copy.signIn.emailNotAllowed
+      : copy.signIn.failed;
   return (
     <p
       role="alert"

@@ -38,6 +38,8 @@ It's hosted on Fly.io behind Cloudflare.
 
 When the change came over MCP, "[Name]" becomes "[Name] (via Claude)".
 
+The sentences are in the dictionary (`push.events` in `src/copy/en.ts`, #66). `src/server/notify/templates.ts` fills in the values.
+
 ## Architecture
 
 ```
@@ -297,6 +299,13 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 
 ## UI
 Mobile-first. Routes under `src/app/(app)/`.
+
+- **Copy (#66):** all the text that the app shows is in one typed dictionary, `src/copy/en.ts`, exported as `copy` from `src/copy`. This includes headings, labels, `aria-label` and icon labels, sr-only text, toasts, dialogs, relative times and history lines, the Web Awesome "Fewer"/"More" overrides, push text, page titles, and the manifest. List and item names are data, not copy. The Claude summary prompt (`summarize.ts`) is model input, not copy, and MCP tool text is for the model, thus both stay in their modules.
+  - One module for server and client components, the service worker, and the e2e tests: a static import, so no request-time work under Cache Components. This is the dictionary approach of the Next.js i18n guide, without `server-only` and without a `[lang]` segment.
+  - Text with values is a function (`copy.lists.deleted(name)`). Counts use `pluralFor(locale)` (`src/copy/plural.ts`, `Intl.PluralRules`), not `n === 1`. A missing key or a wrong value fails `npm run typecheck`.
+  - One locale (`en`). To add one: a new file of type `Dictionary`, added to `dictionaries` in `src/copy/index.ts`. Components do not change. `locale` is also the `<html lang>` and the `Intl` locale.
+  - ESLint (`eslint.config.mjs`) refuses JSX text and literal `label`, `placeholder`, `hint`, `title`, `alt`, `aria-label`, and `confirmLabel` props in `src/app` and `src/client`.
+  - The e2e tests import `copy`, so a copy change does not break them.
 
 - **`/sign-in`:** one "Sign in with Google" button. `src/proxy.ts` (Next 16 renamed middleware to proxy) sends signed-out users here, and allowlist rejections show a short error.
 - **`/`:** the lists. Create, rename, delete with undo, and presence dots. On desktop it's a two-pane layout: a list sidebar beside the open list.

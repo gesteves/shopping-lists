@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { copy } from "@/copy";
 import { requireUser } from "@/lib/session";
 import { SyncStarter } from "../sync-starter";
 import { SyncStatus } from "./sync-status";
@@ -16,7 +17,7 @@ export async function AppHeader() {
           className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
         >
           <wa-icon name="gear"></wa-icon>
-          Settings
+          {copy.header.settings}
         </Link>
         <Avatar name={user.name} image={user.image} />
       </HeaderFrame>
@@ -30,7 +31,7 @@ export function HeaderFrame({ children }: { children?: React.ReactNode }) {
     <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="flex min-h-14 items-center justify-between gap-4 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]">
         <Link href="/" className="rounded-sm text-lg font-bold tracking-tight">
-          Shopping Lists
+          {copy.app.name}
         </Link>
         <div className="flex items-center gap-3">{children}</div>
       </div>
@@ -43,7 +44,7 @@ function Avatar({ name, image }: { name: string; image: string | null }) {
     <wa-avatar
       image={image ?? undefined}
       initials={name.slice(0, 1).toUpperCase()}
-      label={`Signed in as ${name}`}
+      label={copy.header.signedInAs(name)}
       style={{ "--size": "2rem" }}
     ></wa-avatar>
   );

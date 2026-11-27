@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { copy } from "@/copy";
 import { authClient } from "@/lib/auth-client";
 
 /**
@@ -28,8 +29,7 @@ export function ConsentButtons() {
           role="alert"
           className="mt-6 border-l-4 border-danger py-1 pl-3 text-danger"
         >
-          That didn’t work. Go back to the app that sent you here and connect
-          again.
+          {copy.consent.failed}
         </p>
       )}
       <div className="mt-8 flex flex-col gap-3 sm:flex-row-reverse">
@@ -41,7 +41,7 @@ export function ConsentButtons() {
           disabled={pending !== null}
           onClick={() => answer(true)}
         >
-          Connect
+          {copy.consent.connect}
         </wa-button>
         <wa-button
           appearance="outlined"
@@ -51,7 +51,7 @@ export function ConsentButtons() {
           disabled={pending !== null}
           onClick={() => answer(false)}
         >
-          Don’t connect
+          {copy.consent.dontConnect}
         </wa-button>
       </div>
     </>

@@ -91,3 +91,20 @@ export function mcpCall(
     },
   });
 }
+
+/** `text` with the RegExp special characters escaped. */
+export function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * A RegExp for a copy function with a count. It matches the text for all
+ * counts: `anyCount(copy.sync.changesToSync)` matches "1 change to sync"
+ * and "4 changes to sync".
+ */
+export function anyCount(text: (n: number) => string): RegExp {
+  const forms = [1, 7].map((n) =>
+    escapeRegExp(text(n)).replace(String(n), "\\d+"),
+  );
+  return new RegExp(forms.join("|"));
+}

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useSuggestionCandidates } from "@/client/hooks";
 import { rankSuggestions } from "@/client/suggest";
+import { copy } from "@/copy";
 import { mutate } from "@/client/sync";
 import { nameKey } from "@/shared/names";
 import { ITEM_NAME_MAX, NOTES_MAX, QUANTITY_MAX } from "@/shared/ops";
@@ -145,7 +146,7 @@ export function AddBar({
   return (
     <form
       onSubmit={submit}
-      aria-label="Add an item"
+      aria-label={copy.addBar.label}
       // -mb-(--main-pb): no gap below the bar (layout.tsx).
       className="sticky bottom-0 -mx-4 mt-auto -mb-(--main-pb) border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:mx-0 lg:rounded-t-2xl lg:border-x"
     >
@@ -153,7 +154,7 @@ export function AddBar({
         <ul
           id={ids.listbox}
           role="listbox"
-          aria-label="Suggestions"
+          aria-label={copy.addBar.suggestions}
           className="absolute inset-x-4 bottom-full mb-2 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
         >
           {suggestions.map((s, i) => (
@@ -174,7 +175,7 @@ export function AddBar({
       )}
       <div className="flex gap-2">
         <label htmlFor={ids.name} className="sr-only">
-          Item name
+          {copy.addBar.name}
         </label>
         <input
           ref={input}
@@ -195,7 +196,7 @@ export function AddBar({
           aria-activedescendant={
             open && active >= 0 ? `${ids.listbox}-${active}` : undefined
           }
-          placeholder="Add item"
+          placeholder={copy.addBar.placeholder}
           maxLength={ITEM_NAME_MAX}
           enterKeyHint="enter"
           autoComplete="off"
@@ -210,7 +211,7 @@ export function AddBar({
           aria-controls={ids.details}
           onClick={() => setDetails(!details)}
         >
-          <wa-icon name="sliders" label="Quantity and notes"></wa-icon>
+          <wa-icon name="sliders" label={copy.addBar.details}></wa-icon>
         </wa-button>
         <wa-button
           type="submit"
@@ -219,17 +220,21 @@ export function AddBar({
           disabled={!name.trim()}
         >
           <wa-icon slot="start" name="plus"></wa-icon>
-          Add
+          {copy.addBar.add}
         </wa-button>
       </div>
       {details && (
         <div id={ids.details} className="mt-3 flex flex-col gap-3">
-          <Stepper value={quantity} onChange={setQuantity} label="Quantity" />
+          <Stepper
+            value={quantity}
+            onChange={setQuantity}
+            label={copy.addBar.quantity}
+          />
           <wa-textarea
-            label="Notes"
+            label={copy.addBar.notes}
             value={notes}
             onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
-            placeholder="For example, the brand or the size"
+            placeholder={copy.addBar.notesPlaceholder}
             maxlength={NOTES_MAX}
             rows={2}
           ></wa-textarea>
@@ -239,17 +244,27 @@ export function AddBar({
         open={duplicate !== null}
         label={
           duplicate?.item.checked
-            ? `Already on the list. Uncheck “${duplicate.item.name}”?`
-            : `“${duplicate?.item.name ?? ""}” is already on the list.`
+            ? copy.addBar.checkedTitle(duplicate.item.name)
+            : copy.addBar.duplicateTitle(duplicate?.item.name ?? "")
         }
-        confirmLabel={duplicate?.item.checked ? "Uncheck" : "Add more"}
+        confirmLabel={
+          duplicate?.item.checked
+            ? copy.addBar.checkedConfirm
+            : copy.addBar.duplicateConfirm
+        }
         onConfirm={resolveDuplicate}
         onClose={() => setDuplicate(null)}
       >
         {duplicate &&
           (duplicate.item.checked
-            ? "It’s checked off. Uncheck it to get it again."
-            : `Add ${duplicate.entry.quantity} more? Then it’s ×${Math.min(QUANTITY_MAX, duplicate.item.quantity + duplicate.entry.quantity)}.`)}
+            ? copy.addBar.checkedBody
+            : copy.addBar.duplicateBody(
+                duplicate.entry.quantity,
+                Math.min(
+                  QUANTITY_MAX,
+                  duplicate.item.quantity + duplicate.entry.quantity,
+                ),
+              ))}
       </ConfirmDialog>
     </form>
   );

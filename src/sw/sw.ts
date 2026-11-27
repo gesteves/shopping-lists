@@ -5,6 +5,7 @@
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
+import { copy } from "../copy";
 import { openUrl, targetUrl } from "./open-url";
 
 declare global {
@@ -55,7 +56,7 @@ self.addEventListener("push", (event) => {
     data = { body: event.data?.text() };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "Shopping Lists", {
+    self.registration.showNotification(data.title || copy.push.title, {
       body: data.body ?? "",
       tag: data.tag,
       icon: "/icon-192.png",

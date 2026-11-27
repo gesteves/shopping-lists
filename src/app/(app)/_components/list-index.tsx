@@ -7,6 +7,7 @@ import { useListSummaries } from "@/client/hooks";
 import type { ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
+import { copy } from "@/copy";
 import { LIST_NAME_MAX } from "@/shared/ops";
 import { ListViewers } from "./presence";
 import { ConfirmDialog, useWaEvents } from "./wa";
@@ -25,12 +26,10 @@ export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
         id="lists-heading"
         className="px-1 text-3xl font-bold tracking-tight lg:text-xl"
       >
-        Lists
+        {copy.lists.heading}
       </Heading>
       {lists === undefined ? null : lists.length === 0 ? (
-        <p className="px-1 text-ink-muted">
-          No lists yet. Make one for each store you go to.
-        </p>
+        <p className="px-1 text-ink-muted">{copy.lists.empty}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {lists.map((list) => (
@@ -41,10 +40,6 @@ export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
       <CreateListForm />
     </section>
   );
-}
-
-function remainingText(n: number) {
-  return n === 0 ? "Nothing to get" : `${n} to get`;
 }
 
 function ListRow({ list }: { list: ListSummary }) {
@@ -85,7 +80,7 @@ function ListRow({ list }: { list: ListSummary }) {
             {list.name}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
-            {remainingText(list.remaining)}
+            {copy.lists.remaining(list.remaining)}
             <ListViewers listId={list.id} />
           </span>
         </Link>
@@ -97,16 +92,19 @@ function ListRow({ list }: { list: ListSummary }) {
             size="l"
             className="me-2"
           >
-            <wa-icon name="ellipsis" label={`More for ${list.name}`}></wa-icon>
+            <wa-icon
+              name="ellipsis"
+              label={copy.lists.more(list.name)}
+            ></wa-icon>
           </wa-button>
           <wa-dropdown-item value="rename">
             <wa-icon slot="icon" name="pen"></wa-icon>
-            Rename
+            {copy.common.rename}
           </wa-dropdown-item>
           <wa-divider></wa-divider>
           <wa-dropdown-item value="delete" variant="danger">
             <wa-icon slot="icon" name="trash-can"></wa-icon>
-            Delete
+            {copy.common.delete}
           </wa-dropdown-item>
         </wa-dropdown>
       </div>
@@ -136,9 +134,9 @@ export function DeleteDialog({
     await mutate({ type: "deleteList", args: { listId: list.id } });
     onDeleted?.();
     showToast({
-      message: `Deleted the “${list.name}” list.`,
+      message: copy.lists.deleted(list.name),
       action: {
-        label: "Undo",
+        label: copy.common.undo,
         run: () =>
           void mutate({ type: "restoreList", args: { listId: list.id } }),
       },
@@ -147,15 +145,13 @@ export function DeleteDialog({
   return (
     <ConfirmDialog
       open={open}
-      label={`Delete the “${list.name}” list?`}
-      confirmLabel="Delete list"
+      label={copy.lists.deleteTitle(list.name)}
+      confirmLabel={copy.lists.deleteConfirm}
       danger
       onConfirm={confirm}
       onClose={onClose}
     >
-      {list.remaining > 0
-        ? `It has ${list.remaining} ${list.remaining === 1 ? "item" : "items"} to get. The other person loses it too.`
-        : "The other person loses it too."}
+      {copy.lists.deleteBody(list.remaining)}
     </ConfirmDialog>
   );
 }
@@ -189,7 +185,7 @@ export function RenameForm({
       className="flex flex-col gap-3 rounded-xl border border-accent bg-surface p-3"
     >
       <wa-input
-        label={`New name for “${list.name}”`}
+        label={copy.lists.renameLabel(list.name)}
         value={name}
         onInput={(e) => setName((e.target as HTMLInputElement).value)}
         maxlength={LIST_NAME_MAX}
@@ -199,10 +195,10 @@ export function RenameForm({
       ></wa-input>
       <div className="flex justify-end gap-2">
         <wa-button appearance="plain" onClick={onDone}>
-          Cancel
+          {copy.common.cancel}
         </wa-button>
         <wa-button type="submit" variant="brand">
-          Save
+          {copy.common.save}
         </wa-button>
       </div>
     </form>
@@ -228,8 +224,8 @@ function CreateListForm() {
     <form onSubmit={submit} className="flex items-end gap-2">
       <wa-input
         className="wa-sr-label min-w-0 flex-1"
-        label="New list name"
-        placeholder="New list"
+        label={copy.lists.newName}
+        placeholder={copy.lists.newPlaceholder}
         value={name}
         onInput={(e) => setName((e.target as HTMLInputElement).value)}
         maxlength={LIST_NAME_MAX}
@@ -239,7 +235,7 @@ function CreateListForm() {
       ></wa-input>
       <wa-button type="submit" variant="brand" size="l" disabled={!name.trim()}>
         <wa-icon slot="start" name="plus"></wa-icon>
-        Create
+        {copy.lists.create}
       </wa-button>
     </form>
   );

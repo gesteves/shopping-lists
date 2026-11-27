@@ -29,13 +29,6 @@ export function mcpResource(env: Env = process.env): string {
   return `${appOrigin(env)}/mcp`;
 }
 
-/** What each scope lets an app do, for the consent page and settings. */
-export const SCOPE_TEXT: Record<string, string> = {
-  [SCOPES.read]: "See your lists and items",
-  [SCOPES.write]: "Add, change, check off, and delete lists and items",
-  [SCOPES.offline]: "Stay connected when you aren’t using it",
-};
-
 /**
  * The host that a user can check: the host of an https client ID (CIMD) or
  * of a redirect URI. A private-use scheme (com.example.app:/cb) has no host,

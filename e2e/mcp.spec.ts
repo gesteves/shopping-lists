@@ -8,6 +8,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
+import { copy } from "../src/copy";
 import { mcpCall, signIn, synced } from "./helpers";
 
 const REDIRECT = "http://127.0.0.1:59999/callback";
@@ -46,7 +47,9 @@ async function connectClaude(
     return route.fulfill({ body: "ok" });
   });
   await page.goto(`/api/auth/oauth2/authorize?${params}`);
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page
+    .getByRole("button", { name: copy.consent.connect, exact: true })
+    .click();
   await expect.poll(() => code).not.toBe("");
   const tokens = await request.post("/api/auth/oauth2/token", {
     form: {
@@ -90,10 +93,10 @@ test("a change through Claude appears live, marked via Claude", async ({
   await signIn(page);
   const list = `MCP ${randomUUID().slice(0, 8)}`;
   const index = page
-    .getByRole("region", { name: "Lists" })
+    .getByRole("region", { name: copy.lists.heading })
     .filter({ visible: true });
-  await index.getByLabel("New list name").fill(list);
-  await index.getByRole("button", { name: "Create" }).click();
+  await index.getByLabel(copy.lists.newName).fill(list);
+  await index.getByRole("button", { name: copy.lists.create }).click();
   await index.getByRole("link", { name: list }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: list }),
@@ -119,8 +122,11 @@ test("a change through Claude appears live, marked via Claude", async ({
   const oat = page.getByRole("checkbox", { name: /^Oat milk\b/ });
   await expect(oat).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("checkbox", { name: /^Eggs\b/ })).toBeVisible();
-  await page.getByRole("button", { name: "Edit Oat milk" }).click();
+  await page.getByRole("button", { name: copy.item.edit("Oat milk") }).click();
   await expect(
-    page.getByText(/^Updated by Ben \(via Claude\) · just now$/),
+    page.getByText(
+      copy.item.updated(copy.people.viaClaude("Ben"), copy.time.justNow),
+      { exact: true },
+    ),
   ).toBeVisible();
 });
