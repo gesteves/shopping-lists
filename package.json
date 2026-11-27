@@ -17,7 +17,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "icons": "node scripts/build-icons.mjs",
     "predev": "npm run assets",
-    "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs",
+    "assets": "node scripts/build-icons.mjs && node scripts/build-wa-dark.mjs && node scripts/build-base-css.mjs",
     "try:summaries": "tsx --conditions=react-server scripts/try-summaries.ts"
   },
   "dependencies": {

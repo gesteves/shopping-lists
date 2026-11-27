@@ -2,7 +2,8 @@
 
 import { Serwist } from "@serwist/window";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { showToast } from "@/client/toasts";
 
 let serwist: Serwist | undefined;
 
@@ -17,18 +18,26 @@ function cacheCurrentPage() {
 
 /**
  * Registers the service worker (production only) and saves each page that
- * the app shows. Shows a prompt to reload when a new version takes control.
+ * the app shows. Shows a toast with Reload when a new version takes
+ * control. It stays until the user closes it.
  */
 export function ServiceWorker() {
   const pathname = usePathname();
-  const [updated, setUpdated] = useState(false);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") return;
     if (!("serviceWorker" in navigator) || serwist) return;
     serwist = new Serwist("/sw.js", { scope: "/" });
     serwist.addEventListener("controlling", (event) => {
-      if (event.isUpdate) setUpdated(true);
+      if (event.isUpdate) {
+        showToast({
+          message: "A new version of the app is ready.",
+          icon: "arrow-rotate-right",
+          variant: "brand",
+          duration: 0,
+          action: { label: "Reload", run: () => location.reload() },
+        });
+      }
       // The first page load came before the worker: save it now.
       cacheCurrentPage();
     });
@@ -40,20 +49,5 @@ export function ServiceWorker() {
     if (navigator.serviceWorker?.controller) cacheCurrentPage();
   }, [pathname]);
 
-  if (!updated) return null;
-  return (
-    <wa-callout
-      role="status"
-      variant="brand"
-      className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto max-w-md shadow-lg"
-    >
-      <wa-icon slot="icon" name="arrow-rotate-right"></wa-icon>
-      <div className="flex items-center gap-3">
-        <p className="flex-1">A new version of the app is ready.</p>
-        <wa-button variant="brand" onClick={() => location.reload()}>
-          Reload
-        </wa-button>
-      </div>
-    </wa-callout>
-  );
+  return null;
 }

@@ -1,10 +1,18 @@
 // Toasts: short messages at the bottom of the screen, with an optional
 // action such as Undo. A small external store, for useSyncExternalStore.
+// The Toaster shows each toast in a <wa-toast-item>. The item closes itself
+// after its duration (it shows a countdown ring, and it waits while the
+// pointer is on it), then the Toaster removes it from the store.
 
 export interface Toast {
   id: number;
   message: string;
   action?: { label: string; run: () => void | Promise<void> };
+  /** A Font Awesome icon name. */
+  icon?: string;
+  variant?: "brand" | "success" | "warning" | "danger" | "neutral";
+  /** In ms. 0 keeps the toast until the user closes it. */
+  duration?: number;
 }
 
 /** How long a toast stays, in ms. Long enough to tap Undo. */
@@ -13,7 +21,6 @@ export const TOAST_MS = 5_000;
 let toasts: Toast[] = [];
 let nextId = 1;
 const listeners = new Set<() => void>();
-const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function emit() {
   for (const listener of listeners) listener();
@@ -28,21 +35,15 @@ export const toastStore = {
   },
 };
 
-/** Show a toast. It goes after `ms`. Only the last three stay. */
-export function showToast(toast: Omit<Toast, "id">, ms = TOAST_MS): number {
+/** Show a toast. Only the last three stay. */
+export function showToast(toast: Omit<Toast, "id">): number {
   const id = nextId++;
-  toasts = [...toasts, { ...toast, id }].slice(-3);
-  timers.set(
-    id,
-    setTimeout(() => dismissToast(id), ms),
-  );
+  toasts = [...toasts, { duration: TOAST_MS, ...toast, id }].slice(-3);
   emit();
   return id;
 }
 
 export function dismissToast(id: number): void {
-  clearTimeout(timers.get(id));
-  timers.delete(id);
   if (!toasts.some((t) => t.id === id)) return;
   toasts = toasts.filter((t) => t.id !== id);
   emit();

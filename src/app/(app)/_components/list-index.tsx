@@ -71,12 +71,15 @@ function ListRow({ list }: { list: ListSummary }) {
   }
 
   return (
-    <li className="rounded-xl border border-line bg-surface">
-      <div className="flex items-stretch">
+    // The open list: the whole card is green, with a green border.
+    <li
+      className={`rounded-xl border ${current ? "border-accent bg-accent-soft ring-1 ring-accent" : "border-line bg-surface"}`}
+    >
+      <div className="flex items-center">
         <Link
           href={href}
           aria-current={current ? "page" : undefined}
-          className={`flex min-h-16 flex-1 flex-col justify-center rounded-xl px-4 py-2 ${current ? "bg-accent-soft" : ""}`}
+          className="flex min-h-16 flex-1 flex-col justify-center self-stretch rounded-xl px-4 py-2"
         >
           <span className="text-xl leading-tight font-semibold text-balance break-words">
             {list.name}
@@ -86,14 +89,21 @@ function ListRow({ list }: { list: ListSummary }) {
             <ListViewers listId={list.id} />
           </span>
         </Link>
-        <wa-dropdown ref={menu} placement="bottom-end" className="self-center">
-          <wa-button slot="trigger" appearance="plain" size="l">
+        {/* <wa-dropdown> is display: contents. The button is the flex item. */}
+        <wa-dropdown ref={menu} placement="bottom-end">
+          <wa-button
+            slot="trigger"
+            appearance="plain"
+            size="l"
+            className="me-2"
+          >
             <wa-icon name="ellipsis" label={`More for ${list.name}`}></wa-icon>
           </wa-button>
           <wa-dropdown-item value="rename">
             <wa-icon slot="icon" name="pen"></wa-icon>
             Rename
           </wa-dropdown-item>
+          <wa-divider></wa-divider>
           <wa-dropdown-item value="delete" variant="danger">
             <wa-icon slot="icon" name="trash-can"></wa-icon>
             Delete

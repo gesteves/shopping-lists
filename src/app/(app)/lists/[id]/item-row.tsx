@@ -66,7 +66,7 @@ export function ItemRow({
         appearance="plain"
         size="l"
         onClick={() => onEdit(item)}
-        className="self-center"
+        className="me-2 self-center"
       >
         <wa-icon name="pen" label={`Edit ${item.name}`}></wa-icon>
       </wa-button>
