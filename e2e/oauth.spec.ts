@@ -115,16 +115,20 @@ test("connect an app, then disconnect it in settings", async ({
   expect(after.headers()["www-authenticate"]).toContain("resource_metadata=");
 });
 
-test("/mcp needs a token, and gives 405 for GET", async ({ request }) => {
-  const res = await request.post("/mcp", { data: {} });
-  expect(res.status()).toBe(401);
-  expect(res.headers()["www-authenticate"]).toContain(
-    "/.well-known/oauth-protected-resource/mcp",
-  );
-  expect((await request.get("/mcp")).status()).toBe(405);
-  const meta = await request.get("/.well-known/oauth-authorization-server");
-  expect(meta.status()).toBe(200);
-});
+test(
+  "/mcp needs a token, and gives 405 for GET",
+  { tag: "@once" },
+  async ({ request }) => {
+    const res = await request.post("/mcp", { data: {} });
+    expect(res.status()).toBe(401);
+    expect(res.headers()["www-authenticate"]).toContain(
+      "/.well-known/oauth-protected-resource/mcp",
+    );
+    expect((await request.get("/mcp")).status()).toBe(405);
+    const meta = await request.get("/.well-known/oauth-authorization-server");
+    expect(meta.status()).toBe(200);
+  },
+);
 
 test("the consent page passes the contrast scan in light and dark", async ({
   browser,

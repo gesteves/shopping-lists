@@ -119,7 +119,7 @@ npx playwright install chromium webkit   # one time
 npm run test:e2e
 ```
 
-The e2e tests build the app and start it with a sign-in stub in place of Google, so they need no Google client.
+The e2e tests build the app and start it with a sign-in stub in place of Google, so they need no Google client. To run them again without a new build, use `E2E_NO_BUILD=1 npm run test:e2e`.
 
 ## Deploy
 

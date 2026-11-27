@@ -2,25 +2,12 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { dialog, signIn, synced } from "./helpers";
-
-function index(page: Page) {
-  return page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-}
+import { createList, dialog, openList, signIn, synced } from "./helpers";
 
 async function newList(page: Page, prefix: string) {
   const name = `${prefix} ${randomUUID().slice(0, 8)}`;
-  await index(page).getByLabel(copy.lists.newName).fill(name);
-  await index(page).getByRole("button", { name: copy.lists.create }).click();
-  await expect(index(page).getByRole("link", { name })).toBeVisible();
+  await createList(page, name);
   return name;
-}
-
-async function open(page: Page, name: string) {
-  await index(page).getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 }
 
 function item(page: Page, name: string) {
@@ -37,13 +24,13 @@ test("typing suggests past items from every list", async ({ page }) => {
   // A rare name, so other tests do not change the order.
   const word = `Kohlrabi${randomUUID().slice(0, 4)}`;
   const first = await newList(page, "Past");
-  await open(page, first);
+  await openList(page, first);
   await add(page, `${word} purple`);
   await expect(item(page, `${word} purple`)).toBeVisible();
 
   await page.goto("/");
   const second = await newList(page, "Next");
-  await open(page, second);
+  await openList(page, second);
   const box = page.getByRole("combobox", { name: copy.addBar.name });
   await box.fill(word.toLowerCase());
   const options = page.getByRole("listbox", { name: copy.addBar.suggestions });
@@ -64,7 +51,7 @@ test("typing suggests past items from every list", async ({ page }) => {
 test("a name already on the list asks first", async ({ page }) => {
   await signIn(page);
   const name = await newList(page, "Dupes");
-  await open(page, name);
+  await openList(page, name);
   await add(page, "Butter");
   await expect(item(page, "Butter")).toBeVisible();
 
@@ -95,10 +82,10 @@ test("two people adding the same name make one row", async ({ browser }) => {
     await signIn(b, E2E_SECOND_EMAIL, "Ben");
     const name = await newList(a, "Race");
     await synced(a);
-    await open(a, name);
+    await openList(a, name);
     // Realtime has its own test. Here a reload gets the list.
     await b.reload();
-    await open(b, name);
+    await openList(b, name);
 
     // Both add before either one syncs.
     await Promise.all([add(a, "Avocados"), add(b, "avocados")]);

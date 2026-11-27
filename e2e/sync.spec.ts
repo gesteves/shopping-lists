@@ -3,14 +3,18 @@ import { expect, test } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
 import { serialize } from "../src/shared/hlc";
 
-test("the sync routes need a session", async ({ request }) => {
-  const push = await request.post("/api/sync/push", {
-    data: { clientId: "x", ops: [] },
-  });
-  expect(push.status()).toBe(401);
-  const pull = await request.get("/api/sync/pull?since=0");
-  expect(pull.status()).toBe(401);
-});
+test(
+  "the sync routes need a session",
+  { tag: "@once" },
+  async ({ request }) => {
+    const push = await request.post("/api/sync/push", {
+      data: { clientId: "x", ops: [] },
+    });
+    expect(push.status()).toBe(401);
+    const pull = await request.get("/api/sync/pull?since=0");
+    expect(pull.status()).toBe(401);
+  },
+);
 
 test("a signed-in client pushes ops and pulls them back", async ({ page }) => {
   const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });

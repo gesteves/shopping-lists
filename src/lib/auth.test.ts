@@ -132,6 +132,15 @@ describe("sign-in", () => {
     expect(res.status).toBe(404);
   });
 
+  it("turns off the rate limit only with the stub", async () => {
+    // All the e2e requests come from one IP.
+    const ctx = await auth.$context;
+    expect(ctx.rateLimit.enabled).toBe(false);
+    expect(ctx.options.rateLimit).toEqual({ enabled: false });
+    const off = createAuth(db, testEnv({ AUTH_STUB: "0" }));
+    expect((await off.$context).options.rateLimit).toBeUndefined();
+  });
+
   it("uses Secure cookies on an https URL", async () => {
     const https = createAuth(
       db,

@@ -26,11 +26,15 @@ test("a signed-out page request goes to /sign-in", async ({ page }) => {
   await expect(page).toHaveURL("/sign-in");
 });
 
-test("a signed-out API request gets 401", async ({ request }) => {
-  const res = await request.get("/api/lists");
-  expect(res.status()).toBe(401);
-  expect(await res.json()).toEqual({ error: "unauthorized" });
-});
+test(
+  "a signed-out API request gets 401",
+  { tag: "@once" },
+  async ({ request }) => {
+    const res = await request.get("/api/lists");
+    expect(res.status()).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  },
+);
 
 test("an allowlisted account signs in and out", async ({ page }) => {
   await stubSignIn(page, E2E_ALLOWED_EMAIL);

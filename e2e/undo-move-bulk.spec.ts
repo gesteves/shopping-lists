@@ -2,24 +2,15 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { dialog, signIn, synced } from "./helpers";
-
-function index(page: Page) {
-  return page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-}
-
-async function createList(page: Page, name: string) {
-  await index(page).getByLabel(copy.lists.newName).fill(name);
-  await index(page).getByRole("button", { name: copy.lists.create }).click();
-  await expect(index(page).getByRole("link", { name })).toBeVisible();
-}
-
-async function openList(page: Page, name: string) {
-  await index(page).getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-}
+import {
+  createList,
+  dialog,
+  listAction,
+  listIndex,
+  openList,
+  signIn,
+  synced,
+} from "./helpers";
 
 async function add(page: Page, ...names: string[]) {
   for (const name of names) {
@@ -75,18 +66,15 @@ test("delete a list, then undo", async ({ page }) => {
   await signIn(page);
   const name = `Undo list ${randomUUID().slice(0, 8)}`;
   await createList(page, name);
-  await index(page)
-    .getByRole("button", { name: copy.lists.more(name) })
-    .click();
-  await index(page).getByRole("menuitem", { name: copy.common.delete }).click();
+  await listAction(page, name, copy.common.delete);
   await dialog(page, copy.lists.deleteTitle(name))
     .getByRole("button", { name: copy.lists.deleteConfirm })
     .click();
-  await expect(index(page).getByRole("link", { name })).toHaveCount(0);
+  await expect(listIndex(page).getByRole("link", { name })).toHaveCount(0);
   await toast(page, copy.lists.deleted(name))
     .getByRole("button", { name: copy.common.undo })
     .click();
-  await expect(index(page).getByRole("link", { name })).toBeVisible();
+  await expect(listIndex(page).getByRole("link", { name })).toBeVisible();
 });
 
 test("move an item to a different list", async ({ page }) => {

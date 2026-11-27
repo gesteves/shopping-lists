@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { signIn, switchControl, synced } from "./helpers";
+import { createList, openList, signIn, switchControl, synced } from "./helpers";
 
 async function scan(page: Page, screen: string) {
   // Wait for the Web Awesome components: undefined tags are hidden.
@@ -60,12 +60,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await scan(page, "home");
 
       const name = `A11y ${randomUUID().slice(0, 8)}`;
-      const index = page
-        .getByRole("region", { name: copy.lists.heading })
-        .filter({ visible: true });
-      await index.getByLabel(copy.lists.newName).fill(name);
-      await index.getByRole("button", { name: copy.lists.create }).click();
-      await index.getByRole("link", { name }).click();
+      await createList(page, name);
+      await openList(page, name);
       for (const item of ["Milk", "Eggs"]) {
         await page.getByLabel(copy.addBar.name).fill(item);
         await page
@@ -115,12 +111,8 @@ test("the item sheet opens at once with reduced motion", async ({
   try {
     await signIn(page);
     const name = `Motion ${randomUUID().slice(0, 8)}`;
-    const index = page
-      .getByRole("region", { name: copy.lists.heading })
-      .filter({ visible: true });
-    await index.getByLabel(copy.lists.newName).fill(name);
-    await index.getByRole("button", { name: copy.lists.create }).click();
-    await index.getByRole("link", { name }).click();
+    await createList(page, name);
+    await openList(page, name);
     await page.getByLabel(copy.addBar.name).fill("Milk");
     await page
       .getByRole("button", { name: copy.addBar.add, exact: true })
@@ -222,13 +214,8 @@ test("Keep screen on is on the list page too", async ({ page }) => {
   const wake = await fakeWakeLock(page);
   await signIn(page);
   const name = `Screen ${randomUUID().slice(0, 8)}`;
-  const index = page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-  await index.getByLabel(copy.lists.newName).fill(name);
-  await index.getByRole("button", { name: copy.lists.create }).click();
-  await index.getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await createList(page, name);
+  await openList(page, name);
 
   const setting = page.getByRole("switch", {
     name: copy.settings.keepScreenOn,

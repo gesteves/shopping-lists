@@ -35,11 +35,14 @@ concurrency:
 #     parties.
 #   - The registry tokens (WEBAWESOME_NPM_TOKEN, FONTAWESOME_NPM_AUTH_TOKEN,
 #     #51) go only to the steps that install packages: "Install
-#     dependencies", and the deploy step as Fly build secrets. .npmrc reads
+#     dependencies" in each job, and the deploy step as Fly build secrets. .npmrc reads
 #     them from the env. `allowScripts` stops install scripts that we did not
 #     approve.
 #   - The checks need only the registry tokens. PRs from forks get no
 #     secrets, thus they fail. This is OK for this private app.
+
+# The e2e tests run in their own jobs, one for each browser, at the same time
+# as `checks` (#85). Each job builds the app one time.
 
 jobs:
   checks:
@@ -93,35 +96,81 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # The audit reads the lockfile only.
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: E2E (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    strategy:
+      # Run all browsers, also when one fails.
+      fail-fast: false
+      matrix:
+        include:
+          - project: mobile
+            browser: webkit
+          - project: desktop
+            browser: chromium
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Pro packages come from private registries (.npmrc).
+      - name: Install dependencies
+        env:
+          WEBAWESOME_NPM_TOKEN: ${{ secrets.WEBAWESOME_NPM_TOKEN }}
+          FONTAWESOME_NPM_AUTH_TOKEN: ${{ secrets.FONTAWESOME_NPM_AUTH_TOKEN }}
+        run: |
+          scripts/check-registry-tokens.sh
+          npm ci
+
       - name: Build
         run: npm run build
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+      - name: Install the Playwright browser
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: npx playwright install --with-deps "$BROWSER"
 
+      # E2E_NO_BUILD: the Playwright web server uses the build of the last
+      # step, and does not build again.
       - name: End-to-end tests
-        run: npm run test:e2e
+        env:
+          E2E_NO_BUILD: 1
+          PROJECT: ${{ matrix.project }}
+        run: npx playwright test --project="$PROJECT"
 
+      # Also when a test is flaky: test-results/ has files only for a test
+      # that failed one or more times. The trace of the retry shows the cause.
       - name: Upload the Playwright report
-        if: failure()
+        if: ${{ !cancelled() && hashFiles('test-results/**') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/
           retention-days: 14
           if-no-files-found: ignore
 
-      # The audit reads the lockfile only.
-      - name: npm audit
-        run: npm audit --omit=dev --audit-level=high
-
   notify-checks:
     name: Notify checks result
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: checks
+    needs: [checks, e2e]
     if: always()
 
     steps:
@@ -136,7 +185,7 @@ jobs:
         uses: ./.github/actions/ci-context
 
       - name: Notify Slack (success)
-        if: needs.checks.result == 'success'
+        if: needs.checks.result == 'success' && needs.e2e.result == 'success'
         continue-on-error: true
         uses: ./.github/actions/notify-slack
         with:
@@ -146,7 +195,7 @@ jobs:
           fallback: "Shopping Lists checks passed on ${{ env.BRANCH_NAME }}"
 
       - name: Notify Slack (failure)
-        if: needs.checks.result == 'failure'
+        if: needs.checks.result == 'failure' || needs.e2e.result == 'failure'
         continue-on-error: true
         uses: ./.github/actions/notify-slack
         with:
@@ -159,7 +208,7 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: checks
+    needs: [checks, e2e]
     # No cancel: a stopped deploy can leave a half-done release.
     concurrency: deploy
     # A manual run has no head commit. Then contains() gets an empty value and

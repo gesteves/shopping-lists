@@ -20,17 +20,31 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // CI uploads the HTML report when a test fails.
+  // CI uploads the HTML report when a test fails or is flaky.
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  // Show the slow tests at the end of the run.
+  reportSlowTests: { max: 10, threshold: 15_000 },
   use: { baseURL, trace: "on-first-retry" },
   projects: [
-    { name: "mobile", use: { ...devices["iPhone 15"] } },
+    // A test with the tag "@once" does not use a browser in a way that
+    // changes the result (for example, it only uses `request`). It runs on
+    // desktop only.
+    {
+      name: "mobile",
+      use: { ...devices["iPhone 15"] },
+      grepInvert: /@once/,
+    },
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     // Test the production build, not the dev server. The server applies the
-    // migrations at boot.
-    command: `rm -f ${E2E_DATABASE_PATH}* && npm run build && npm run start`,
+    // migrations at boot. E2E_NO_BUILD=1 uses the last build: CI builds in
+    // its own step.
+    command: [
+      `rm -f ${E2E_DATABASE_PATH}*`,
+      ...(process.env.E2E_NO_BUILD ? [] : ["npm run build"]),
+      "npm run start",
+    ].join(" && "),
     env: {
       PORT: String(PORT),
       DATABASE_PATH: E2E_DATABASE_PATH,
