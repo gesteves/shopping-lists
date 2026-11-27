@@ -7,6 +7,8 @@ import "server-only";
 import { and, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
 import { activity, items, lists, processedOps } from "@/db/schema";
+import { DAY_MS } from "@/shared/expiry";
+import { expireCheckedItems } from "./ops";
 
 /** Delete tombstones and old bookkeeping rows after this many days. */
 export const PURGE_AFTER_DAYS = 30;
@@ -22,8 +24,6 @@ export interface PurgeResult {
   /** The new value of server_seq.purged_seq. */
   purgedSeq: number;
 }
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Delete the rows of lists and items that the server marked as deleted more
@@ -117,14 +117,39 @@ export function runPurge(
   }
 }
 
-/** Starts the schedule one time for the process. */
-export function startPurger(purge?: (days: number) => PurgeResult): void {
+/** The expiry of old checked items runs this often (#112). */
+export const EXPIRE_EVERY_MS = 60 * 60 * 1000;
+
+/** Runs one expiry of old checked items. Logs the count, and never throws. */
+export function runExpiry(
+  expire: () => number = expireCheckedItems,
+): number | null {
+  try {
+    const count = expire();
+    console.log("Expired checked items:", count);
+    return count;
+  } catch (error) {
+    console.error("Expiry failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Starts the schedule one time for the process: the purge each day, and the
+ * expiry of checked items each hour. Both start FIRST_PURGE_MS after boot.
+ */
+export function startPurger(
+  purge?: (days: number) => PurgeResult,
+  expire?: () => number,
+): void {
   const KEY = Symbol.for("shopping-lists.purger");
   const store = globalThis as typeof globalThis & { [KEY]?: true };
   if (store[KEY]) return;
   store[KEY] = true;
   setTimeout(() => {
     runPurge(purge);
+    runExpiry(expire);
     setInterval(() => runPurge(purge), PURGE_EVERY_MS).unref();
+    setInterval(() => runExpiry(expire), EXPIRE_EVERY_MS).unref();
   }, FIRST_PURGE_MS).unref();
 }

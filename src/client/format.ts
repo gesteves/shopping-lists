@@ -1,11 +1,12 @@
 // Text for the UI: relative times and "who changed it" lines. The words
 // are in the dictionary (src/copy).
 import { copy, locale } from "@/copy";
+import { DAY_MS } from "@/shared/expiry";
 import type { ItemRecord, UserRecord } from "@/shared/sync";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+const DAY = DAY_MS;
 
 /** "just now", "5 min. ago", "yesterday", "3 days ago", or a date. */
 export function relativeTime(at: number, now: number = Date.now()): string {

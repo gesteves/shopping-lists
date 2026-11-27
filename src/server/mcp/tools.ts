@@ -542,7 +542,8 @@ export const TOOLS = [
   defineTool({
     name: "update_item",
     title: "Update an item",
-    description: "Change the name, the quantity, or the notes of an item.",
+    description:
+      "Change the name, the quantity, or the notes of an item. A change to a checked item also unchecks it, because the person is going to buy it again.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -668,7 +669,8 @@ export const TOOLS = [
   defineTool({
     name: "move_item",
     title: "Move an item",
-    description: "Move an item from one list to another list.",
+    description:
+      "Move an item from one list to another list. A checked item is unchecked by the move.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,

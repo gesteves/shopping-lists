@@ -1,5 +1,6 @@
 // Reads of the local view. The hooks in ./hooks.ts use them.
 import { copy } from "@/copy";
+import { expiresAt, isOlder } from "@/shared/expiry";
 import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
 import type { ClientDb } from "./db";
@@ -22,6 +23,32 @@ export function sortItems(items: ItemRecord[]): ItemRecord[] {
       b.updatedAt - a.updatedAt ||
       a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * The items of a list page in two parts (#112): the main list (in the order
+ * of `items`), and the checked items that the server deletes in the next
+ * OLDER_DAYS. The older items go with the delete that comes soonest last.
+ * Without `now` (before mount), all items are in the main list.
+ */
+export function splitOlder(
+  items: ItemRecord[],
+  now: number | null,
+): { current: ItemRecord[]; older: ItemRecord[] } {
+  if (now === null) return { current: items, older: [] };
+  const current: ItemRecord[] = [];
+  const older: ItemRecord[] = [];
+  for (const item of items) {
+    const old = item.checked && item.checkedAt !== null;
+    if (old && isOlder(item.checkedAt!, now)) older.push(item);
+    else current.push(item);
+  }
+  older.sort(
+    (a, b) =>
+      expiresAt(b.checkedAt!) - expiresAt(a.checkedAt!) ||
+      a.name.localeCompare(b.name),
+  );
+  return { current, older };
 }
 
 export interface ListView {

@@ -5,9 +5,13 @@ import { items, lists } from "@/db/schema";
 import { HlcClock, serialize } from "@/shared/hlc";
 import { opSchema, type Op } from "@/shared/ops";
 import { SAM, createTestDb } from "@/test/db";
-import { applyOps } from "./ops";
+import { activity } from "@/db/schema";
+import { bus } from "./bus";
+import { applyOps, expireCheckedItems } from "./ops";
 import {
+  EXPIRE_EVERY_MS,
   purgeTombstones,
+  runExpiry,
   type PurgeResult,
   FIRST_PURGE_MS,
   PURGE_AFTER_DAYS,
@@ -34,19 +38,36 @@ describe("purge schedule", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const purge = vi.fn(() => RESULT);
-    startPurger(purge);
+    const expire = vi.fn(() => 0);
+    startPurger(purge, expire);
     // A second start does nothing.
-    startPurger(purge);
+    startPurger(purge, expire);
 
     vi.advanceTimersByTime(FIRST_PURGE_MS - 1);
     expect(purge).not.toHaveBeenCalled();
+    expect(expire).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(purge).toHaveBeenCalledTimes(1);
+    expect(expire).toHaveBeenCalledTimes(1);
     expect(purge).toHaveBeenCalledWith(PURGE_AFTER_DAYS);
     expect(PURGE_AFTER_DAYS).toBe(30);
 
-    vi.advanceTimersByTime(PURGE_EVERY_MS);
+    // The expiry runs each hour, the purge each day.
+    vi.advanceTimersByTime(EXPIRE_EVERY_MS);
+    expect(expire).toHaveBeenCalledTimes(2);
+    expect(purge).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(PURGE_EVERY_MS - EXPIRE_EVERY_MS);
     expect(purge).toHaveBeenCalledTimes(2);
+    expect(expire).toHaveBeenCalledTimes(25);
+  });
+
+  it("does not throw when an expiry fails", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(
+      runExpiry(() => {
+        throw new Error("disk full");
+      }),
+    ).toBeNull();
   });
 
   it("does not throw when a purge fails", () => {
@@ -174,6 +195,83 @@ describe("purgeTombstones", () => {
       processedOps: 0,
       activity: 0,
       purgedSeq: 0,
+    });
+  });
+
+  describe("expireCheckedItems", () => {
+    const old = NOW - 40 * DAY;
+
+    /** Items checked at different times, by Sam. */
+    function seedChecked() {
+      apply(
+        old,
+        op("createList", { listId: LIST, name: "Target" }, old),
+        op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
+        op("addItem", { itemId: ITEM_2, listId: LIST, name: "Eggs" }, old),
+        op("addItem", { itemId: ITEM_3, listId: LIST, name: "Bread" }, old),
+      );
+      // Milk: checked 31 days ago. Eggs: 29 days ago. Bread: not checked.
+      apply(
+        NOW,
+        op("check", { itemId: ITEM }, NOW - 31 * DAY),
+        op("check", { itemId: ITEM_2 }, NOW - 29 * DAY),
+      );
+    }
+
+    function expire(at = NOW) {
+      return expireCheckedItems({
+        db,
+        clock: new HlcClock("server", undefined, () => at),
+        now: () => at,
+      });
+    }
+
+    it("deletes only checked items older than 30 days, with a new seq", () => {
+      seedChecked();
+      const before = getItem(ITEM)!.seq;
+      const pokes: number[] = [];
+      const onPoke = ({ seq }: { seq: number }) => pokes.push(seq);
+      bus.on("poke", onPoke);
+      const activityBefore = db.select().from(activity).all().length;
+      try {
+        expect(expire()).toBe(1);
+      } finally {
+        bus.off("poke", onPoke);
+      }
+      const milk = getItem(ITEM)!;
+      expect(milk.deletedAt?.getTime()).toBe(NOW);
+      expect(milk.tombstonedAt?.getTime()).toBe(NOW);
+      expect(milk.seq).toBeGreaterThan(before);
+      expect(pokes).toEqual([milk.seq]);
+      expect(getItem(ITEM_2)?.deletedAt).toBeNull();
+      expect(getItem(ITEM_3)?.deletedAt).toBeNull();
+      // No activity rows, thus no notification.
+      expect(db.select().from(activity).all()).toHaveLength(activityBefore);
+      // A second run deletes nothing.
+      expect(expire()).toBe(0);
+    });
+
+    it("lets the purge remove the row 30 days later", () => {
+      seedChecked();
+      expire();
+      expect(purgeTombstones(30, { db, now: () => NOW + 29 * DAY }).items).toBe(
+        0,
+      );
+      expect(purgeTombstones(30, { db, now: () => NOW + 31 * DAY }).items).toBe(
+        1,
+      );
+      expect(getItem(ITEM)).toBeUndefined();
+    });
+
+    it("keeps the delete against an older uncheck, not a newer one", () => {
+      seedChecked();
+      expire();
+      // An uncheck made offline before the job.
+      apply(NOW + 1000, op("uncheck", { itemId: ITEM }, NOW - DAY));
+      expect(getItem(ITEM)?.deletedAt).not.toBeNull();
+      // An uncheck after the job brings the item back.
+      apply(NOW + 2000, op("uncheck", { itemId: ITEM }, NOW + 1500));
+      expect(getItem(ITEM)).toMatchObject({ deletedAt: null, checked: false });
     });
   });
 });

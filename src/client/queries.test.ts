@@ -7,8 +7,10 @@ import {
   readList,
   readListSummaries,
   readLists,
+  splitOlder,
   type ListSummary,
 } from "./queries";
+import { DAY_MS } from "@/shared/expiry";
 
 let db: ClientDb;
 let n = 0;
@@ -159,5 +161,40 @@ describe("listLine", () => {
     expect(listLine(summary({ remaining: 2, summary: "Milk and eggs" }))).toBe(
       "Milk and eggs",
     );
+  });
+});
+
+describe("splitOlder", () => {
+  const NOW = new Date(2026, 11, 1, 12).getTime();
+  const row = (id: string, checkedDaysAgo: number | null): ItemRecord => ({
+    ...base,
+    id,
+    listId: "l",
+    name: id,
+    quantity: 1,
+    notes: "",
+    checked: checkedDaysAgo !== null,
+    checkedAt: checkedDaysAgo === null ? null : NOW - checkedDaysAgo * DAY_MS,
+    updatedAt: 1,
+    deletedAt: null,
+  });
+
+  it("moves checked items in their last 15 days to the older part", () => {
+    const items = [
+      row("open", null),
+      row("recent", 3),
+      row("older", 16),
+      row("oldest", 29),
+      row("older-2", 20),
+    ];
+    const { current, older } = splitOlder(items, NOW);
+    expect(current.map((i) => i.id)).toEqual(["open", "recent"]);
+    // The delete that comes soonest is last.
+    expect(older.map((i) => i.id)).toEqual(["older", "older-2", "oldest"]);
+  });
+
+  it("keeps all items in the main part before the time is known", () => {
+    const items = [row("open", null), row("oldest", 29)];
+    expect(splitOlder(items, null)).toEqual({ current: items, older: [] });
   });
 });

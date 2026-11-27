@@ -71,6 +71,7 @@ const MCP_INSTRUCTIONS = `Shared shopping lists for two people. Each list has it
 - Items are sorted with unchecked items first, then the most recently changed first.
 - Adding an item whose name is already on the list does not add a second one. If it was checked off, it becomes unchecked again ("buy it again"). To change its quantity or notes, use update_item.
 - The other person sees each change at once, and gets a notification. Changes are shown as "<user> (via Claude)".
+- A checked item that nobody unchecks for 30 days is deleted automatically. An edit or a move of a checked item unchecks it.
 - delete_list, delete_items, and clear_checked remove things for both people. Ask the user to confirm before you call them.
 - Write tools accept an optional idempotency_key. When you retry a call after an error or a timeout, send the same key: the retry then changes nothing.`;
 

@@ -14,6 +14,22 @@ describe("collapse", () => {
     ).toEqual(["check"]);
   });
 
+  it("treats an edit or a move that unchecked as an uncheck (#112)", () => {
+    const edit = ev("updateItem", { unchecked: true, fields: ["quantity"] });
+    // Check, then an edit that unchecks: only the edit.
+    expect(types(collapse([ev("check", {}), edit]))).toEqual(["updateItem"]);
+    // An edit of an item that was checked before the burst: only the edit.
+    expect(types(collapse([edit]))).toEqual(["updateItem"]);
+    // Then a check again: it ends checked, as it started. Only the edit.
+    expect(types(collapse([edit, ev("check", {})]))).toEqual(["updateItem"]);
+    const move = ev("moveItem", {
+      unchecked: true,
+      listName: "B",
+      fromListName: "A",
+    });
+    expect(types(collapse([ev("check", {}), move]))).toEqual(["moveItem"]);
+  });
+
   it("cancels an add and a delete, also with changes between them", () => {
     expect(
       collapse([

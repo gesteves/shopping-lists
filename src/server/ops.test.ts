@@ -661,6 +661,56 @@ describe("seq and the update fields", () => {
   });
 });
 
+describe("an edit or a move of a checked item (#112)", () => {
+  function seedChecked() {
+    seed();
+    apply(
+      SAM,
+      op("createList", { listId: LIST_2, name: "Costco" }, T1),
+      op("check", { itemId: ITEM }, T2),
+    );
+  }
+
+  it("unchecks the item on an edit", () => {
+    seedChecked();
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { quantity: 2 } }, T3));
+    expect(getItem()).toMatchObject({
+      quantity: 2,
+      checked: false,
+      checkedAt: null,
+    });
+    expect(getItem()?.clocks.checked).toBe(getItem()?.clocks.quantity);
+    const last = db.select().from(activity).orderBy(desc(activity.id)).get();
+    expect(last?.snapshot).toMatchObject({
+      unchecked: true,
+      fields: ["quantity"],
+    });
+  });
+
+  it("unchecks the item on a move", () => {
+    seedChecked();
+    apply(SAM, op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3));
+    expect(getItem()).toMatchObject({ listId: LIST_2, checked: false });
+  });
+
+  it("does not uncheck on an edit that changes nothing", () => {
+    seedChecked();
+    const { results } = apply(
+      SAM,
+      op("updateItem", { itemId: ITEM, fields: { name: "Milk" } }, T3),
+    );
+    expect(results[0]).toMatchObject({ status: "applied", changed: false });
+    expect(getItem()?.checked).toBe(true);
+  });
+
+  it("does not uncheck on an edit that is older than the check", () => {
+    seed();
+    apply(SAM, op("check", { itemId: ITEM }, T3));
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }, T2));
+    expect(getItem()).toMatchObject({ notes: "2%", checked: true });
+  });
+});
+
 describe("op IDs", () => {
   it("refuses an op ID of a different user, and keeps the first result", () => {
     seed();

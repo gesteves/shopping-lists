@@ -14,7 +14,7 @@
 //   - Each op is applied one time only (processed_ops). A retry gets
 //     "duplicate" and the first result.
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { getDb, type Db, type Tx } from "@/db/client";
 import {
   activity,
@@ -23,6 +23,7 @@ import {
   processedOps,
   type ActivitySnapshot,
 } from "@/db/schema";
+import { DAY_MS, EXPIRE_AFTER_DAYS } from "@/shared/expiry";
 import { HlcError, parse, type HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
 import type { ItemClocks, ListClocks, Op, OpOf, Via } from "@/shared/ops";
@@ -106,6 +107,53 @@ export function applyOps(
  * clocks, no attribution, and no activity row. It writes nothing to a
  * deleted or missing list. It returns true if it wrote the summary.
  */
+/**
+ * Delete each checked item whose check is older than EXPIRE_AFTER_DAYS
+ * (#112). This is a write-path exception (CLAUDE.md): there is no person to
+ * be the actor, thus it writes no processed_ops and no activity rows, and
+ * sends no push. Each row gets the server HLC as its delete clock (a newer
+ * uncheck or edit brings it back, an older one does not), the server time in
+ * `deletedAt` and `tombstonedAt`, and a new seq. The normal purge removes
+ * the row 30 days later. It returns the number of deleted items.
+ */
+export function expireCheckedItems(
+  options: { db?: Db; clock?: HlcClock; now?: () => number } = {},
+): number {
+  const db = options.db ?? getDb();
+  const clock = options.clock ?? getServerClock();
+  const now = new Date((options.now ?? Date.now)());
+  const cutoff = new Date(now.getTime() - EXPIRE_AFTER_DAYS * DAY_MS);
+  const last = db.transaction((tx) => {
+    const rows = tx
+      .select({ id: items.id, clocks: items.clocks })
+      .from(items)
+      .where(
+        and(
+          eq(items.checked, true),
+          isNull(items.deletedAt),
+          lt(items.checkedAt, cutoff),
+        ),
+      )
+      .all();
+    let seq: number | null = null;
+    for (const row of rows) {
+      seq = bumpSeq(tx);
+      tx.update(items)
+        .set({
+          clocks: { ...row.clocks, deleted: clock.now() },
+          deletedAt: now,
+          tombstonedAt: now,
+          seq,
+        })
+        .where(eq(items.id, row.id))
+        .run();
+    }
+    return { count: rows.length, seq };
+  });
+  if (last.seq !== null) bus.emit("poke", { seq: last.seq });
+  return last.count;
+}
+
 export function setListSummary(
   listId: string,
   summary: string,
@@ -487,6 +535,23 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
   };
 }
 
+/**
+ * An edit or a move of a checked item also unchecks it (#112): the person
+ * is going to buy it again. Only when the op changed the item, and only if
+ * the op is newer than the check clock.
+ */
+function uncheckOnChange(
+  row: ItemRow,
+  set: ItemSet,
+  clocks: ItemClocks,
+  op: Op,
+) {
+  if (!row.checked || !newer(op.hlc, clocks.checked)) return;
+  clocks.checked = op.hlc;
+  set.checked = false;
+  set.checkedAt = null;
+}
+
 function changeItem(
   ctx: Ctx,
   op: OpOf<
@@ -528,6 +593,7 @@ function changeItem(
         clocks.notes = op.hlc;
         if (row.notes !== notes) set.notes = notes;
       }
+      if (Object.keys(set).length > 0) uncheckOnChange(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
       break;
     }
@@ -558,6 +624,7 @@ function changeItem(
         clocks.listId = op.hlc;
         if (row.listId !== op.args.toListId) set.listId = op.args.toListId;
       }
+      if (set.listId !== undefined) uncheckOnChange(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
       break;
   }
@@ -574,6 +641,7 @@ function changeItem(
     snapshot.fromListName = getList(ctx, row.listId)?.name ?? "";
   }
   if (set.name !== undefined) snapshot.oldName = row.name;
+  if (set.checked === false && op.type !== "uncheck") snapshot.unchecked = true;
   if (op.type === "updateItem") {
     const fields = (["name", "quantity", "notes"] as const).filter(
       (field) => set[field] !== undefined,

@@ -2,48 +2,16 @@
 // and dark, on each project (phone and desktop). Also the reduced motion
 // setting, and the "Keep screen on" toggle.
 import { randomUUID } from "node:crypto";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { createList, openList, signIn, switchControl, synced } from "./helpers";
-
-async function scan(page: Page, screen: string) {
-  // Wait for the Web Awesome components: undefined tags are hidden.
-  await page.waitForFunction(() =>
-    [...document.querySelectorAll("*")].every(
-      (el) =>
-        !el.localName.startsWith("wa-") || customElements.get(el.localName),
-    ),
-  );
-  // Colors in the middle of a fade-in are not the real colors.
-  // Web Awesome animates in its shadow roots, which document.getAnimations()
-  // does not include.
-  await page.waitForFunction(() =>
-    [
-      document,
-      ...[...document.querySelectorAll("*")].flatMap((el) =>
-        el.shadowRoot ? [el.shadowRoot] : [],
-      ),
-    ].every((root) =>
-      root.getAnimations().every((a) => a.playState !== "running"),
-    ),
-  );
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  const serious = result.violations.filter(
-    (v) => v.impact === "serious" || v.impact === "critical",
-  );
-  expect(
-    serious.map(
-      (v) =>
-        `${v.id}: ${v.nodes
-          .map((n) => `${n.target} (${n.any.map((c) => c.message).join("; ")})`)
-          .join(" | ")}`,
-    ),
-    screen,
-  ).toEqual([]);
-}
+import {
+  createList,
+  openList,
+  scan,
+  signIn,
+  switchControl,
+  synced,
+} from "./helpers";
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`the main screens pass axe (${colorScheme})`, async ({
