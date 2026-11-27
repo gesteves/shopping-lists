@@ -141,6 +141,15 @@
   }
 }
 
+/* Titles and toasts can show list and item names. A long word must wrap
+   (#129): else it pushes the close button off a narrow screen. */
+wa-dialog::part(title),
+wa-drawer::part(title),
+wa-toast-item::part(content) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* A label that only assistive technology reads, for a Web Awesome field. */
 .wa-sr-label::part(form-control-label) {
   position: absolute;
