@@ -36,12 +36,16 @@
     --wa-color-text-quiet: #536158;
     --wa-color-text-link: #1d5c3a;
     --wa-color-focus: #1d5c3a;
+    /* Set each brand and neutral token that the app uses. A token that is
+       not set here keeps the blue of the default theme. */
     --wa-color-brand-fill-loud: #1d5c3a;
     --wa-color-brand-on-loud: #ffffff;
     --wa-color-brand-fill-normal: #c9e2d0;
     --wa-color-brand-on-normal: #14221a;
     --wa-color-brand-fill-quiet: #e0eee4;
     --wa-color-brand-on-quiet: #1d5c3a;
+    --wa-color-brand-border-quiet: #c9e2d0;
+    --wa-color-brand-border-normal: #9fc8ab;
     --wa-color-brand-border-loud: #1d5c3a;
     --wa-color-danger-fill-loud: #b3261e;
     --wa-color-danger-on-loud: #ffffff;
@@ -50,6 +54,8 @@
        borders in the green-gray of the palette, not the default blue-gray. */
     --wa-color-neutral-fill-quiet: #e7ece5;
     --wa-color-neutral-fill-normal: #dbe3da;
+    --wa-color-neutral-border-quiet: #d3dcd4;
+    --wa-color-neutral-border-normal: #b6c2b8;
     --wa-color-neutral-border-loud: #7a887e;
     --wa-color-neutral-on-quiet: #3c4a41;
     /* Fields are raised, like the cards: the default is the page color. */
@@ -72,12 +78,16 @@
       --wa-color-brand-on-normal: #e8eee4;
       --wa-color-brand-fill-quiet: #1c3426;
       --wa-color-brand-on-quiet: #7ed09a;
+      --wa-color-brand-border-quiet: #2b4d39;
+      --wa-color-brand-border-normal: #3d6a50;
       --wa-color-brand-border-loud: #7ed09a;
       --wa-color-danger-fill-loud: #ff8f85;
       --wa-color-danger-on-loud: #16241c;
       --wa-color-danger-on-quiet: #ff8f85;
       --wa-color-neutral-fill-quiet: #1c2b22;
       --wa-color-neutral-fill-normal: #24362b;
+      --wa-color-neutral-border-quiet: #2a3b31;
+      --wa-color-neutral-border-normal: #3d5045;
       --wa-color-neutral-border-loud: #6b7d71;
       --wa-color-neutral-on-quiet: #c4d1c7;
     }
