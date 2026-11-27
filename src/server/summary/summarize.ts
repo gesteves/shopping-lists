@@ -20,7 +20,8 @@ const SYSTEM = `You write a short line that shows under the name of a list in a 
 The input is JSON: the list name ("list") and the items that are still to get ("items"), each with a name and a quantity.
 
 Write one line of at most 60 characters. Rules:
-- Name the most important items. Put the others in groups by kind, for example: Milk, eggs, produce, and snacks for the party.
+- With a few items, name each one, for example: Milk and eggs.
+- With many items, name the most important ones and put the others in groups by kind, for example: Milk, eggs, produce, and snacks for the party.
 - Only a list of things: no verb like "Get" or "You need", no count of items, and no list name.
 - Sentence case, plain words, no emoji, no trailing period.
 - Use the item names as given; do not translate them. No quotes around names.

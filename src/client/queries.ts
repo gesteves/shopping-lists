@@ -49,7 +49,7 @@ export interface ListSummary extends ListRecord {
   remaining: number;
   /**
    * The names of the unchecked items, in list order, when there are fewer
-   * than SUMMARY_MIN_ITEMS. Else empty.
+   * than SUMMARY_MIN_ITEMS (thus one name). Else empty.
    */
   names: string[];
 }

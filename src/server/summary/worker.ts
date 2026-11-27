@@ -120,7 +120,7 @@ export class SummaryWorker {
 
     for (const list of live) {
       const listItems = byList.get(list.id) ?? [];
-      // A short list shows the names. Its old summary stays for later.
+      // A list with one item shows its name. Its old summary stays for later.
       const key =
         listItems.length < SUMMARY_MIN_ITEMS ? null : summaryKey(listItems);
       if (key === null || key === list.key) {
