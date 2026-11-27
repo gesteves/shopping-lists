@@ -346,6 +346,8 @@ export const lists = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     updatedVia: text("updated_via", { enum: VIA }).notNull().default("app"),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    /** The server time of the delete. The purge uses it (#101). */
+    tombstonedAt: integer("tombstoned_at", { mode: "timestamp_ms" }),
     clocks: text("clocks", { mode: "json" })
       .$type<ListClocks>()
       .notNull()
@@ -383,6 +385,8 @@ export const items = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     updatedVia: text("updated_via", { enum: VIA }).notNull().default("app"),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    /** The server time of the delete. The purge uses it (#101). */
+    tombstonedAt: integer("tombstoned_at", { mode: "timestamp_ms" }),
     clocks: text("clocks", { mode: "json" })
       .$type<ItemClocks>()
       .notNull()

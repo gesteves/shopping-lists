@@ -18,13 +18,19 @@ import type { HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
 import {
   ITEM_NAME_MAX,
-  LIST_NAME_MAX,
-  NOTES_MAX,
-  QUANTITY_MAX,
+  itemName,
+  listName,
+  notes as notesField,
   opSchema,
+  quantity,
   type OpInput,
 } from "@/shared/ops";
-import type { ItemRecord, ListRecord, StoredResult } from "@/shared/sync";
+import type {
+  ItemRecord,
+  ListRecord,
+  RejectReason,
+  StoredResult,
+} from "@/shared/sync";
 import { getServerClock, SERVER_NODE } from "../clock";
 import { applyOps } from "../ops";
 import {
@@ -71,14 +77,9 @@ const idempotencyKey = z
   .describe(
     "Optional. Send the same key when you retry the same call: the retry then changes nothing",
   );
-const listName = z.string().trim().min(1).max(LIST_NAME_MAX);
-const itemName = z.string().trim().min(1).max(ITEM_NAME_MAX);
-const quantity = z.int().min(1).max(QUANTITY_MAX);
-const notes = z
-  .string()
-  .trim()
-  .max(NOTES_MAX)
-  .describe("Notes, such as a brand or a size. An empty string removes them");
+const notes = notesField.describe(
+  "Notes, such as a brand or a size. An empty string removes them",
+);
 
 const listOut = z.object({ list_id: z.string(), name: z.string() });
 const itemOut = z.object({
@@ -110,11 +111,36 @@ function derivedUuid(...parts: string[]): string {
   ].join("-");
 }
 
-/** Makes the IDs of one tool call: random, or from the idempotency key. */
-function idMaker(ctx: ToolContext, tool: string, key: string | undefined) {
+/** JSON with the object keys in order, thus equal values give equal text. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * Makes the IDs of one tool call: random, or from the idempotency key. The
+ * hash has the arguments too (#101): the same key with different arguments
+ * gives new IDs, thus it makes the change, or gives an error. A retry with
+ * the same key and the same arguments gives the same IDs ("duplicate").
+ */
+function idMaker(
+  ctx: ToolContext,
+  tool: string,
+  input: { idempotency_key?: string },
+) {
+  const { idempotency_key: key, ...args } = input;
+  const argsHash = key
+    ? createHash("sha256").update(canonicalJson(args)).digest("hex")
+    : "";
   return (kind: string, index = 0) =>
     key
-      ? derivedUuid(ctx.userId, tool, key, kind, String(index))
+      ? derivedUuid(ctx.userId, tool, key, argsHash, kind, String(index))
       : randomUUID();
 }
 
@@ -213,13 +239,20 @@ function apply(
   });
 }
 
-const REJECTED: Record<string, string> = {
+/** The item count of a result: the items that the op changed. */
+function countOf(result: StoredResult): number {
+  return result.status === "applied" ? (result.count ?? 0) : 0;
+}
+
+const REJECTED: Record<RejectReason, string> = {
   list_not_found: "The list does not exist. Call list_lists to see the lists.",
   list_deleted: "The list was deleted.",
   list_exists: "A list with this ID exists. Try again without the same key.",
   item_not_found: "The item does not exist. Call get_list to see the items.",
   item_exists: "An item with this ID exists. Try again without the same key.",
   clock_ahead: "The server clock is not ready. Try again in a minute.",
+  op_conflict:
+    "This change has the ID of a change of another user. Try again with a new idempotency_key.",
 };
 
 function iso(ms: number): string {
@@ -366,8 +399,9 @@ export const TOOLS = [
     },
     input: z.object({ name: listName, idempotency_key: idempotencyKey }),
     output: listOut,
-    run: (ctx, { name, idempotency_key }) => {
-      const ids = idMaker(ctx, "create_list", idempotency_key);
+    run: (ctx, input) => {
+      const { name } = input;
+      const ids = idMaker(ctx, "create_list", input);
       const listId = ids("list");
       const same = readLiveLists(ctx.db).find(
         (l) => nameKey(l.list.name) === nameKey(name) && l.list.id !== listId,
@@ -398,9 +432,10 @@ export const TOOLS = [
       idempotency_key: idempotencyKey,
     }),
     output: listOut,
-    run: (ctx, { list: ref, name, idempotency_key }) => {
+    run: (ctx, input) => {
+      const { list: ref, name } = input;
       const list = resolveList(ctx, ref);
-      apply(ctx, idMaker(ctx, "rename_list", idempotency_key), [
+      apply(ctx, idMaker(ctx, "rename_list", input), [
         { type: "renameList", args: { listId: list.id, name } },
       ]);
       return { list_id: list.id, name: readListById(list.id, ctx.db)!.name };
@@ -420,13 +455,17 @@ export const TOOLS = [
     },
     input: z.object({ list: listRef, idempotency_key: idempotencyKey }),
     output: listOut.extend({ deleted_items: z.int() }),
-    run: (ctx, { list: ref, idempotency_key }) => {
+    run: (ctx, input) => {
+      const { list: ref } = input;
       const list = resolveList(ctx, ref);
-      const count = readListItems(list.id, ctx.db).length;
-      apply(ctx, idMaker(ctx, "delete_list", idempotency_key), [
+      const [result] = apply(ctx, idMaker(ctx, "delete_list", input), [
         { type: "deleteList", args: { listId: list.id } },
       ]);
-      return { list_id: list.id, name: list.name, deleted_items: count };
+      return {
+        list_id: list.id,
+        name: list.name,
+        deleted_items: countOf(result),
+      };
     },
   }),
 
@@ -464,9 +503,10 @@ export const TOOLS = [
         }),
       ),
     }),
-    run: (ctx, { list: ref, items, idempotency_key }) => {
+    run: (ctx, input) => {
+      const { list: ref, items } = input;
       const list = resolveList(ctx, ref);
-      const ids = idMaker(ctx, "add_items", idempotency_key);
+      const ids = idMaker(ctx, "add_items", input);
       const specs = items.map((item, i) => ({
         type: "addItem" as const,
         args: {
@@ -518,7 +558,9 @@ export const TOOLS = [
       idempotency_key: idempotencyKey,
     }),
     output: itemOut,
-    run: (ctx, { list: ref, item: itemArg, idempotency_key, ...fields }) => {
+    run: (ctx, input) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- not a field
+      const { list: ref, item: itemArg, idempotency_key, ...fields } = input;
       const list = resolveList(ctx, ref);
       const [item] = resolveItems(ctx, list, [itemArg]);
       const set = Object.fromEntries(
@@ -527,7 +569,7 @@ export const TOOLS = [
       if (Object.keys(set).length === 0) {
         throw new ToolError("Give a name, a quantity, or notes to change.");
       }
-      apply(ctx, idMaker(ctx, "update_item", idempotency_key), [
+      apply(ctx, idMaker(ctx, "update_item", input), [
         { type: "updateItem", args: { itemId: item.id, fields: set } },
       ]);
       const after = readListItems(list.id, ctx.db).find(
@@ -557,12 +599,13 @@ export const TOOLS = [
         idempotency_key: idempotencyKey,
       }),
       output: listOut.extend({ items: z.array(itemOut) }),
-      run: (ctx, { list: ref, items: refs, idempotency_key }) => {
+      run: (ctx, input) => {
+        const { list: ref, items: refs } = input;
         const list = resolveList(ctx, ref);
         const items = resolveItems(ctx, list, refs);
         apply(
           ctx,
-          idMaker(ctx, name, idempotency_key),
+          idMaker(ctx, name, input),
           items.map((i) => ({
             type:
               name === "check_items"
@@ -602,12 +645,13 @@ export const TOOLS = [
     output: listOut.extend({
       deleted: z.array(z.object({ item_id: z.string(), name: z.string() })),
     }),
-    run: (ctx, { list: ref, items: refs, idempotency_key }) => {
+    run: (ctx, input) => {
+      const { list: ref, items: refs } = input;
       const list = resolveList(ctx, ref);
       const items = resolveItems(ctx, list, refs);
       apply(
         ctx,
-        idMaker(ctx, "delete_items", idempotency_key),
+        idMaker(ctx, "delete_items", input),
         items.map((i) => ({
           type: "deleteItem" as const,
           args: { itemId: i.id },
@@ -641,12 +685,13 @@ export const TOOLS = [
       from_list_id: z.string(),
       to_list_id: z.string(),
     }),
-    run: (ctx, { list: ref, item: itemArg, to_list, idempotency_key }) => {
+    run: (ctx, input) => {
+      const { list: ref, item: itemArg, to_list } = input;
       const from = resolveList(ctx, ref);
       const [item] = resolveItems(ctx, from, [itemArg]);
       const to = resolveList(ctx, to_list);
       if (to.id !== from.id) {
-        apply(ctx, idMaker(ctx, "move_item", idempotency_key), [
+        apply(ctx, idMaker(ctx, "move_item", input), [
           { type: "moveItem", args: { itemId: item.id, toListId: to.id } },
         ]);
       }
@@ -678,12 +723,10 @@ export const TOOLS = [
             },
       input: z.object({ list: listRef, idempotency_key: idempotencyKey }),
       output: listOut.extend({ changed_items: z.int() }),
-      run: (ctx, { list: ref, idempotency_key }) => {
+      run: (ctx, input) => {
+        const { list: ref } = input;
         const list = resolveList(ctx, ref);
-        const count = readListItems(list.id, ctx.db).filter(
-          (i) => i.checked,
-        ).length;
-        apply(ctx, idMaker(ctx, name, idempotency_key), [
+        const [result] = apply(ctx, idMaker(ctx, name, input), [
           {
             type:
               name === "clear_checked"
@@ -692,11 +735,12 @@ export const TOOLS = [
             args: { listId: list.id },
           },
         ]);
-        return { list_id: list.id, name: list.name, changed_items: count };
+        return {
+          list_id: list.id,
+          name: list.name,
+          changed_items: countOf(result),
+        };
       },
     }),
   ),
 ];
-
-/** The scope that each tool needs. */
-export const TOOL_SCOPES = new Map(TOOLS.map((t) => [t.name, t.scope]));

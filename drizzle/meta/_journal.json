@@ -43,6 +43,13 @@
       "when": 1795753009822,
       "tag": "0005_list_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795806968065,
+      "tag": "0006_tombstoned_at",
+      "breakpoints": true
     }
   ]
 }

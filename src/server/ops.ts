@@ -14,7 +14,7 @@
 //   - Each op is applied one time only (processed_ops). A retry gets
 //     "duplicate" and the first result.
 import "server-only";
-import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, type Db, type Tx } from "@/db/client";
 import {
   activity,
@@ -134,10 +134,15 @@ export function setListSummary(
 
 function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
   const done = ctx.tx
-    .select({ result: processedOps.result })
+    .select({ result: processedOps.result, userId: processedOps.userId })
     .from(processedOps)
     .where(eq(processedOps.opId, op.opId))
     .get();
+  // The opId belongs to a different user. Refuse it, and keep the first
+  // result: a different user must not see or replace it.
+  if (done && done.userId !== ctx.actor.id) {
+    return { opId: op.opId, status: "rejected", reason: "op_conflict" };
+  }
   if (done) {
     return {
       opId: op.opId,
@@ -208,8 +213,13 @@ function reject(op: Op, reason: RejectReason): Outcome {
   return { result: { opId: op.opId, status: "rejected", reason } };
 }
 
-function applied(op: Op, changed: boolean): StoredResult {
-  return { opId: op.opId, status: "applied", changed };
+function applied(op: Op, changed: boolean, count?: number): StoredResult {
+  return {
+    opId: op.opId,
+    status: "applied",
+    changed,
+    ...(count !== undefined && { count }),
+  };
 }
 
 /** True if `hlc` is newer than `clock`. A missing clock is the oldest. */
@@ -270,6 +280,15 @@ function getItem(ctx: Ctx, id: string): ItemRow | undefined {
 }
 
 /** Save the new clocks, and the fields in `set` if there are any. */
+/**
+ * A new delete gets the server time in `tombstonedAt`, and a restore clears
+ * it. The purge uses the server time, not the op time (#101).
+ */
+function markTombstone(ctx: Ctx, set: ListSet | ItemSet) {
+  if (set.deletedAt instanceof Date) set.tombstonedAt = ctx.now;
+  else if (set.deletedAt === null) set.tombstonedAt = null;
+}
+
 function saveList(
   ctx: Ctx,
   op: Op,
@@ -278,6 +297,7 @@ function saveList(
   clocks: ListClocks,
 ) {
   const changed = Object.keys(set).length > 0;
+  markTombstone(ctx, set);
   ctx.tx
     .update(lists)
     .set(
@@ -298,6 +318,7 @@ function saveItem(
   clocks: ItemClocks,
 ) {
   const changed = Object.keys(set).length > 0;
+  markTombstone(ctx, set);
   ctx.tx
     .update(items)
     .set(
@@ -367,8 +388,17 @@ function changeList(
 
   const snapshot: ActivitySnapshot = { listName: set.name ?? row.name };
   if (set.name !== undefined) snapshot.oldName = row.name;
+  // The items that the delete hides. The items do not change.
+  const count =
+    op.type === "deleteList"
+      ? ctx.tx
+          .select({ n: sql<number>`count(*)` })
+          .from(items)
+          .where(and(eq(items.listId, row.id), isNull(items.deletedAt)))
+          .get()!.n
+      : undefined;
   return {
-    result: applied(op, true),
+    result: applied(op, true, count),
     activity: { listId: row.id, snapshot },
   };
 }
@@ -605,96 +635,11 @@ function changeAllItems(
     if (saveItem(ctx, op, row, set, clocks)) count++;
   }
 
-  if (count === 0) return { result: applied(op, false) };
+  if (count === 0) return { result: applied(op, false, 0) };
   return {
-    result: applied(op, true),
+    result: applied(op, true, count),
     activity: { listId: list.id, snapshot: { listName: list.name, count } },
   };
 }
 
 // Purge
-
-export interface PurgeResult {
-  lists: number;
-  items: number;
-  processedOps: number;
-  activity: number;
-  /** The new value of server_seq.purged_seq. */
-  purgedSeq: number;
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Delete the rows of lists and items that were deleted more than
- * `olderThanDays` ago. The items of a purged list go too. Also delete old
- * processed_ops rows and old sent activity rows. #20 runs it on a schedule.
- *
- * It sets server_seq.purged_seq to the largest seq that it deleted. A pull
- * with an older cursor can miss a delete, thus #6 must send all rows again.
- */
-export function purgeTombstones(
-  olderThanDays: number,
-  options: Pick<ApplyOptions, "db" | "now"> = {},
-): PurgeResult {
-  const db = options.db ?? getDb();
-  const cutoff = new Date((options.now ?? Date.now)() - olderThanDays * DAY_MS);
-
-  return db.transaction((tx) => {
-    const oldList = and(
-      isNotNull(lists.deletedAt),
-      lt(lists.deletedAt, cutoff),
-    );
-    const purgedListIds = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(oldList);
-    const oldItem = or(
-      and(isNotNull(items.deletedAt), lt(items.deletedAt, cutoff)),
-      inArray(items.listId, purgedListIds),
-    );
-
-    const maxOf = (rows: { seq: number | null } | undefined) => rows?.seq ?? 0;
-    const maxSeq = Math.max(
-      maxOf(
-        tx
-          .select({ seq: sql<number | null>`max(${items.seq})` })
-          .from(items)
-          .where(oldItem)
-          .get(),
-      ),
-      maxOf(
-        tx
-          .select({ seq: sql<number | null>`max(${lists.seq})` })
-          .from(lists)
-          .where(oldList)
-          .get(),
-      ),
-    );
-
-    const itemCount = tx.delete(items).where(oldItem).run().changes;
-    const listCount = tx.delete(lists).where(oldList).run().changes;
-    const opCount = tx
-      .delete(processedOps)
-      .where(lt(processedOps.processedAt, cutoff))
-      .run().changes;
-    const activityCount = tx
-      .delete(activity)
-      .where(and(isNotNull(activity.notifiedAt), lt(activity.at, cutoff)))
-      .run().changes;
-
-    const row = tx.get<{ purged_seq: number }>(
-      sql`INSERT INTO server_seq (id, value, purged_seq) VALUES (1, 0, ${maxSeq})
-          ON CONFLICT (id) DO UPDATE SET purged_seq = max(purged_seq, excluded.purged_seq)
-          RETURNING purged_seq`,
-    );
-
-    return {
-      lists: listCount,
-      items: itemCount,
-      processedOps: opCount,
-      activity: activityCount,
-      purgedSeq: row.purged_seq,
-    };
-  });
-}

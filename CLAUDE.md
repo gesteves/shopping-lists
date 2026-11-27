@@ -76,7 +76,7 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 
 ## Rules
 
-- All writes go through `applyOps` in `src/server/ops.ts`. This applies to the app, sync, and MCP. The one exception is `setListSummary` (same file): the summary worker (`src/server/summary/`) writes the list summary with it.
+- All writes go through `applyOps` in `src/server/ops.ts`. This applies to the app, sync, and MCP. There are two exceptions: `setListSummary` (same file), which the summary worker (`src/server/summary/`) uses to write the list summary, and `purgeTombstones` (`src/server/purge.ts`), which deletes old tombstones.
 - `src/proxy.ts` only looks for the session cookie. Each page must call `requireUser()`, and each API route must call `requireApiUser()` (`src/lib/session.ts`). Call them in a `<Suspense>` boundary.
 - `/mcp` does not use the session: `withMcpAuth` (`src/server/mcp/auth.ts`) checks the token. Accept no other tokens. To add a tool, add it to `TOOLS` in `src/server/mcp/tools.ts` with its scope, annotations, and input and output schemas, and add it to the contract tests.
 - The OAuth server for MCP clients is Better Auth (`mcp()`, `cimd()`, `jwt()` in `src/lib/auth.ts`). Its tables are in `src/db/schema.ts`. If a Better Auth update changes the plugin schema, compare it with the output of `npx auth generate`.

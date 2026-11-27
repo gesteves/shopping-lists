@@ -6,7 +6,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { and, eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { activity, items, users } from "@/db/schema";
 import {
   ALLOWED,
@@ -19,7 +19,7 @@ import type { PushPayload } from "@/shared/push";
 import { bus } from "../bus";
 import { Notifier, QUIET_MS } from "../notify/worker";
 import { prompts } from "@/prompts";
-import { createMcpRoute } from "./server";
+import { UNEXPECTED_ERROR, createMcpRoute } from "./server";
 import { TOOLS } from "./tools";
 
 const MODERN = "2026-07-28";
@@ -575,6 +575,82 @@ describe("tools", () => {
     expect(list2.structuredContent.list_id).toBe(
       list1.structuredContent.list_id,
     );
+  });
+
+  it("makes the change when a key comes again with different arguments", async () => {
+    const first = await callTool(client, "add_items", {
+      list: "Whole Foods",
+      items: [{ name: "Kiwis" }],
+      idempotency_key: "same-key",
+    });
+    const second = await callTool(client, "add_items", {
+      list: "Whole Foods",
+      items: [{ name: "Mangos" }],
+      idempotency_key: "same-key",
+    });
+    expect(second.isError).toBeFalsy();
+    expect(second.structuredContent.items).toEqual([
+      expect.objectContaining({ name: "Mangos", result: "added" }),
+    ]);
+    const listId = first.structuredContent.list_id as string;
+    const mangos = h.db
+      .select()
+      .from(items)
+      .where(and(eq(items.listId, listId), eq(items.name, "Mangos")))
+      .all();
+    expect(mangos).toHaveLength(1);
+
+    const a = await callTool(client, "create_list", {
+      name: "Hardware",
+      idempotency_key: "list-key",
+    });
+    const b = await callTool(client, "create_list", {
+      name: "Pharmacy",
+      idempotency_key: "list-key",
+    });
+    expect(b.isError).toBeFalsy();
+    expect(b.structuredContent.name).toBe("Pharmacy");
+    expect(b.structuredContent.list_id).not.toBe(a.structuredContent.list_id);
+  });
+
+  it("counts the changed items from the results, also on a retry", async () => {
+    await callTool(client, "create_list", { name: "Count Test" });
+    await callTool(client, "add_items", {
+      list: "Count Test",
+      items: [{ name: "A" }, { name: "B" }, { name: "C" }],
+    });
+    await callTool(client, "check_items", {
+      list: "Count Test",
+      items: ["A", "B"],
+    });
+    const args = { list: "Count Test", idempotency_key: "clear-1" };
+    const cleared = await callTool(client, "clear_checked", args);
+    expect(cleared.structuredContent.changed_items).toBe(2);
+    const again = await callTool(client, "clear_checked", args);
+    expect(again.structuredContent.changed_items).toBe(2);
+
+    const deleted = await callTool(client, "delete_list", {
+      list: "Count Test",
+    });
+    expect(deleted.structuredContent.deleted_items).toBe(1);
+  });
+
+  it("gives a general message for an unexpected error", async () => {
+    const tool = TOOLS.find((t) => t.name === "list_lists")!;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const run = vi.spyOn(tool, "run").mockImplementation(() => {
+      throw new Error("SQLITE_CORRUPT: /data/shopping-lists.db");
+    });
+    try {
+      const res = await client.callTool({ name: "list_lists", arguments: {} });
+      expect(res.isError).toBe(true);
+      expect(res.content).toEqual([{ type: "text", text: UNEXPECTED_ERROR }]);
+      expect(JSON.stringify(res)).not.toContain("SQLITE");
+      expect(error).toHaveBeenCalled();
+    } finally {
+      run.mockRestore();
+      error.mockRestore();
+    }
   });
 
   describe("business errors", () => {

@@ -6,7 +6,7 @@ import { HlcClock, serialize } from "@/shared/hlc";
 import { opSchema, type Op, type OpArgs, type OpType } from "@/shared/ops";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { bus } from "./bus";
-import { applyOps, purgeTombstones, type Actor } from "./ops";
+import { applyOps, type Actor } from "./ops";
 
 // Two devices. PHONE < LAPTOP, for the tie test.
 const PHONE = "1a1a1a1a-0000-4000-8000-000000000000";
@@ -19,7 +19,6 @@ const ITEM_3 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 /** The server time. Each op time below is before it. */
 const NOW = 1_764_000_000_000;
-const DAY = 24 * 60 * 60 * 1000;
 /** Op times, in order. */
 const T1 = NOW - 50_000;
 const T2 = NOW - 40_000;
@@ -662,6 +661,37 @@ describe("seq and the update fields", () => {
   });
 });
 
+describe("op IDs", () => {
+  it("refuses an op ID of a different user, and keeps the first result", () => {
+    seed();
+    const check = op("check", { itemId: ITEM }, T2);
+    const first = apply(SAM, check).results[0];
+    expect(first).toEqual({
+      opId: check.opId,
+      status: "applied",
+      changed: true,
+    });
+
+    // Alex sends an op with the same ID: a different change.
+    const other = { ...op("uncheck", { itemId: ITEM }, T3), opId: check.opId };
+    expect(apply(ALEX, other).results).toEqual([
+      { opId: check.opId, status: "rejected", reason: "op_conflict" },
+    ]);
+    expect(getItem()?.checked).toBe(true);
+    // The first result stays, for the first user.
+    expect(apply(SAM, check).results).toEqual([
+      { opId: check.opId, status: "duplicate", original: first },
+    ]);
+    expect(
+      db
+        .select()
+        .from(processedOps)
+        .where(eq(processedOps.opId, check.opId))
+        .all(),
+    ).toEqual([expect.objectContaining({ userId: SAM.id })]);
+  });
+});
+
 describe("activity and pokes", () => {
   it("happen only for ops that changed a row", () => {
     seed();
@@ -672,7 +702,7 @@ describe("activity and pokes", () => {
     const before = activityTypes();
 
     const { results, seq } = apply(
-      ALEX,
+      SAM,
       done, // Duplicate.
       op("check", { itemId: ITEM }, T2), // Older than the uncheck.
       op("renameList", { listId: LIST_2, name: "x" }, T4), // Rejected.
@@ -732,51 +762,5 @@ describe("clock drift and errors", () => {
     expect(getItem()?.checked).toBe(false);
     expect(db.select().from(processedOps).all()).toHaveLength(2);
     expect(pokes).toEqual([]);
-  });
-});
-
-describe("purgeTombstones", () => {
-  it("deletes old tombstones and the items of old deleted lists", () => {
-    const old = NOW - 40 * DAY;
-    apply(
-      SAM,
-      op("createList", { listId: LIST, name: "Old" }, old),
-      op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
-      op("deleteList", { listId: LIST }, old + 1),
-      op("createList", { listId: LIST_2, name: "Current" }, old),
-      op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "Eggs" }, old),
-      op("addItem", { itemId: ITEM_3, listId: LIST_2, name: "Bread" }, old),
-      op("deleteItem", { itemId: ITEM_2 }, old + 1),
-      op("deleteItem", { itemId: ITEM_3 }, NOW - DAY),
-    );
-    const purgedItemSeq = getItem(ITEM_2)?.seq;
-
-    const result = purgeTombstones(30, { db, now: () => NOW });
-
-    expect(result).toMatchObject({ lists: 1, items: 2 });
-    expect(result.purgedSeq).toBe(purgedItemSeq);
-    expect(getList()).toBeUndefined();
-    expect(getItem()).toBeUndefined();
-    expect(getItem(ITEM_2)).toBeUndefined();
-    expect(getItem(ITEM_3)?.deletedAt).not.toBeNull(); // Deleted 1 day ago.
-    expect(getList(LIST_2)).toBeDefined();
-
-    // A second run keeps the purged seq.
-    expect(purgeTombstones(30, { db, now: () => NOW }).purgedSeq).toBe(
-      purgedItemSeq,
-    );
-  });
-
-  it("works on a database with no writes", () => {
-    expect(purgeTombstones(30, { db, now: () => NOW })).toEqual({
-      lists: 0,
-      items: 0,
-      processedOps: 0,
-      activity: 0,
-      purgedSeq: 0,
-    });
-    // The seq counter starts at 1 after a purge.
-    seed();
-    expect(getList()?.seq).toBe(1);
   });
 });
