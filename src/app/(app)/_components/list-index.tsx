@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useListSummaries } from "@/client/hooks";
 import { listLine, type ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
@@ -19,11 +19,13 @@ import { ConfirmDialog, useWaEvents } from "./wa";
 export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
   const lists = useListSummaries();
   const Heading = `h${headingLevel}` as const;
+  // The layout and the page `/` both mount this list, thus the ID is unique.
+  const headingId = useId();
 
   return (
-    <section aria-labelledby="lists-heading" className="flex flex-col gap-4">
+    <section aria-labelledby={headingId} className="flex flex-col gap-4">
       <Heading
-        id="lists-heading"
+        id={headingId}
         className="px-1 text-3xl font-bold tracking-tight lg:text-xl"
       >
         {copy.lists.heading}

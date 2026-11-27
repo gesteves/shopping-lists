@@ -58,3 +58,15 @@ export function itemHistory(
   }
   return lines;
 }
+
+/**
+ * The initial of a name for an avatar: the first grapheme, in capitals. A
+ * slice of the string can cut an emoji or a letter with an accent in two.
+ */
+export function initials(name: string): string {
+  const first = new Intl.Segmenter(locale, { granularity: "grapheme" })
+    .segment(name.trim())
+    [Symbol.iterator]()
+    .next().value?.segment;
+  return (first ?? "").toLocaleUpperCase(locale);
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { initials } from "@/client/format";
 import { usePresence, useUsers } from "@/client/hooks";
 import { copy } from "@/copy";
 
@@ -33,7 +34,7 @@ export function ListViewers({ listId }: { listId: string }) {
         <wa-avatar
           key={p.id}
           image={p.image ?? undefined}
-          initials={p.name.slice(0, 1).toUpperCase()}
+          initials={initials(p.name)}
           label={copy.presence.viewing(p.name)}
           title={copy.presence.viewing(p.name)}
           className="ring-2 ring-surface"

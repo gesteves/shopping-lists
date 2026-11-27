@@ -82,11 +82,14 @@ export function AddBar({
     const key = nameKey(entry.name);
     if (!key) return;
     const match = items.find((i) => nameKey(i.name) === key);
-    reset();
     if (match) {
+      // Keep the form: Cancel must not lose the name, quantity, and notes.
+      // It clears when the user confirms (#104).
+      setDismissed(true);
       setDuplicate({ item: match, entry });
       return;
     }
+    reset();
     // Keep the keyboard open for the next item.
     input.current?.focus();
     await mutate({
@@ -127,6 +130,7 @@ export function AddBar({
     if (!duplicate) return;
     const { item, entry } = duplicate;
     setDuplicate(null);
+    reset();
     if (item.checked) {
       await mutate({ type: "uncheck", args: { itemId: item.id } });
     } else {

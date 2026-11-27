@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMergedOps, useRejectedOps } from "@/client/hooks";
+import { recreateFor } from "@/client/recreate";
 import type { MergedDetail, RejectedDetail } from "@/client/sync";
 import { copy } from "@/copy";
 import {
@@ -49,12 +51,47 @@ export function Toaster() {
     }
   }, [toasts]);
 
+  const router = useRouter();
+
   useRejectedOps(
-    useCallback(({ reason }: RejectedDetail) => {
-      showToast({
-        message: copy.toasts.rejected(copy.toasts.reasons[reason]),
-      });
-    }, []),
+    useCallback(
+      async ({ op, reason }: RejectedDetail) => {
+        const recreate =
+          reason === "list_deleted" ? await recreateFor(op) : null;
+        if (recreate) {
+          showToast({
+            message: (recreate.kind === "add"
+              ? copy.toasts.listDeletedAdd
+              : copy.toasts.listDeletedMove)(
+              recreate.listName,
+              recreate.itemName,
+            ),
+            duration: 10_000,
+            action: {
+              label: copy.toasts.recreate,
+              run: async () => {
+                const listId = await recreate.run();
+                // On the page of the deleted list: open the new list.
+                // The path at the tap: usePathname() needs a Suspense
+                // boundary, and the toaster is outside of one.
+                if (location.pathname === `/lists/${recreate.listId}`) {
+                  router.push(`/lists/${listId}`);
+                }
+              },
+            },
+          });
+          return;
+        }
+        // An unknown reason (a newer server) gets a general text.
+        const text = (copy.toasts.reasons as Record<string, string>)[reason];
+        showToast({
+          message: text
+            ? copy.toasts.rejected(text)
+            : copy.toasts.rejectedGeneral,
+        });
+      },
+      [router],
+    ),
   );
   useMergedOps(
     useCallback(({ op, changed }: MergedDetail) => {

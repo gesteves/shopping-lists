@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { initials } from "@/client/format";
 import { copy } from "@/copy";
 import { requireUser } from "@/lib/session";
 import { SyncStarter } from "../sync-starter";
@@ -43,7 +44,7 @@ function Avatar({ name, image }: { name: string; image: string | null }) {
   return (
     <wa-avatar
       image={image ?? undefined}
-      initials={name.slice(0, 1).toUpperCase()}
+      initials={initials(name)}
       label={copy.header.signedInAs(name)}
       style={{ "--size": "2rem" }}
     ></wa-avatar>

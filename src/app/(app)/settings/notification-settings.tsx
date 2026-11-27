@@ -1,131 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { base64UrlToBytes, deviceLabel, isIos } from "@/client/device";
+import { useState } from "react";
 import { useLists } from "@/client/hooks";
 import { useMutedLists } from "@/client/mutes";
+import { usePushDevice } from "@/client/push-device";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import type { SubscriptionInfo } from "@/shared/push";
 
-type Support =
-  | "loading"
-  | "unsupported"
-  /** iPhone or iPad in Safari: push needs the Home Screen app. */
-  | "needs-install"
-  | "ok";
-
-async function api(path: string, init?: RequestInit) {
-  const res = await fetch(path, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
-  });
-  if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-  return res.status === 204 ? null : res.json();
-}
-
-/** Push on this device, all devices, and muted lists (#15). */
-export function NotificationSettings({
-  publicKey,
-}: {
-  publicKey: string | null;
-}) {
-  const [support, setSupport] = useState<Support>("loading");
-  const [permission, setPermission] = useState<NotificationPermission>();
-  const [endpoint, setEndpoint] = useState<string | null>(null);
-  const [devices, setDevices] = useState<SubscriptionInfo[]>();
+/** Push on this device, all devices, and muted lists (#15, #98). */
+export function NotificationSettings() {
+  const push = usePushDevice();
+  const { publicKey, support, permission, endpoint, devices } = push;
   const [busy, setBusy] = useState(false);
 
-  const loadDevices = useCallback(async () => {
-    const { subscriptions } = await api("/api/push/subscriptions");
-    setDevices(subscriptions);
-  }, []);
-
-  useEffect(() => {
-    const ua = navigator.userAgent;
-    const standalone =
-      matchMedia("(display-mode: standalone)").matches ||
-      (navigator as { standalone?: boolean }).standalone === true;
-    const pushReady =
-      "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window;
-    // Effects run once at mount here: read the browser state, then show it.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    if (isIos(ua, navigator.maxTouchPoints) && !standalone) {
-      setSupport("needs-install");
-    } else {
-      setSupport(pushReady ? "ok" : "unsupported");
-    }
-    if ("Notification" in window) setPermission(Notification.permission);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    if (pushReady) {
-      void navigator.serviceWorker.getRegistration().then(async (reg) => {
-        const sub = await reg?.pushManager.getSubscription();
-        setEndpoint(sub?.endpoint ?? null);
-      });
-    }
-    void loadDevices().catch(() => undefined);
-  }, [loadDevices]);
-
   async function enable() {
-    if (!publicKey) return;
     setBusy(true);
-    try {
-      // The permission prompt must come from this tap.
-      const result = await Notification.requestPermission();
-      setPermission(result);
-      if (result !== "granted") return;
-      const reg = await navigator.serviceWorker.ready;
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: base64UrlToBytes(publicKey),
-        }));
-      await api("/api/push/subscriptions", {
-        method: "POST",
-        body: JSON.stringify({
-          ...sub.toJSON(),
-          deviceLabel: deviceLabel(
-            navigator.userAgent,
-            navigator.maxTouchPoints,
-          ),
-        }),
-      });
-      setEndpoint(sub.endpoint);
-      await loadDevices();
-    } catch {
+    const ok = await push.enable();
+    setBusy(false);
+    if (!ok && Notification.permission !== "denied") {
       showToast({ message: copy.settings.enableFailed });
-    } finally {
-      setBusy(false);
     }
   }
 
-  async function toggle(device: SubscriptionInfo) {
-    await api(`/api/push/subscriptions/${device.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled: !device.enabled }),
-    });
-    await loadDevices();
+  // The switch changes itself before the request. On an error, put it back
+  // and tell why (#104).
+  async function toggle(device: SubscriptionInfo, control: HTMLInputElement) {
+    try {
+      await push.toggle(device);
+    } catch {
+      control.checked = device.enabled;
+      showToast({ message: copy.settings.deviceFailed });
+    }
   }
 
   async function remove(device: SubscriptionInfo) {
-    await api(`/api/push/subscriptions/${device.id}`, { method: "DELETE" });
-    if (device.endpoint === endpoint) {
-      const reg = await navigator.serviceWorker.getRegistration();
-      await (await reg?.pushManager.getSubscription())?.unsubscribe();
-      setEndpoint(null);
+    try {
+      await push.remove(device);
+    } catch {
+      showToast({ message: copy.settings.removeFailed });
     }
-    await loadDevices();
   }
 
   async function sendTest() {
     try {
-      const { sent, failed } = await api("/api/push/test", {
+      const res = await fetch("/api/push/test", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: "{}",
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { sent, failed } = (await res.json()) as {
+        sent: number;
+        failed: number;
+      };
       showToast({
         message:
           sent > 0
@@ -148,7 +76,8 @@ export function NotificationSettings({
         <h2 id="this-device" className="text-xl font-semibold">
           {copy.settings.thisDevice}
         </h2>
-        {!publicKey ? (
+        {publicKey === undefined ||
+        support === "loading" ? null : !publicKey ? (
           <p className="text-ink-muted">{copy.settings.pushNotConfigured}</p>
         ) : support === "needs-install" ? (
           <p className="text-ink-muted">{copy.settings.pushNeedsInstall}</p>
@@ -194,7 +123,12 @@ export function NotificationSettings({
                   </span>
                   <wa-switch
                     checked={device.enabled}
-                    onChange={() => void toggle(device)}
+                    onChange={(event) =>
+                      void toggle(
+                        device,
+                        event.currentTarget as unknown as HTMLInputElement,
+                      )
+                    }
                   >
                     <span className="sr-only">
                       {copy.settings.deviceSwitch(label)}
@@ -238,6 +172,16 @@ function MutedLists() {
   const lists = useLists();
   const { muted, setListMuted } = useMutedLists();
 
+  async function toggleList(listId: string, control: HTMLInputElement) {
+    try {
+      await setListMuted(listId, !control.checked);
+    } catch {
+      // The switch changed itself. Put it back (#104).
+      control.checked = !control.checked;
+      showToast({ message: copy.list.notificationsFailed });
+    }
+  }
+
   if (!lists || !muted || lists.length === 0) return null;
   return (
     <section aria-labelledby="lists" className="flex flex-col gap-3">
@@ -254,7 +198,12 @@ function MutedLists() {
               </span>
               <wa-switch
                 checked={!muted.has(list.id)}
-                onChange={() => void setListMuted(list.id, !muted.has(list.id))}
+                onChange={(event) =>
+                  void toggleList(
+                    list.id,
+                    event.currentTarget as unknown as HTMLInputElement,
+                  )
+                }
               >
                 <span className="sr-only">
                   {copy.settings.listSwitch(list.name)}

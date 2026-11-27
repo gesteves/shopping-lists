@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
+import { serialize } from "../src/shared/hlc";
 import {
   anyCount,
   createList,
@@ -270,4 +271,84 @@ test.describe("sync errors", () => {
       page.getByRole("status").filter({ hasText: copy.sync.error }),
     ).toBeVisible();
   });
+});
+
+test("Cancel in the dedupe prompt keeps the name, quantity, and notes", async ({
+  page,
+}) => {
+  await signIn(page);
+  await openNewList(page);
+  await add(page, "Milk");
+  const bar = page.getByRole("form", { name: copy.addBar.label });
+
+  await bar.getByRole("combobox", { name: copy.addBar.name }).fill("milk");
+  await bar.getByRole("button", { name: copy.addBar.details }).click();
+  await bar.getByRole("button", { name: copy.stepper.increment }).click();
+  await bar.getByRole("textbox", { name: copy.addBar.notes }).fill("Oat");
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  const prompt = dialog(page, copy.addBar.duplicateTitle("Milk"));
+  await expect(prompt.getByText(copy.addBar.duplicateBody(2, 3))).toBeVisible();
+  await prompt.getByRole("button", { name: copy.common.cancel }).click();
+  await expect(prompt).toBeHidden();
+
+  await expect(
+    bar.getByRole("combobox", { name: copy.addBar.name }),
+  ).toHaveValue("milk");
+  await expect(
+    bar.getByRole("textbox", { name: copy.addBar.notes }),
+  ).toHaveValue("Oat");
+  await expect(
+    bar.getByRole("spinbutton", { name: copy.addBar.quantity }),
+  ).toHaveValue("2");
+});
+
+test("an add to a list deleted offline offers to re-create the list", async ({
+  page,
+  context,
+  browser,
+}) => {
+  await signIn(page);
+  const name = await openNewList(page);
+  await synced(page);
+  const listId = new URL(page.url()).pathname.split("/").pop()!;
+
+  // Offline, this device adds an item. Then Ben deletes the list.
+  await context.setOffline(true);
+  await page.getByLabel(copy.addBar.name).fill("Tent");
+  await page.getByLabel(copy.addBar.name).press("Enter");
+  await expect(item(page, "Tent")).toBeVisible();
+  const ben = await browser.newPage();
+  try {
+    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
+    const clientId = randomUUID();
+    const res = await ben.request.post("/api/sync/push", {
+      data: {
+        clientId,
+        ops: [
+          {
+            opId: randomUUID(),
+            clientId,
+            hlc: serialize({ wall: Date.now(), counter: 0, node: clientId }),
+            type: "deleteList",
+            args: { listId },
+          },
+        ],
+      },
+    });
+    expect(res.status()).toBe(200);
+  } finally {
+    await ben.close();
+  }
+
+  // Online, the server refuses the add. The toast offers a new list.
+  await context.setOffline(false);
+  const toast = page.locator("wa-toast-item", {
+    hasText: copy.toasts.listDeletedAdd(name, "Tent"),
+  });
+  await expect(toast).toBeVisible({ timeout: 10_000 });
+  await toast.getByRole("button", { name: copy.toasts.recreate }).click();
+  await expect(page).not.toHaveURL(new RegExp(listId));
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await expect(item(page, "Tent")).toBeVisible();
+  await synced(page);
 });
