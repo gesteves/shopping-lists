@@ -4,11 +4,13 @@ import { copy } from "../src/copy";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { serialize } from "../src/shared/hlc";
 import {
+  authorizePath,
   createList,
   escapeRegExp,
   listIndex,
   openList,
   outboxCount,
+  registerClient,
   signIn,
   synced,
 } from "./helpers";
@@ -196,10 +198,8 @@ test("sign-out leaves no data of the user on the device", async ({
   await expect(page).toHaveURL("/sign-in");
   const after = await deviceState(page);
   expect(after.lists).toEqual([]);
-  // Only the sign-in page, which the browser loaded after the sign-out.
-  expect(after.pages.map((url) => new URL(url).pathname)).toEqual(
-    after.pages.map(() => "/sign-in"),
-  );
+  // The worker does not cache the sign-in page either (#117).
+  expect(after.pages).toEqual([]);
 
   // Offline, the pages of the user are gone too.
   await context.setOffline(true);
@@ -249,4 +249,100 @@ test("a cached page of the last user does not delete the outbox of the next user
   expect((await pull.json()).items).toContainEqual(
     expect.objectContaining({ name: "Rope" }),
   );
+});
+
+/** The copy of a URL in the page cache of the worker, or null. */
+function cachedPage(page: Page, url: string) {
+  return page.evaluate(async (url) => {
+    const cache = await caches.open("pages");
+    const res = await cache.match(url, { ignoreVary: true });
+    if (!res) return null;
+    const { status, type, redirected } = res;
+    return { status, type, redirected, body: await res.text() };
+  }, url);
+}
+
+test("an expired session does not replace a cached list page (#117)", async ({
+  page,
+  context,
+}) => {
+  await signIn(page);
+  await controlled(page);
+  const name = `Picnic ${randomUUID().slice(0, 8)}`;
+  const listId = await pushList(page, name);
+  const heading = page.getByRole("heading", { level: 1, name });
+  await page.goto(`/lists/${listId}`);
+  await expect(heading).toBeVisible();
+  await synced(page);
+  // A load through the worker, so it saves the page.
+  await page.reload();
+  await expect(heading).toBeVisible();
+  const listUrl = page.url();
+  await expect
+    .poll(async () => (await cachedPage(page, listUrl))?.status)
+    .toBe(200);
+  const cookies = await context.cookies();
+
+  // No session cookie: src/proxy.ts sends a 307 to /sign-in. The worker
+  // gets an opaque redirect with status 0.
+  await context.clearCookies();
+  await page.goto(listUrl);
+  await expect(page).toHaveURL("/sign-in");
+  // The worker writes the cache after the response.
+  await page.waitForTimeout(1000);
+  expect(await cachedPage(page, listUrl)).toMatchObject({ status: 200 });
+  // A cookie with no session: the page gives 200, and redirects in the
+  // stream.
+  await context.addCookies(
+    cookies.map((c) =>
+      c.name.includes("session_token") ? { ...c, value: "gone.gone" } : c,
+    ),
+  );
+  await page.goto(listUrl);
+  await expect(page).toHaveURL("/sign-in");
+  await page.waitForTimeout(1000);
+
+  const cached = await cachedPage(page, listUrl);
+  expect(cached).toMatchObject({
+    status: 200,
+    type: "basic",
+    redirected: false,
+  });
+  expect(cached?.body).not.toContain("NEXT_REDIRECT");
+
+  // Offline, the cached page opens the list.
+  await context.setOffline(true);
+  await page.goto(listUrl);
+  await expect(heading).toBeVisible();
+  await context.setOffline(false);
+});
+
+test("the worker does not cache the consent page or the OAuth metadata (#117)", async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  await signIn(page);
+  await controlled(page);
+  const { name, clientId } = await registerClient(request);
+  await page.goto(authorizePath(clientId, baseURL!).path);
+  await expect(page).toHaveURL(/\/oauth\/consent\?/);
+  const heading = page.getByRole("heading", {
+    name: copy.consent.heading(name),
+  });
+  await expect(heading).toBeVisible();
+  await page.reload();
+  await expect(heading).toBeVisible();
+  await page.goto("/.well-known/oauth-authorization-server");
+  await page.goto("/");
+  await expect(listIndex(page)).toBeVisible();
+  // The worker writes the cache after the response.
+  await page.waitForTimeout(1000);
+
+  const paths = (await deviceState(page)).pages.map(
+    (url) => new URL(url).pathname,
+  );
+  expect(paths).toContain("/");
+  expect(paths).not.toContain("/oauth/consent");
+  expect(paths).not.toContain("/.well-known/oauth-authorization-server");
 });

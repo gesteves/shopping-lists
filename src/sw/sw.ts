@@ -9,10 +9,18 @@ import type {
   SerwistGlobalConfig,
   SerwistPlugin,
 } from "serwist";
-import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
+import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { copy } from "../copy";
 import { LIST_SHELL_PATH } from "../shared/offline";
 import { openUrl, targetUrl } from "./open-url";
+import {
+  DROP_AT_UPDATE,
+  isAppPage,
+  isGoodPage,
+  PAGE_CACHE,
+  refreshPages,
+  RSC_CACHE,
+} from "./page-cache";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -37,15 +45,24 @@ self.addEventListener("fetch", (event) => {
 // /~offline, also with all the data in IndexedDB. These rules come before
 // the default rules: network first with a short wait, then the copy, for 30
 // days from the last use.
-const PAGE_CACHE = "pages";
 const PAGE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const NETWORK_TIMEOUT_SECONDS = 3;
+
+/**
+ * Keep only a good page (#117). The default plugin of NetworkFirst keeps
+ * status 0 too, thus a 307 to /sign-in replaced the cached page.
+ */
+const goodPagesOnly: SerwistPlugin = {
+  cacheWillUpdate: async ({ response }) =>
+    (await isGoodPage(response)) ? response : null,
+};
 
 function pageCache(cacheName: string, plugins: SerwistPlugin[] = []) {
   return new NetworkFirst({
     cacheName,
     networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [
+      goodPagesOnly,
       new ExpirationPlugin({
         maxEntries: 200,
         maxAgeSeconds: PAGE_MAX_AGE_SECONDS,
@@ -56,8 +73,8 @@ function pageCache(cacheName: string, plugins: SerwistPlugin[] = []) {
   });
 }
 
-/** A same-origin path of the app: not the API, not a build or static file. */
-function isAppPath(url: URL, sameOrigin: boolean): boolean {
+/** A same-origin page: not the API, not a build or static file. */
+function isSameOriginPage(url: URL, sameOrigin: boolean): boolean {
   return (
     sameOrigin &&
     !url.pathname.startsWith("/api/") &&
@@ -66,10 +83,17 @@ function isAppPath(url: URL, sameOrigin: boolean): boolean {
   );
 }
 
+/**
+ * The RSC payload of a navigation. A prefetch is not cached: Next.js 16
+ * sends `Next-Router-Prefetch` with the values 1, 2, or 3 (#117). A
+ * prefetch that ended after the sign-out cleared the caches put a page of
+ * the user back in the cache.
+ */
 const isRsc: RouteMatchCallback = ({ request, url, sameOrigin }) =>
   request.headers.get("RSC") === "1" &&
-  request.headers.get("Next-Router-Prefetch") !== "1" &&
-  isAppPath(url, sameOrigin);
+  !request.headers.has("Next-Router-Prefetch") &&
+  isSameOriginPage(url, sameOrigin) &&
+  isAppPage(url);
 
 /**
  * A page: a navigation, or a CACHE_URLS request from the app (a plain GET
@@ -78,7 +102,16 @@ const isRsc: RouteMatchCallback = ({ request, url, sameOrigin }) =>
 const isPage: RouteMatchCallback = ({ request, url, sameOrigin }) =>
   request.method === "GET" &&
   request.headers.get("RSC") !== "1" &&
-  isAppPath(url, sameOrigin);
+  isSameOriginPage(url, sameOrigin) &&
+  isAppPage(url);
+
+/**
+ * Each other same-origin page, and each RSC prefetch: never cached (#117).
+ * Without this rule, the "others" rule of `defaultCache` keeps them: also
+ * the consent page, with its signed query.
+ */
+const isOtherPage: RouteMatchCallback = ({ url, sameOrigin }) =>
+  isSameOriginPage(url, sameOrigin);
 
 const OFFLINE_PATH = "/~offline";
 
@@ -108,8 +141,9 @@ const serwist = new Serwist({
   // Pages are network first, then the cached copy. The app caches each page
   // that it shows, and the list shell (src/app/service-worker.tsx).
   runtimeCaching: [
-    { matcher: isRsc, handler: pageCache("pages-rsc") },
+    { matcher: isRsc, handler: pageCache(RSC_CACHE) },
     { matcher: isPage, handler: pageCache(PAGE_CACHE, [pageFallback]) },
+    { matcher: isOtherPage, handler: new NetworkOnly() },
     ...defaultCache,
   ],
   fallbacks: {
@@ -124,6 +158,26 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// A new version (#117). Its precache does not have the `/_next/static` files
+// of the old version, and the server does not serve them. A cached page of
+// the old version can load them only from the HTTP cache of the browser,
+// thus offline it often does not start. Fetch each cached page again, and
+// delete the RSC payloads and the other pages of the old version.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      for (const name of DROP_AT_UPDATE) {
+        await caches.delete(name);
+      }
+      if (await caches.has(PAGE_CACHE)) {
+        await refreshPages(await caches.open(PAGE_CACHE), (url, init) =>
+          fetch(url, init),
+        );
+      }
+    })(),
+  );
+});
 
 // Push (#15). The payload is a PushPayload (src/shared/push.ts).
 self.addEventListener("push", (event) => {
