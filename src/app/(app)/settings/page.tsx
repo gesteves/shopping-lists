@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { copy } from "@/copy";
+import { mcpResource } from "@/lib/oauth";
 import { requireUser } from "@/lib/session";
 import { getDb } from "@/db/client";
 import { listConnectedApps } from "@/server/connected-apps";
@@ -35,7 +36,10 @@ async function Settings() {
     <>
       <NotificationSettings publicKey={publicKey} />
       <KeepScreenOnSetting />
-      <ConnectedApps apps={listConnectedApps(getDb(), user.id)} />
+      <ConnectedApps
+        apps={listConnectedApps(getDb(), user.id)}
+        mcpUrl={mcpResource()}
+      />
       <section aria-labelledby="account" className="flex flex-col gap-3">
         <h2 id="account" className="text-xl font-semibold">
           {copy.settings.account}

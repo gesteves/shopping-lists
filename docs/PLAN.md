@@ -266,7 +266,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 
 **Consent:** Google sign-in (allowlist), then `/oauth/consent`. The client name is the client's own claim, thus the page also shows the hosts the user can check: the client ID host (CIMD) and the redirect host, with a warning for a localhost redirect. The token belongs to that user, and its ops are recorded with `via: "mcp"`.
 
-**Connected apps:** Settings lists the approved clients. "Disconnect" deletes the grant, revokes the refresh tokens, and deletes the opaque access tokens (`src/server/connected-apps.ts`).
+**Connected apps:** Settings lists the approved clients. "Disconnect" deletes the grant, revokes the refresh tokens, and deletes the opaque access tokens (`src/server/connected-apps.ts`). Settings also shows the connector URL (`mcpResource()`, `<origin>/mcp`) with a `<wa-copy-button>` (#73). Its tooltip is off, because the tooltip replaces the accessible name of the button; a toast tells the result.
 
 ### Tools
 - `tools/list` returns tools in a fixed order, with `ttlMs` and `cacheScope: "private"`.

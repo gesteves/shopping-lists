@@ -7,12 +7,27 @@ import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import type { ConnectedApp } from "@/server/connected-apps";
 import { disconnectApp } from "../../actions";
-import { ConfirmDialog } from "../_components/wa";
+import { ConfirmDialog, useWaEvents } from "../_components/wa";
 
-/** The apps that can use the lists through MCP, with a disconnect (#18). */
-export function ConnectedApps({ apps }: { apps: ConnectedApp[] }) {
+/**
+ * The apps that can use the lists through MCP, with a disconnect (#18), and
+ * the URL to connect a new app, with a copy button (#73).
+ */
+export function ConnectedApps({
+  apps,
+  mcpUrl,
+}: {
+  apps: ConnectedApp[];
+  mcpUrl: string;
+}) {
   const router = useRouter();
   const [confirming, setConfirming] = useState<ConnectedApp | null>(null);
+  // The built-in tooltip replaces the accessible name of the button, thus
+  // it is off. A toast tells the result, also to a screen reader.
+  const copyButton = useWaEvents<HTMLElement>({
+    "wa-copy": () => showToast({ message: copy.settings.copied }),
+    "wa-error": () => showToast({ message: copy.settings.copyFailed }),
+  });
 
   async function disconnect(app: ConnectedApp) {
     setConfirming(null);
@@ -67,6 +82,24 @@ export function ConnectedApps({ apps }: { apps: ConnectedApp[] }) {
           })}
         </ul>
       )}
+      <wa-input
+        readonly
+        value={mcpUrl}
+        label={copy.settings.connectorUrl}
+        hint={copy.settings.connectorUrlHint}
+      >
+        <wa-copy-button
+          ref={copyButton}
+          slot="end"
+          value={mcpUrl}
+          copy-label={copy.settings.copyUrl}
+          tooltip="none"
+        >
+          <wa-icon slot="copy-icon" name="copy"></wa-icon>
+          <wa-icon slot="success-icon" name="check"></wa-icon>
+          <wa-icon slot="error-icon" name="xmark"></wa-icon>
+        </wa-copy-button>
+      </wa-input>
       <ConfirmDialog
         open={confirming !== null}
         label={copy.settings.disconnectTitle(

@@ -8,6 +8,7 @@ import "@web.awesome.me/webawesome-pro/dist/components/avatar/avatar.js";
 import "@web.awesome.me/webawesome-pro/dist/components/badge/badge.js";
 import "@web.awesome.me/webawesome-pro/dist/components/button/button.js";
 import "@web.awesome.me/webawesome-pro/dist/components/callout/callout.js";
+import "@web.awesome.me/webawesome-pro/dist/components/copy-button/copy-button.js";
 import "@web.awesome.me/webawesome-pro/dist/components/dialog/dialog.js";
 import "@web.awesome.me/webawesome-pro/dist/components/divider/divider.js";
 import "@web.awesome.me/webawesome-pro/dist/components/drawer/drawer.js";
