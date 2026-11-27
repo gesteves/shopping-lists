@@ -11,4 +11,7 @@ export async function register() {
   const { createSummarizer } = await import("@/server/notify/summarize");
   // Claude writes the text for more than one change (#17).
   startNotifier({ summarize: createSummarizer() });
+  // Delete old tombstones each day (#20).
+  const { startPurger } = await import("@/server/purge");
+  startPurger();
 }

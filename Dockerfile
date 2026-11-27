@@ -39,6 +39,9 @@ RUN apt-get update \
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
 COPY litestream.yml /etc/litestream.yml
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# The restore drill (docs/ops.md). Not used at normal start.
+COPY scripts/restore-drill.sh /usr/local/bin/restore-drill.sh
+COPY scripts/restore-check.mjs /usr/local/lib/restore-check.mjs
 COPY --from=build --chown=node:node /app/.next/standalone ./
 EXPOSE 3000
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
