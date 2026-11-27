@@ -314,6 +314,10 @@ export const en = {
     account: "Account",
     signedInAs: (name: string) => `Signed in as ${name}`,
     signOut: "Sign out",
+    /** Sign-out with ops that did not sync (#115). */
+    signOutPendingTitle: "Sign out with changes that didn’t sync?",
+    signOutPendingBody: (n: number) =>
+      `${plural(n, { one: `${n} change`, other: `${n} changes` })} on this device didn’t sync. If you sign out now, ${plural(n, { one: "it’s", other: "they’re" })} lost.`,
   },
 
   devices: {

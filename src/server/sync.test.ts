@@ -59,7 +59,7 @@ async function push(ops: unknown[]) {
 async function pull(query = ""): Promise<PullResponse & { status: number }> {
   const res = handlePull(
     new Request(`http://localhost/api/sync/pull${query}`),
-    { db },
+    { db, now: () => NOW },
   );
   expect(res.headers.get("cache-control")).toBe("no-store");
   return { status: res.status, ...(await res.json()) };
@@ -93,6 +93,7 @@ describe("push then pull", () => {
       cursor: 2,
       hasMore: false,
       hlc: add.hlc,
+      now: NOW,
     });
     expect(page.users).toHaveLength(2);
     expect(page.users).toContainEqual({ id: SAM.id, name: "Sam", image: null });

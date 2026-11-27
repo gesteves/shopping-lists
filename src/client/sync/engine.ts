@@ -1,7 +1,8 @@
 // The sync engine: push the outbox, pull the changes, then rebuild the view.
-// Only one run at a time. After a network or server error, it tries again
-// with exponential backoff. After a 401, it keeps the outbox and waits for a
-// trigger (the app comes to the front, the network comes back, or a poke).
+// Only one run at a time. After a network error, or a status that is not
+// 200, 400, 401, or 413, it tries again with exponential backoff. After a
+// 401, it keeps the outbox and waits for a trigger (the app comes to the
+// front, the network comes back, or a poke).
 import { opSchema, type Op } from "@/shared/ops";
 import {
   MAX_PUSH_OPS,
@@ -10,7 +11,14 @@ import {
   type RejectReason,
 } from "@/shared/sync";
 import { getMeta, type ClientDb, type OutboxEntry } from "../db";
-import { ensureClientId, rebuildView, restampOps, savePullPage } from "./local";
+import {
+  ensureClientId,
+  pendingCount,
+  rebuildView,
+  restampOps,
+  saveClockOffset,
+  savePullPage,
+} from "./local";
 
 export type SyncState =
   | "idle"
@@ -80,9 +88,23 @@ const MAX_PAGES = 1000;
 /** Most pushes in one run. New writes go in the next run. */
 const MAX_PUSHES = 50;
 
-/** Set to true when a step changes the local data. */
 interface RunState {
+  /** Set to true when a step changes the local data. */
   dirty: boolean;
+  /** Ops are still pending after MAX_PUSHES pushes. */
+  more: boolean;
+}
+
+/** The item ID of an op on one item, or undefined. */
+function itemTarget(op: Op): string | undefined {
+  return "itemId" in op.args && op.type !== "addItem"
+    ? op.args.itemId
+    : undefined;
+}
+
+/** The op on the item `into`. */
+function retarget(op: Op, into: string, opId = op.opId): Op {
+  return opSchema.parse({ ...op, opId, args: { ...op.args, itemId: into } });
 }
 
 export class SyncEngine {
@@ -218,9 +240,9 @@ export class SyncEngine {
     }
     this.#cancelTimer();
     this.#setStatus({ state: "syncing" });
+    const run: RunState = { dirty: false, more: false };
     try {
       await withLock(async () => {
-        const run: RunState = { dirty: false };
         try {
           await this.#push(run);
           await this.#pull(run);
@@ -237,6 +259,8 @@ export class SyncEngine {
       });
       this.#failures = 0;
       this.#setStatus({ state: "idle", lastSyncAt: Date.now() });
+      // Push the rest in a new run, after the other triggers.
+      if (run.more) this.schedule(0);
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedError) {
@@ -339,9 +363,27 @@ export class SyncEngine {
       const restamp: number[] = [];
       const done: number[] = [];
       const acked: number[] = [];
+      /** Ops of this push on the local row of a merged add: seq to new op. */
+      const moved = new Map<number, Op>();
+      /** The local item ID of each merged add, to the item of the server. */
+      const mergedIds = new Map<string, string>();
       entries.forEach((entry, i) => {
         const result = body.results[i];
         const final = result?.status === "duplicate" ? result.original : result;
+        // An op on the local row of an add that the server merged before it
+        // in this push. The server has no such row, and it keeps the
+        // rejection for this opId. Thus the op goes again to the merged
+        // item, with a new opId.
+        const target = itemTarget(entry.op);
+        const into = target === undefined ? undefined : mergedIds.get(target);
+        if (
+          into !== undefined &&
+          final?.status === "rejected" &&
+          final.reason === "item_not_found"
+        ) {
+          moved.set(entry.seq!, retarget(entry.op, into, crypto.randomUUID()));
+          return;
+        }
         // The device clock is too far ahead. Stamp the op again one time
         // with the server time, and do not lose the edit.
         if (
@@ -357,28 +399,55 @@ export class SyncEngine {
         if (final?.status === "applied") acked.push(entry.seq!);
         else done.push(entry.seq!);
         if (final?.status === "rejected") this.#reject(entry.op, final.reason);
-        // Only a new result: a duplicate was shown the first time.
-        if (result?.status === "merged") {
+        if (final?.status === "merged") {
+          if (entry.op.type === "addItem") {
+            mergedIds.set(entry.op.args.itemId, final.into);
+          }
+          // Also for a duplicate: the entry is still here, thus the first
+          // response did not arrive, and no event went.
           this.events.dispatchEvent(
             new CustomEvent<MergedDetail>("merged", {
               detail: {
                 op: entry.op,
-                into: result.into,
-                changed: result.changed,
+                into: final.into,
+                changed: final.changed,
               },
             }),
           );
         }
       });
-      await db.outbox.bulkDelete(done);
-      await db.outbox.bulkUpdate(
-        acked.map((seq) => ({ key: seq, changes: { acked: true } })),
-      );
-      if (restamp.length > 0) {
-        await restampOps(db, restamp, body.now ?? Date.now());
-      }
+      const last = entries.at(-1)!.seq!;
+      await db.transaction("rw", [db.outbox, db.meta], async () => {
+        await saveClockOffset(db, body.now);
+        await db.outbox.bulkDelete(done);
+        await db.outbox.bulkUpdate(
+          acked.map((seq) => ({ key: seq, changes: { acked: true } })),
+        );
+        for (const [seq, op] of moved) {
+          await db.outbox.update(seq, { opId: op.opId, op });
+        }
+        // The later ops on the local row of a merged add go to the merged
+        // item. The server did not see them, thus they keep their opIds.
+        if (mergedIds.size > 0) {
+          const later = await db.outbox.where("seq").above(last).toArray();
+          for (const entry of later) {
+            const target = itemTarget(entry.op);
+            const into =
+              target === undefined ? undefined : mergedIds.get(target);
+            if (into === undefined) continue;
+            await db.outbox.update(entry.seq!, {
+              op: retarget(entry.op, into),
+            });
+          }
+        }
+        if (restamp.length > 0) {
+          await restampOps(db, restamp, body.now ?? Date.now());
+        }
+      });
       run.dirty = true;
     }
+    // The limit of one run. Push the rest in the next run.
+    if ((await pendingCount(db)) > 0) run.more = true;
   }
 
   /** Pull every page. */
