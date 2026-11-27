@@ -59,3 +59,4 @@ To go back to an earlier time, add `-timestamp <RFC 3339 time>` to the `litestre
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-11-27 | OK | First drill (#20). `integrity_check: ok`, 5 migrations, 2 users, 8 lists, 4 items, 33 activity rows; newest change a few minutes old. The scratch machine was removed, and the app kept one machine. |
