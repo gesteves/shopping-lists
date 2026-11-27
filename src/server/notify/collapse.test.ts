@@ -91,6 +91,14 @@ describe("collapse", () => {
     });
   });
 
+  it("keeps the fields of all the updates", () => {
+    const out = collapse([
+      ev("updateItem", { itemName: "Milk", fields: ["notes"] }),
+      ev("updateItem", { itemName: "Milk", fields: ["quantity", "notes"] }),
+    ]);
+    expect(out[0].snapshot.fields).toEqual(["notes", "quantity"]);
+  });
+
   it("makes one move of many, and cancels a move back", () => {
     const a = { listName: "B", fromListName: "A" };
     const b = { listName: "C", fromListName: "B" };

@@ -428,7 +428,12 @@ export interface ActivitySnapshot {
   fromListName?: string;
   /** clearChecked, uncheckAll, and checkAll: the number of items they changed. */
   count?: number;
+  /** updateItem: the fields that changed (#89). Older rows do not have it. */
+  fields?: ItemField[];
 }
+
+/** The fields that updateItem can change. */
+export type ItemField = "name" | "quantity" | "notes";
 
 /** One row for each change. The notifier (#16) sends them. */
 export const activity = sqliteTable(

@@ -18,7 +18,7 @@ const events = [
     { listId: "l2", itemId: "c" },
   ),
 ];
-const FALLBACK = "Sam made 3 changes to 2 lists";
+const FALLBACK = "Sam made 3 changes to 2 lists.";
 
 /** A fake client whose parse() does what the test says. */
 function fakeClient(parse: (...args: unknown[]) => unknown) {
@@ -34,12 +34,12 @@ describe("createSummarizer", () => {
   it("returns the line from Claude", async () => {
     const { client, parse } = fakeClient(async () =>
       answer(
-        "Sam added “Milk” and “Eggs” to “Whole Foods” and checked “Bread” off “Target”",
+        "Sam added milk and eggs to the “Whole Foods” list and checked off bread in the “Target” list.",
       ),
     );
     const summarize = createSummarizer({ client });
     expect(await summarize(events, "Sam")).toBe(
-      "Sam added “Milk” and “Eggs” to “Whole Foods” and checked “Bread” off “Target”",
+      "Sam added milk and eggs to the “Whole Foods” list and checked off bread in the “Target” list.",
     );
 
     const [request] = parse.mock.calls[0] as [Record<string, unknown>];
@@ -101,12 +101,25 @@ describe("createSummarizer", () => {
     expect(await summarize(events, "Sam")).toBe(FALLBACK);
   });
 
-  it("caps a long line", async () => {
+  it("does not cut a long line: it gives the fallback", async () => {
     const long = `Sam ${"added lots of things ".repeat(20)}`;
+    expect(long.length).toBeGreaterThan(MAX_BODY);
     const { client } = fakeClient(async () => answer(long));
-    const body = await createSummarizer({ client })(events, "Sam");
-    expect(body.length).toBeLessThanOrEqual(MAX_BODY);
-    expect(body.endsWith("…")).toBe(true);
+    expect(await createSummarizer({ client })(events, "Sam")).toBe(FALLBACK);
+  });
+
+  it("writes one change too, with its sentence as the fallback", async () => {
+    const one = [ev("addItem", { itemName: "Eggs" })];
+    const { client, parse } = fakeClient(async () =>
+      answer("Sam added eggs to the “Whole Foods” list."),
+    );
+    expect(await createSummarizer({ client })(one, "Sam")).toBe(
+      "Sam added eggs to the “Whole Foods” list.",
+    );
+    expect(parse).toHaveBeenCalledOnce();
+    expect(await createSummarizer({ apiKey: "" })(one, "Sam")).toBe(
+      "Sam added “Eggs” to the “Whole Foods” list.",
+    );
   });
 });
 
@@ -128,14 +141,42 @@ describe("summaryInput", () => {
       changes: [{ type: "moveItem", list: "B", item: "Tea", fromList: "A" }],
     });
   });
+
+  it("sends the fields that an update changed", () => {
+    const input = summaryInput(
+      [ev("updateItem", { itemName: "Eggs", fields: ["notes"] })],
+      "Sam",
+    );
+    expect(input.changes).toEqual([
+      {
+        type: "updateItem",
+        list: "Whole Foods",
+        item: "Eggs",
+        fields: ["notes"],
+      },
+    ]);
+  });
 });
 
 describe("cleanBody", () => {
   it("makes one line and removes quotes around it", () => {
-    expect(cleanBody(' "Sam added\n“Milk”" ')).toBe("Sam added “Milk”");
-    expect(cleanBody("Sam added “Milk” to “Target”")).toBe(
-      "Sam added “Milk” to “Target”",
+    expect(cleanBody(' "Sam added\n“Milk”." ')).toBe("Sam added “Milk”.");
+    expect(cleanBody("“Sam made changes.”")).toBe("Sam made changes.");
+  });
+
+  it("adds a period if the sentence has none", () => {
+    expect(cleanBody("Sam added milk to the “Target” list")).toBe(
+      "Sam added milk to the “Target” list.",
     );
-    expect(cleanBody("“Sam made changes”")).toBe("Sam made changes");
+    expect(cleanBody("Sam renamed the “A” list to “B”")).toBe(
+      "Sam renamed the “A” list to “B”.",
+    );
+    expect(cleanBody("Sam added milk!")).toBe("Sam added milk!");
+  });
+
+  it("gives null for an empty or too long line", () => {
+    expect(cleanBody("  ")).toBeNull();
+    expect(cleanBody("x".repeat(MAX_BODY))).toBeNull();
+    expect(cleanBody(`${"x".repeat(MAX_BODY - 1)}.`)).not.toBeNull();
   });
 });

@@ -9,47 +9,47 @@ describe("renderEvent", () => {
     const cases: [ReturnType<typeof ev>, string][] = [
       [
         ev("createList", { listName: "Costco" }, list),
-        "Sam created a “Costco” list",
+        "Sam created a “Costco” list.",
       ],
       [
         ev("createList", { listName: "Aldi" }, list),
-        "Sam created an “Aldi” list",
+        "Sam created an “Aldi” list.",
       ],
       [
         ev("deleteList", { listName: "Target" }, list),
-        "Sam deleted the “Target” list",
+        "Sam deleted the “Target” list.",
       ],
       [
         ev("renameList", { listName: "Costco", oldName: "Sam's Club" }, list),
-        "Sam renamed the “Sam's Club” list to “Costco”",
+        "Sam renamed the “Sam's Club” list to “Costco”.",
       ],
       [
         ev("restoreList", { listName: "Target" }, list),
-        "Sam restored the “Target” list",
+        "Sam restored the “Target” list.",
       ],
       [
         ev("addItem", { itemName: "Milk" }),
-        "Sam added “Milk” to the “Whole Foods” list",
+        "Sam added “Milk” to the “Whole Foods” list.",
       ],
       [
         ev("updateItem", { itemName: "Milk" }),
-        "Sam updated “Milk” in the “Whole Foods” list",
+        "Sam updated “Milk” in the “Whole Foods” list.",
       ],
       [
         ev("deleteItem", { itemName: "Milk" }),
-        "Sam removed “Milk” from the “Whole Foods” list",
+        "Sam removed “Milk” from the “Whole Foods” list.",
       ],
       [
         ev("restoreItem", { itemName: "Milk" }),
-        "Sam put “Milk” back on the “Whole Foods” list",
+        "Sam put “Milk” back on the “Whole Foods” list.",
       ],
       [
         ev("check", { itemName: "Milk" }),
-        "Sam checked “Milk” off the “Whole Foods” list",
+        "Sam checked “Milk” off the “Whole Foods” list.",
       ],
       [
         ev("uncheck", { itemName: "Milk" }),
-        "Sam unchecked “Milk” in the “Whole Foods” list",
+        "Sam unchecked “Milk” in the “Whole Foods” list.",
       ],
       [
         ev("moveItem", {
@@ -57,19 +57,19 @@ describe("renderEvent", () => {
           listName: "Target",
           fromListName: "Costco",
         }),
-        "Sam moved “Milk” from the “Costco” list to the “Target” list",
+        "Sam moved “Milk” from the “Costco” list to the “Target” list.",
       ],
       [
         ev("clearChecked", { count: 3 }, list),
-        "Sam deleted the checked items from the “Whole Foods” list",
+        "Sam deleted the checked items from the “Whole Foods” list.",
       ],
       [
         ev("uncheckAll", { count: 3 }, list),
-        "Sam unchecked everything in the “Whole Foods” list",
+        "Sam unchecked everything in the “Whole Foods” list.",
       ],
       [
         ev("checkAll", { count: 3 }, list),
-        "Sam checked everything off the “Whole Foods” list",
+        "Sam checked everything off the “Whole Foods” list.",
       ],
     ];
     for (const [event, text] of cases)
@@ -82,7 +82,7 @@ describe("renderEvent", () => {
         ev("addItem", { itemName: "Eggs" }, {}, { via: "mcp" }),
         "Sam",
       ),
-    ).toBe("Sam (via Claude) added “Eggs” to the “Whole Foods” list");
+    ).toBe("Sam (via Claude) added “Eggs” to the “Whole Foods” list.");
   });
 });
 
@@ -121,9 +121,9 @@ describe("renderFallback", () => {
       ev("check", { itemName: "B" }),
     ];
     expect(renderFallback(one, "Sam")).toBe(
-      "Sam made 2 changes to the “Whole Foods” list",
+      "Sam made 2 changes to the “Whole Foods” list.",
     );
     const two = [...one, ev("addItem", { itemName: "C" }, { listId: "l2" })];
-    expect(renderFallback(two, "Sam")).toBe("Sam made 3 changes to 2 lists");
+    expect(renderFallback(two, "Sam")).toBe("Sam made 3 changes to 2 lists.");
   });
 });

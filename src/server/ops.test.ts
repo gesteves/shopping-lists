@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "@/db/client";
 import { activity, items, lists, processedOps } from "@/db/schema";
@@ -223,8 +223,26 @@ describe("field-level last-writer-wins", () => {
 
   it("changes only the fields in updateItem", () => {
     seed();
-    apply(SAM, op("updateItem", { itemId: ITEM, fields: { quantity: 4 } }, T2));
+    apply(
+      SAM,
+      op(
+        "updateItem",
+        { itemId: ITEM, fields: { name: "Milk", quantity: 4, notes: "" } },
+        T2,
+      ),
+    );
     expect(getItem()).toMatchObject({ name: "Milk", quantity: 4, notes: "" });
+    // The activity names only the field that changed (#89).
+    const last = db
+      .select({ snapshot: activity.snapshot })
+      .from(activity)
+      .orderBy(desc(activity.id))
+      .get();
+    expect(last?.snapshot).toEqual({
+      listName: "Whole Foods",
+      itemName: "Milk",
+      fields: ["quantity"],
+    });
   });
 });
 

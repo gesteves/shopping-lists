@@ -30,7 +30,7 @@ Only the Google accounts on an allowlist can sign in.
 **Notifications**
 
 - Push notifications when the other person changes a list, on the installed iPhone app and on desktop browsers.
-- The app waits until the other person stops for a minute, then sends one notification. One change gets a fixed sentence, such as "Sam added “Milk” to the “Costco” list". More than one change gets a one-line summary that Claude writes.
+- The app waits until the other person stops for a minute, then sends one notification. Claude writes it as one sentence, such as "Sam added eggs and checked off milk in the “Whole Foods” list."
 - Turn notifications on or off for each device, and mute each list from the list page or from Settings.
 
 **Claude**
@@ -60,7 +60,7 @@ One Next.js server on one Fly.io machine, with SQLite on a volume. The browser k
 - Node 24 or later, and npm.
 - Tokens for the Web Awesome Pro and Font Awesome Pro npm registries. The UI uses Pro packages, so `npm install` fails without them.
 - A Google OAuth client (Google Cloud Console → APIs & Services → Credentials → OAuth client ID, type "Web application"). Add this redirect URI: `<your app URL>/api/auth/callback/google`, for example `http://localhost:3000/api/auth/callback/google`.
-- Optional: an Anthropic API key for the notification and list summaries. Without one, a notification uses a fixed sentence ("Sam made 3 changes to the “Costco” list"), and the lists page shows the item count.
+- Optional: an Anthropic API key for the notification and list summaries. Without one, a notification uses a fixed sentence ("Sam added “Milk” to the “Costco” list." or "Sam made 3 changes to the “Costco” list."), and the lists page shows the item count.
 
 ### Install
 

@@ -544,6 +544,12 @@ function changeItem(
     snapshot.fromListName = getList(ctx, row.listId)?.name ?? "";
   }
   if (set.name !== undefined) snapshot.oldName = row.name;
+  if (op.type === "updateItem") {
+    const fields = (["name", "quantity", "notes"] as const).filter(
+      (field) => set[field] !== undefined,
+    );
+    if (fields.length > 0) snapshot.fields = fields;
+  }
   return {
     result: applied(op, true),
     activity: { listId: list?.id ?? row.listId, itemId: row.id, snapshot },

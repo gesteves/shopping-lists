@@ -15,7 +15,7 @@ It's hosted on Fly.io behind Cloudflare.
 
 ### Decisions
 - **Stack:** Next.js + TypeScript, run as a long-lived Node server on Fly. Data lives on the client in IndexedDB, with a custom sync layer.
-- **Notifications:** pushes are grouped per burst (~60s window). A single change uses the exact template. Several changes get a one-line summary written by Claude Opus 5.5 at low effort, with a fixed template as the fallback.
+- **Notifications:** pushes are grouped per burst (~60s window). Claude Opus 5.5 at low effort writes one sentence for the burst, also for a single change (#89), with a fixed template as the fallback.
 - **Agent edits:** recorded as the user, with a "via Claude" tag (e.g. "Sam (via Claude) added …"). Only the other person is notified.
 - **v1 extras:** bulk reset (clear checked / uncheck all), autocomplete and dedupe, undo for deletes, rename list, move item between lists.
 - **Presence:** an avatar dot on lists the other person has open, and an "editing…" badge on the item they are editing.
@@ -24,6 +24,7 @@ It's hosted on Fly.io behind Cloudflare.
 - **Claude Duet:** it uses the connected apps on the Claude account. It's a proactive agent that runs in the cloud and asks for approval before deleting anything. The same remote MCP connector works for Claude.ai (web, Desktop, mobile), Claude Code and Duet. Duet's needs are covered in [MCP](#mcp): long-lived tokens, tool annotations, and safe retries.
 
 ### Notification templates
+The fallback text, when Claude gives none (#89). Each sentence ends with a period.
 - “[Name] created [a|an] “[list]” list”
 - “[Name] deleted the “[list]” list”
 - “[Name] renamed the “[old]” list to “[new]””
@@ -78,7 +79,7 @@ Schema in `src/db/schema.ts`.
 | `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, clocks (JSON), summary and summary_key (see List summaries), seq |
 | `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, created_by/at, updated_by/at, updated_via, deleted_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at. It makes pushes idempotent: a retry gets the stored result. |
-| `activity` | id, op_id, actor_id, via, type (the op type), list_id, item_id, snapshot (names at that moment), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
+| `activity` | id, op_id, actor_id, via, type (the op type), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at |
 | `list_mutes` | user_id, list_id |
 | `server_seq` | one global counter and `purged_seq` (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
@@ -177,18 +178,16 @@ Code in `src/server/notify/`.
 - Add then update → "added".
 - Several updates → one update.
 
-**One event left:** `templates.ts` fills the exact template, with curly quotes, a/an, and "(via Claude)".
-
-**More than one event left:** `summarize.ts` calls Claude.
+**Each burst (#89):** `summarize.ts` calls Claude, also for one event, because Claude writes item names in lowercase, as in a sentence ("Sam added eggs to the “Whole Foods” list."). The fallback for one event is its template, with curly quotes, a/an, and "(via Claude)".
 - `@anthropic-ai/sdk`, model `claude-opus-5-5`, with `output_config: { effort: "low", format: <zod { body: string }> }`.
 - Server-side refusal fallbacks: beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`.
 - 10s timeout and 1 retry. Check `stop_reason`.
-- The prompt (`prompts.notificationSummary` in `src/prompts/`, see [Prompts](#prompts)) asks for one line of at most ~120 characters, in the same voice as the templates, with counts and list names. For example: "Sam added 12 items to the “Whole Foods” list and checked 3 off “Target”".
-- On any error or refusal, it falls back to "[Name] made N changes to …".
+- The prompt (`prompts.notificationSummary` in `src/prompts/`, see [Prompts](#prompts)) asks for one complete sentence of at most ~120 characters, as Apple's guidelines say: sentence case, proper punctuation, a period at the end, and no cut text. Item names in lowercase without quotes (brands and proper nouns keep their capitals), list names in curly quotes, changes to one list together, and up to three names of each kind, then "and N others". The owner's examples (#89): "Sam added eggs and checked off milk in the “Whole Foods” list.", "Sam added eggs to the “Whole Foods” list and milk to the “Smith’s” list.", "Sam added eggs, milk, bread, and 3 others to the “Whole Foods” list.". The prompt has an example for each kind of change.
+- On any error or refusal, it falls back to the template for one event, or to "[Name] made N changes to …." for more.
 
 **Built in #16** (`src/server/notify/`): `startNotifier()` runs from `src/instrumentation.ts` and ticks every 10 s. Rows are grouped by actor and `via`, so "(via Claude)" holds for the whole text. A group is sent after 60 s of quiet, or 3 minutes after its first row. The rows are marked as sent **before** the push: a crash can lose one push but never sends it twice, and rows that a restart leaves are sent at the next tick. For each recipient, rows on muted lists are dropped, then `collapse()` runs, so muted changes do not count. The push title is the list name (one list) or "Shopping Lists", the URL is the list (or `/`), and the tag is the list ID (or `activity`). There are two more templates for a lone restore: “[Name] restored the “[list]” list” and “[Name] put “[item]” back on the “[list]” list”. a/an uses the first letter, and numbers that start with 8, or are 11 or 18, take "an".
 
-**Built in #17** (`src/server/notify/summarize.ts`): `client.beta.messages.parse` with `betaZodOutputFormat({ body })`, `claude-opus-5-5`, `effort: "low"`, `max_tokens: 4000` (thinking is always on and counts), and server-side refusal fallbacks with `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`: Anthropic picks the fallback model for the refusal category). The client has a 10 s timeout and 1 retry. The input is JSON with names only (actor with "(via Claude)", and type, list, item, old name, from list, count for each change). Anything but `stop_reason: "end_turn"` with a parsed body, any error, or no `ANTHROPIC_API_KEY` gives the fixed fallback. The server makes the body one line and cuts it at 160 characters (the prompt asks for 120). `npm run try:summaries` prints three sample bursts for a manual check.
+**Built in #17** (`src/server/notify/summarize.ts`): `client.beta.messages.parse` with `betaZodOutputFormat({ body })`, `claude-opus-5-5`, `effort: "low"`, `max_tokens: 4000` (thinking is always on and counts), and server-side refusal fallbacks with `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`: Anthropic picks the fallback model for the refusal category). The client has a 10 s timeout and 1 retry. The input is JSON with names only (actor with "(via Claude)", and type, list, item, old name, from list, count, and, for an update, the fields that changed, for each change). Anything but `stop_reason: "end_turn"` with a parsed body, any error, or no `ANTHROPIC_API_KEY` gives the fixed fallback. The server makes the body one line and adds a period if there is none. It does not cut the body (#89): a body longer than 200 characters (`MAX_BODY`; the prompt asks for 120) gives the fallback, and the device cuts the text when necessary. `npm run try:summaries` prints seven sample bursts for a manual check.
 
 **Sending:** `web-push` with VAPID keys. The payload carries a deep-link URL, and the notification `tag` is the list ID. Subscriptions that return 404 or 410 are deleted.
 
@@ -218,11 +217,11 @@ The list page shows no count.
 
 All the prompts for Claude are in one module, `src/prompts/index.ts` (#84), exported as `prompts`. It is `server-only`.
 
-- `notificationSummary`: the system prompt for the push summary (`src/server/notify/summarize.ts`), and the length that it asks for.
+- `notificationSummary`: the system prompt for the push text (`src/server/notify/summarize.ts`), and the length that it asks for.
 - `listSummary`: the system prompt for the list summary (`src/server/summary/summarize.ts`), and the length that it asks for.
 - `mcpInstructions`: the MCP server instructions (`src/server/mcp/server.ts`).
 
-The prompt text uses the length value, thus you change it in one place. A unit test makes sure that the server cut (`MAX_BODY`, `MAX_SUMMARY`) stays longer than the length that the prompt asks for. The model settings (model, effort, `max_tokens`) and the `summaryInput` functions stay in the modules that send the requests. The MCP tool and field descriptions stay in `TOOLS`, each next to its schema. To try a change, run `npm run try:summaries`.
+The prompt text uses the length value, thus you change it in one place. A unit test makes sure that the server limits (`MAX_BODY`, `MAX_SUMMARY`) stay longer than the length that the prompt asks for. The model settings (model, effort, `max_tokens`) and the `summaryInput` functions stay in the modules that send the requests. The MCP tool and field descriptions stay in `TOOLS`, each next to its schema. To try a change, run `npm run try:summaries`.
 
 ## MCP
 Targets spec **2026-07-28**. Code in `src/app/mcp/route.ts` and `src/server/mcp/*`. References: [spec](https://modelcontextprotocol.io/specification/2026-07-28), [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog), [deprecated](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). Re-read them at the start of #18 and #19.

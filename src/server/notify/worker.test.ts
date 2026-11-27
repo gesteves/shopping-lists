@@ -97,7 +97,7 @@ describe("Notifier", () => {
         userId: ALEX.id,
         payload: {
           title: "Whole Foods",
-          body: "Sam made 2 changes to the “Whole Foods” list",
+          body: "Sam made 2 changes to the “Whole Foods” list.",
           url: `/lists/${LIST}`,
           tag: LIST,
         },
@@ -140,7 +140,29 @@ describe("Notifier", () => {
     now += QUIET_MS;
     await notifier().tick();
     expect(sent[0].payload.body).toBe(
-      "Sam (via Claude) added “Eggs” to the “Whole Foods” list",
+      "Sam (via Claude) added “Eggs” to the “Whole Foods” list.",
+    );
+  });
+
+  it("gives one change to the summarizer too", async () => {
+    seedLists();
+    addItem("Eggs");
+    now += QUIET_MS;
+    const seen: number[] = [];
+    await new Notifier({
+      db,
+      now: () => now,
+      send: async (userId, payload) => {
+        sent.push({ userId, payload });
+      },
+      summarize: async (events) => {
+        seen.push(events.length);
+        return "Sam added eggs to the “Whole Foods” list.";
+      },
+    }).tick();
+    expect(seen).toEqual([1]);
+    expect(sent[0].payload.body).toBe(
+      "Sam added eggs to the “Whole Foods” list.",
     );
   });
 
@@ -169,7 +191,7 @@ describe("Notifier", () => {
     await notifier().tick();
     expect(sent).toHaveLength(1);
     expect(sent[0].payload.body).toBe(
-      "Sam added “Paper towels” to the “Costco” list",
+      "Sam added “Paper towels” to the “Costco” list.",
     );
   });
 
@@ -193,8 +215,8 @@ describe("Notifier", () => {
     await notifier().tick();
     expect(sent.map((s) => [s.userId, s.payload.body]).sort()).toEqual(
       [
-        [ALEX.id, "Sam added “Milk” to the “Whole Foods” list"],
-        [SAM.id, "Alex created an “Aldi” list"],
+        [ALEX.id, "Sam added “Milk” to the “Whole Foods” list."],
+        [SAM.id, "Alex created an “Aldi” list."],
       ].sort(),
     );
   });
