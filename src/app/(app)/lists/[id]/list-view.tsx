@@ -43,13 +43,20 @@ export function ListView() {
         <>
           <ListHeader view={view} />
           <ListSwitches listId={view.list.id} />
-          <p className="mt-1 text-ink-muted tabular-nums" aria-live="polite">
-            {view.items.length === 0
-              ? copy.list.empty
-              : remaining === 0
-                ? copy.list.allChecked
-                : null}
-          </p>
+          {/* Keep the live region in the DOM, so that a screen reader reads the callout when it shows. */}
+          <div aria-live="polite">
+            {view.items.length === 0 ? (
+              <wa-callout variant="neutral" size="small" className="mt-4">
+                <wa-icon slot="icon" name="cart-shopping"></wa-icon>
+                {copy.list.empty}
+              </wa-callout>
+            ) : remaining === 0 ? (
+              <wa-callout variant="brand" size="small" className="mt-4">
+                <wa-icon slot="icon" name="circle-check"></wa-icon>
+                {copy.list.allChecked}
+              </wa-callout>
+            ) : null}
+          </div>
           <ul
             aria-label={copy.list.items}
             className="mt-5 mb-4 flex flex-col gap-2"
