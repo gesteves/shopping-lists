@@ -203,12 +203,12 @@ Code in `src/server/notify/`.
 ## List summaries
 Code in `src/server/summary/`. The lists page shows one line under each list name, so you can see at a glance what to get:
 - No unchecked items: "Nothing to get".
-- 1 to 3 unchecked items: their names, in list order ("Eggs, Milk, and Bread"). The client makes this line at once, with no API call.
-- 4 or more: the summary from Claude in `lists.summary`, for example "Milk, eggs, produce, and snacks for the party". If there is no summary yet, the count ("5 items").
+- 1 unchecked item: its name, as the user wrote it. The client makes this line at once, with no API call.
+- 2 or more: the summary from Claude in `lists.summary`, for example "Milk and eggs" or "Milk, eggs, produce, and snacks for the party". Claude also corrects the capitals. If there is no summary yet, the count ("3 items").
 
 The list page shows no count.
 
-**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 4 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows the old summary.
+**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 2 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows the old summary.
 
 **Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
 

@@ -5,4 +5,4 @@
  * A list with fewer unchecked items shows their names, not a summary.
  * The worker makes no summary for it.
  */
-export const SUMMARY_MIN_ITEMS = 4;
+export const SUMMARY_MIN_ITEMS = 2;

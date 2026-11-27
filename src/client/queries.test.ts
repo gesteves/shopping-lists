@@ -121,12 +121,12 @@ describe("readListSummaries", () => {
 });
 
 describe("readListSummaries names", () => {
-  it("gives the names of a short list in list order, and none for a long list", async () => {
+  it("gives the name of one unchecked item, and none for more", async () => {
     await db.lists.put(list("l", "Target"));
-    await db.items.bulkPut([item("a", 1), item("b", 3), item("c", 2, true)]);
-    expect((await readListSummaries(db))[0].names).toEqual(["b", "a"]);
+    await db.items.bulkPut([item("a", 1), item("c", 2, true)]);
+    expect((await readListSummaries(db))[0].names).toEqual(["a"]);
 
-    await db.items.bulkPut([item("d", 4), item("e", 5)]);
+    await db.items.put(item("b", 3));
     expect((await readListSummaries(db))[0].names).toEqual([]);
   });
 });
@@ -145,23 +145,19 @@ describe("listLine", () => {
     );
   });
 
-  it("gives the names of a short list", () => {
+  it("gives the name of one item", () => {
     expect(
-      listLine(
-        summary({
-          remaining: 3,
-          names: ["Milk", "Eggs", "Bread"],
-          summary: "x",
-        }),
-      ),
-    ).toBe("Milk, Eggs, and Bread");
-    expect(listLine(summary({ remaining: 1, names: ["Milk"] }))).toBe("Milk");
+      listLine(summary({ remaining: 1, names: ["Milk"], summary: "x" })),
+    ).toBe("Milk");
   });
 
-  it("gives the summary of a long list, or the count", () => {
+  it("gives the summary of two or more items, or the count", () => {
     expect(
       listLine(summary({ remaining: 5, summary: "Produce and milk" })),
     ).toBe("Produce and milk");
     expect(listLine(summary({ remaining: 5 }))).toBe("5 items");
+    expect(listLine(summary({ remaining: 2, summary: "Milk and eggs" }))).toBe(
+      "Milk and eggs",
+    );
   });
 });

@@ -107,13 +107,11 @@ describe("SummaryWorker", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("makes no summary for fewer than four unchecked items", async () => {
+  it("makes no summary for one unchecked item", async () => {
     const w = worker();
     add("Milk");
-    add("Eggs");
-    const bread = add("Bread");
-    add("Kale");
-    act({ type: "check", args: { itemId: bread } } as never);
+    const eggs = add("Eggs");
+    act({ type: "check", args: { itemId: eggs } } as never);
     await w.tick();
     now += QUIET_MS * 10;
     await w.tick();
