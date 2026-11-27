@@ -179,6 +179,25 @@ describe("applyLocal", () => {
     });
   });
 
+  it("does not stamp a row for an op that changes nothing (#115)", () => {
+    const s = state([list()], [item({ checked: true, checkedAt: T - 50 })]);
+    for (const o of [
+      op("check", { itemId: ITEM }),
+      op("updateItem", { itemId: ITEM, fields: { name: "Milk", notes: "" } }),
+      op("moveItem", { itemId: ITEM, toListId: LIST }),
+      op("restoreItem", { itemId: ITEM }),
+      op("renameList", { listId: LIST, name: "Target" }),
+    ]) {
+      const changed = applyLocal(s, o, ME);
+      expect(changed.items.size + changed.lists.size, o.type).toBe(0);
+    }
+    expect(s.items.get(ITEM)).toMatchObject({
+      updatedBy: "other",
+      updatedAt: T - 100,
+    });
+    expect(s.lists.get(LIST)).toMatchObject({ updatedAt: T - 100 });
+  });
+
   it("clears and unchecks only the checked items of the list", () => {
     const s = state(
       [list()],

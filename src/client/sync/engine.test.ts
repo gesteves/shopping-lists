@@ -7,13 +7,19 @@ import type { Db } from "@/db/client";
 import { items as serverItems, lists as serverLists } from "@/db/schema";
 import { applyOps } from "@/server/ops";
 import { handlePull, handlePush } from "@/server/sync";
-import { HlcClock, MAX_DRIFT_MS, parse } from "@/shared/hlc";
+import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
 import { opSchema, type Op } from "@/shared/ops";
 import { ALEX, SAM, createTestDb } from "@/test/db";
-import { ClientDb, getMeta } from "../db";
+import { ClientDb, getMeta, setMeta } from "../db";
 import { readList } from "../queries";
-import { SyncEngine, type RejectedDetail, type Timers } from "./engine";
 import {
+  SyncEngine,
+  type MergedDetail,
+  type RejectedDetail,
+  type Timers,
+} from "./engine";
+import {
+  loadClock,
   mutateLocal,
   rebuildView,
   resetForUser,
@@ -38,6 +44,10 @@ const net = {
   pulls: 0,
   /** The pull gives 500. */
   failPull: false,
+  /** This pull (1 is the first) gives 500. */
+  failPullAt: null as number | null,
+  /** Each op that went in a push. */
+  pushed: [] as Op[],
   /** A push with more ops gets 413. */
   maxOps: Infinity,
   /** A push with this opId gets 400, as an op that the server refuses. */
@@ -67,6 +77,7 @@ const fakeFetch: typeof fetch = async (input, init) => {
     if (ops.some((op) => op.opId === net.poison)) {
       return Response.json({ error: "invalid_request" }, { status: 400 });
     }
+    net.pushed.push(...ops);
     return handlePush(
       request,
       { id: SAM.id },
@@ -75,8 +86,10 @@ const fakeFetch: typeof fetch = async (input, init) => {
   }
   if (url.pathname === "/api/sync/pull") {
     net.pulls++;
-    if (net.failPull) return new Response(null, { status: 500 });
-    return handlePull(request, { db: serverDb });
+    if (net.failPull || net.pulls === net.failPullAt) {
+      return new Response(null, { status: 500 });
+    }
+    return handlePull(request, { db: serverDb, now: realNow });
   }
   return new Response(null, { status: 404 });
 };
@@ -106,16 +119,29 @@ function manualTimers() {
 function makeEngine(timers = manualTimers()) {
   const engine = new SyncEngine({ db, fetch: fakeFetch, timers });
   const rejected: RejectedDetail[] = [];
+  const merged: MergedDetail[] = [];
   engine.events.addEventListener("rejected", (e) =>
     rejected.push((e as CustomEvent<RejectedDetail>).detail),
   );
-  return { engine, timers, rejected };
+  engine.events.addEventListener("merged", (e) =>
+    merged.push((e as CustomEvent<MergedDetail>).detail),
+  );
+  return { engine, timers, rejected, merged };
+}
+
+/** The item on the server. */
+function serverItem(id: string) {
+  return serverDb
+    .select()
+    .from(serverItems)
+    .where(eq(serverItems.id, id))
+    .get();
 }
 
 /** A change on the server from a different device, by Alex. */
 function serverWrite(request: OpRequest) {
   const node = "4d4d4d4d-0000-4000-8000-000000000000";
-  const clock = new HlcClock(node);
+  const clock = new HlcClock(node, undefined, realNow);
   const op = opSchema.parse({
     opId: crypto.randomUUID(),
     clientId: node,
@@ -134,6 +160,8 @@ beforeEach(async () => {
     pushes: 0,
     pulls: 0,
     failPull: false,
+    failPullAt: null,
+    pushed: [],
     maxOps: Infinity,
     poison: null,
   });
@@ -420,6 +448,7 @@ describe("sync", () => {
       cursor: 0,
       hasMore: false,
       purgedSeq: 0,
+      now: realNow(),
     });
     await rebuildView(db);
     expect(await db.lists.count()).toBe(0);
@@ -630,5 +659,245 @@ describe("resetForUser", () => {
     expect(await getMeta(db, "userId")).toBe(ALEX.id);
     // The device keeps its client ID and its clock.
     expect(await getMeta(db, "clientId")).toBeDefined();
+  });
+});
+
+describe("a device clock that is slow (#115)", () => {
+  const SLOW = 10 * 60_000;
+
+  it("keeps an edit after a pull of a newer change", async () => {
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() - SLOW);
+    await seed();
+    expect(await getMeta(db, "clockOffset")).toBeGreaterThan(SLOW - 5000);
+    serverWrite({
+      type: "updateItem",
+      args: { itemId: ITEM, fields: { notes: "Alex" } },
+    });
+    await makeEngine().engine.sync();
+    expect((await db.items.get(ITEM))?.notes).toBe("Alex");
+
+    await mutateLocal(db, {
+      type: "updateItem",
+      args: { itemId: ITEM, fields: { notes: "Sam" } },
+    });
+    await makeEngine().engine.sync();
+    expect(serverItem(ITEM)?.notes).toBe("Sam");
+    expect((await db.items.get(ITEM))?.notes).toBe("Sam");
+  });
+
+  it("loadClock compares the stored HLC with the server time", async () => {
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() - SLOW);
+    const stored = serialize({ wall: realNow(), counter: 3, node: "x" });
+    await setMeta(db, "hlc", stored);
+
+    // With no offset, the stored HLC looks ahead: the clock starts again.
+    let { clock } = await loadClock(db);
+    expect(parse(clock.now()).wall).toBeLessThan(realNow() - SLOW + 1000);
+
+    // With the offset, it is not ahead: the next HLC sorts after it.
+    await setMeta(db, "clockOffset", SLOW);
+    ({ clock } = await loadClock(db));
+    expect(clock.now() > stored).toBe(true);
+  });
+
+  it("loadClock starts again from the server time on a fast device", async () => {
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + SLOW);
+    await setMeta(
+      db,
+      "hlc",
+      serialize({ wall: realNow() + SLOW, counter: 0, node: "x" }),
+    );
+    await setMeta(db, "clockOffset", -SLOW);
+    const { clock } = await loadClock(db);
+    const wall = parse(clock.now()).wall;
+    expect(Math.abs(wall - realNow())).toBeLessThan(1000);
+  });
+});
+
+describe("a merged add (#115)", () => {
+  const EGGS = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  async function addEggs() {
+    await seed();
+    serverWrite({
+      type: "addItem",
+      args: { itemId: EGGS, listId: LIST, name: "Eggs" },
+    });
+    // This device does not have Alex's eggs yet.
+    await mutateLocal(db, {
+      type: "addItem",
+      args: { itemId: ITEM_2, listId: LIST, name: "eggs" },
+    });
+    return mutateLocal(db, {
+      type: "updateItem",
+      args: { itemId: ITEM_2, fields: { notes: "Brown" } },
+    });
+  }
+
+  it("applies a later op of the same push to the merged item", async () => {
+    const edit = await addEggs();
+    const { engine, rejected, merged } = makeEngine();
+    await engine.sync();
+
+    expect(rejected).toEqual([]);
+    expect(merged.map((m) => m.into)).toEqual([EGGS]);
+    expect(serverItem(EGGS)?.notes).toBe("Brown");
+    expect(await db.outbox.count()).toBe(0);
+    expect((await db.items.get(EGGS))?.notes).toBe("Brown");
+    expect(await db.items.get(ITEM_2)).toBeUndefined();
+    // The server kept a rejection for the first opId: the op got a new one.
+    const again = net.pushed.filter((op) => op.type === "updateItem");
+    expect(again.map((op) => op.args)).toEqual([
+      { itemId: ITEM_2, fields: { notes: "Brown" } },
+      { itemId: EGGS, fields: { notes: "Brown" } },
+    ]);
+    expect(again[1].opId).not.toBe(edit.opId);
+  });
+
+  it("changes the item of a later op in the outbox, and keeps its opId", async () => {
+    const edit = await addEggs();
+    // Each push has one op.
+    net.maxOps = 1;
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(rejected).toEqual([]);
+    expect(serverItem(EGGS)?.notes).toBe("Brown");
+    const pushed = net.pushed.filter((op) => op.type === "updateItem");
+    expect(pushed).toEqual([
+      expect.objectContaining({
+        opId: edit.opId,
+        args: { itemId: EGGS, fields: { notes: "Brown" } },
+      }),
+    ]);
+  });
+
+  it("sends the merged event for a duplicate when the first response was lost", async () => {
+    await seed();
+    serverWrite({
+      type: "addItem",
+      args: { itemId: EGGS, listId: LIST, name: "Eggs" },
+    });
+    const add = await mutateLocal(db, {
+      type: "addItem",
+      args: { itemId: ITEM_2, listId: LIST, name: "eggs" },
+    });
+    // The server applied the push, but the response did not arrive.
+    await handlePush(
+      new Request("http://localhost/api/sync/push", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: add.clientId, ops: [add] }),
+      }),
+      { id: SAM.id },
+      { db: serverDb, clock: serverClock, now: realNow },
+    );
+
+    const { engine, merged } = makeEngine();
+    await engine.sync();
+    expect(merged).toEqual([{ op: add, into: EGGS, changed: false }]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(await db.items.get(ITEM_2)).toBeUndefined();
+  });
+});
+
+describe("a reset pull (#115)", () => {
+  /** 600 items on the server, synced, and a row that the server purged. */
+  async function seedMany() {
+    await seed();
+    for (let n = 0; n < 600; n++) {
+      serverWrite({
+        type: "addItem",
+        args: { itemId: crypto.randomUUID(), listId: LIST, name: `Item ${n}` },
+      });
+    }
+    await makeEngine().engine.sync();
+    const gone = { ...(await db.serverItems.get(ITEM))!, id: ITEM_2 };
+    await db.serverItems.put(gone);
+    await rebuildView(db);
+    expect(await db.items.count()).toBe(602);
+    // A cursor after the last seq of the server makes a reset.
+    await setMeta(db, "cursor", 100_000);
+    net.pulls = 0;
+  }
+
+  it("keeps the view when page 2 fails", async () => {
+    await seedMany();
+    net.failPullAt = 2;
+    const { engine } = makeEngine();
+    await engine.sync();
+
+    expect(engine.getStatus().state).toBe("error");
+    expect(net.pulls).toBe(2);
+    expect(await db.items.count()).toBe(602);
+    expect(await db.serverItems.count()).toBe(602);
+    expect(await getMeta(db, "resetting")).toBeDefined();
+
+    // The next run ends the reset. Only then the purged row goes.
+    await engine.sync();
+    expect(engine.getStatus().state).toBe("idle");
+    expect(await db.items.get(ITEM_2)).toBeUndefined();
+    expect(await db.items.count()).toBe(601);
+    expect(await getMeta(db, "resetting")).toBeUndefined();
+  });
+
+  it("deletes the rows that the server does not have after the last page", async () => {
+    await seedMany();
+    await makeEngine().engine.sync();
+    expect(net.pulls).toBe(2);
+    expect(await db.serverItems.get(ITEM_2)).toBeUndefined();
+    expect(await db.items.count()).toBe(601);
+  });
+});
+
+describe("the push limit (#115)", () => {
+  it("schedules a sync when ops are still pending", async () => {
+    await mutateLocal(db, {
+      type: "createList",
+      args: { listId: LIST, name: "Target" },
+    });
+    for (let n = 0; n < 120; n++) {
+      await mutateLocal(db, {
+        type: "addItem",
+        args: { itemId: crypto.randomUUID(), listId: LIST, name: `Item ${n}` },
+      });
+    }
+    net.maxOps = 1;
+    const { engine, timers } = makeEngine();
+    await engine.sync();
+    expect(await db.outbox.count()).toBeGreaterThan(0);
+    expect([...timers.pending].map((t) => t.ms)).toEqual([0]);
+
+    for (let run = 0; run < 5 && (await db.outbox.count()) > 0; run++) {
+      timers.pending.clear();
+      await engine.sync();
+    }
+    expect(await db.outbox.count()).toBe(0);
+    expect(serverDb.select().from(serverItems).all()).toHaveLength(120);
+    expect(timers.pending.size).toBe(0);
+  });
+});
+
+describe("resetForUser and an undecided user check (#115)", () => {
+  const LIST_2 = "22222222-2222-4222-8222-222222222222";
+
+  it("keeps the ops of the new user", async () => {
+    await seed();
+    await mutateLocal(db, { type: "check", args: { itemId: ITEM } });
+    // The page of Alex made a write before the check.
+    await mutateLocal(
+      db,
+      { type: "createList", args: { listId: LIST_2, name: "Costco" } },
+      ALEX.id,
+    );
+
+    await resetForUser(db, ALEX.id);
+    const outbox = await db.outbox.toArray();
+    expect(outbox.map((e) => e.op.type)).toEqual(["createList"]);
+    expect(await db.serverLists.count()).toBe(0);
+    expect(await db.lists.toArray()).toEqual([
+      expect.objectContaining({ id: LIST_2, createdBy: ALEX.id }),
+    ]);
+    expect(await db.items.count()).toBe(0);
   });
 });

@@ -4,7 +4,7 @@
 import type { SubscriptionInfo } from "@/shared/push";
 import { getClientDb } from "./db";
 import { getSyncEngine, stopSync } from "./sync";
-import { clearForSignOut } from "./sync/local";
+import { clearForSignOut, pendingCount } from "./sync/local";
 
 /** Each step can fail alone: the next steps still run. */
 async function step(name: string, fn: () => Promise<unknown>) {
@@ -45,12 +45,27 @@ async function clearPageCaches() {
 }
 
 /**
- * Sync the last changes if possible, stop sync, then delete the push
- * subscription, the cached pages, and the local data. The device keeps its
- * client ID and its clock.
+ * Sync the last changes if the browser is online. It gives the number of
+ * ops that the server does not have. The sync does not reject on an error,
+ * thus count after it (#115). If there are some, ask before sign-out: the
+ * sign-out deletes them.
+ */
+export async function syncBeforeSignOut(): Promise<number> {
+  if (navigator.onLine) await step("sync", () => getSyncEngine().sync());
+  try {
+    return await pendingCount(getClientDb());
+  } catch (error) {
+    console.error("Sign-out step failed: count", error);
+    return 0;
+  }
+}
+
+/**
+ * Stop sync, then delete the push subscription, the cached pages, and the
+ * local data. Call syncBeforeSignOut() first. The device keeps its client
+ * ID and its clock.
  */
 export async function clearDeviceForSignOut(): Promise<void> {
-  if (navigator.onLine) await step("sync", () => getSyncEngine().sync());
   stopSync();
   await step("push", removePush);
   await step("caches", clearPageCaches);

@@ -64,8 +64,8 @@ export interface PushResponse {
   /** The last seq of the push, or null if no row changed. */
   seq: number | null;
   /**
-   * The server time in ms. The client uses it to stamp again an op with a
-   * `clock_ahead` rejection.
+   * The server time in ms. The client keeps the offset to its own clock, and
+   * uses it to stamp again an op with a `clock_ahead` rejection.
    */
   now: number;
 }
@@ -145,4 +145,6 @@ export interface PullResponse {
    * it as `seen` with each pull.
    */
   purgedSeq: number;
+  /** The server time in ms. The client keeps the offset to its own clock. */
+  now: number;
 }

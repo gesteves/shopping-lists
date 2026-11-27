@@ -24,6 +24,12 @@ export interface OutboxEntry {
    * engine does not push it again.
    */
   acked?: boolean;
+  /**
+   * The user that the op was made for. A reset for a new user keeps the
+   * entries of that user. An old entry has none: it belongs to the stored
+   * user.
+   */
+  userId?: string;
 }
 
 /** Values in the meta table. */
@@ -38,6 +44,16 @@ export interface MetaValues {
   purgedSeq: number;
   /** The signed-in user. Local ops use it for createdBy and updatedBy. */
   userId: string;
+  /**
+   * The server time minus the device time, in ms, from the last push or
+   * pull. The local clock is `Date.now() + clockOffset`.
+   */
+  clockOffset: number;
+  /**
+   * A reset pull is in progress. It has the IDs of the rows that its pages
+   * gave. After the last page, the server rows with no ID here go.
+   */
+  resetting: { lists: string[]; items: string[] };
 }
 
 export interface MetaEntry<K extends keyof MetaValues = keyof MetaValues> {

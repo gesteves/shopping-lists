@@ -55,9 +55,15 @@ async function canStart(userId: string): Promise<boolean> {
 }
 
 let stopActive: (() => void) | null = null;
+/** The user of the last startSync(). mutate() tags each op with it (#115). */
+let syncUser: string | undefined;
+/** The first wait before a new user check, and the longest wait. */
+const CHECK_RETRY_MS = 5_000;
+const MAX_CHECK_RETRY_MS = 5 * 60_000;
 /**
- * Resolves when startSync() knows if the local data stays. mutate() waits for
- * it: a reset after a write would delete the write. The first page can show
+ * Resolves when startSync() knows if the local data stays, or when the user
+ * check fails. mutate() waits for it: a reset after a write deletes the write
+ * if it has a different user. The first page can show
  * before the header starts sync, thus it waits for the first startSync() too,
  * but at most FIRST_START_MS.
  */
@@ -81,21 +87,31 @@ export function stopSync(): void {
  * returns a function that stops them. If a different user used this browser
  * before, and the session shows the new user, the local data is deleted
  * first. If the session cannot show it, it tries again when the browser is
- * online.
+ * online, and on a timer: get-session can fail while the browser is online,
+ * and then no `online` event comes (#115). The writes before the check
+ * have the new user, thus the reset keeps them.
  */
 export function startSync(userId: string): () => void {
+  syncUser = userId;
   const stops: (() => void)[] = [];
   let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let wait = CHECK_RETRY_MS;
+  const cancelRetry = () => {
+    window.removeEventListener("online", retry);
+    clearTimeout(timer);
+    timer = undefined;
+  };
   const stop = () => {
     stopped = true;
-    window.removeEventListener("online", retry);
+    cancelRetry();
     for (const fn of stops) fn();
     if (stopActive === stop) stopActive = null;
   };
   stopActive = stop;
 
   const retry = () => {
-    window.removeEventListener("online", retry);
+    cancelRetry();
     void begin();
   };
   const begin = async () => {
@@ -112,7 +128,12 @@ export function startSync(userId: string): () => void {
     ready = done;
     void done.then(firstDecided);
     if (!(await decided)) {
-      if (!stopped) window.addEventListener("online", retry);
+      if (stopped) return;
+      window.addEventListener("online", retry);
+      if (navigator.onLine !== false) {
+        timer = setTimeout(retry, wait);
+        wait = Math.min(wait * 2, MAX_CHECK_RETRY_MS);
+      }
       return;
     }
     const clientId = await ensureClientId(getClientDb());
@@ -142,7 +163,7 @@ export function startSync(userId: string): () => void {
  */
 export async function mutate(request: OpRequest): Promise<Op> {
   await ready;
-  const op = await mutateLocal(getClientDb(), request);
+  const op = await mutateLocal(getClientDb(), request, syncUser);
   getSyncEngine().notifyWrite();
   return op;
 }

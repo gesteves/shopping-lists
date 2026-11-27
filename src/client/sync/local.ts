@@ -4,7 +4,7 @@ import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
 import { opSchema, type Op, type OpInput, type OpType } from "@/shared/ops";
 import type { PullResponse } from "@/shared/sync";
 import type { EntityTable } from "dexie";
-import { getMeta, setMeta, type ClientDb } from "../db";
+import { getMeta, setMeta, type ClientDb, type MetaValues } from "../db";
 import { applyLocal, type LocalState } from "./apply";
 
 /** An op without its envelope: mutate() adds opId, clientId, and hlc. */
@@ -24,23 +24,47 @@ export async function ensureClientId(db: ClientDb): Promise<string> {
 }
 
 /**
+ * The clock of this device as the server sees it: the device time plus the
+ * stored offset (#115). A device clock that is slow or fast then gives the
+ * server time. Read it in a transaction on `meta`.
+ */
+export async function localNow(db: ClientDb): Promise<() => number> {
+  const offset = (await getMeta(db, "clockOffset")) ?? 0;
+  return () => Date.now() + offset;
+}
+
+/** Keep the offset from the server time of a push or a pull response. */
+export async function saveClockOffset(db: ClientDb, serverNow: number) {
+  if (!Number.isFinite(serverNow)) return;
+  await setMeta(db, "clockOffset", Math.round(serverNow - Date.now()));
+}
+
+/**
  * The clock of this browser, from the meta table. Read and write it only in
- * a transaction on `meta`: then two tabs cannot give the same HLC.
+ * a transaction on `meta`: then two tabs cannot give the same HLC. The
+ * default `now` is localNow().
  *
  * If the stored HLC is more than MAX_DRIFT_MS after `now`, it came from a
  * clock that was too far ahead, and the server refuses each op after it.
- * Thus the clock starts again from `now`.
+ * Thus the clock starts again from `now`. The check uses the server time,
+ * not the device time: on a slow device, an HLC from a pull is not ahead
+ * (#115).
  */
-async function loadClock(
+export async function loadClock(
   db: ClientDb,
-  now: () => number = Date.now,
+  now?: () => number,
 ): Promise<{ clientId: string; clock: HlcClock }> {
   const clientId = await ensureClientId(db);
+  const clockNow = now ?? (await localNow(db));
   let last = await getMeta(db, "hlc");
-  if (last !== undefined && parse(last).wall - now() > MAX_DRIFT_MS) {
-    last = serialize({ wall: Math.floor(now()), counter: 0, node: clientId });
+  if (last !== undefined && parse(last).wall - clockNow() > MAX_DRIFT_MS) {
+    last = serialize({
+      wall: Math.floor(clockNow()),
+      counter: 0,
+      node: clientId,
+    });
   }
-  return { clientId, clock: new HlcClock(clientId, last, now) };
+  return { clientId, clock: new HlcClock(clientId, last, clockNow) };
 }
 
 /**
@@ -54,8 +78,8 @@ export async function restampOps(
   serverNow: number,
 ): Promise<void> {
   await db.transaction("rw", [db.meta, db.outbox], async () => {
-    const now = () => Math.min(Date.now(), serverNow);
-    const { clock } = await loadClock(db, now);
+    const local = await localNow(db);
+    const { clock } = await loadClock(db, () => Math.min(local(), serverNow));
     for (const seq of seqs) {
       const entry = await db.outbox.get(seq);
       if (!entry) continue;
@@ -73,10 +97,14 @@ export async function restampOps(
 /**
  * Apply an op to the view and add it to the outbox, in one transaction. It
  * throws a ZodError if the op is not valid, and then writes nothing.
+ *
+ * `forUser` is the user of the page. The entry keeps it: a reset for that
+ * user keeps the entry (#115). The default is the stored user.
  */
 export async function mutateLocal(
   db: ClientDb,
   request: OpRequest,
+  forUser?: string,
 ): Promise<Op> {
   return db.transaction(
     "rw",
@@ -90,7 +118,8 @@ export async function mutateLocal(
         ...request,
       });
       await setMeta(db, "hlc", clock.last);
-      await db.outbox.add({ opId: op.opId, op });
+      const userId = forUser ?? (await getMeta(db, "userId")) ?? "";
+      await db.outbox.add({ opId: op.opId, op, userId });
 
       const state: LocalState = {
         lists: new Map((await db.lists.toArray()).map((l) => [l.id, l])),
@@ -104,7 +133,6 @@ export async function mutateLocal(
             : [];
       for (const row of rows) if (row) state.items.set(row.id, row);
 
-      const userId = (await getMeta(db, "userId")) ?? "";
       const changed = applyLocal(state, op, userId);
       await db.lists.bulkPut(
         [...changed.lists].map((id) => state.lists.get(id)!),
@@ -132,7 +160,7 @@ export async function rebuildView(db: ClientDb): Promise<void> {
       };
       const userId = (await getMeta(db, "userId")) ?? "";
       for (const entry of await db.outbox.orderBy("seq").toArray()) {
-        applyLocal(state, entry.op, userId);
+        applyLocal(state, entry.op, entry.userId || userId);
       }
       // Write only the rows that changed. A full rewrite at each sync makes
       // large transactions that block the writes of the user.
@@ -166,7 +194,13 @@ async function writeChanged<T extends { id: string }>(
   if (changed.length > 0) await table.bulkPut(changed);
 }
 
-/** Write one pull page to the server layer. Then call rebuildView(). */
+/**
+ * Write one pull page to the server layer. Then call rebuildView().
+ *
+ * A reset page does not clear the server layer: a failed page 2 then
+ * deletes nothing (#115). The `resetting` marker keeps the IDs of the rows
+ * that the pages gave. After the last page, the rows with no ID there go.
+ */
 export async function savePullPage(
   db: ClientDb,
   page: PullResponse,
@@ -175,13 +209,25 @@ export async function savePullPage(
     "rw",
     [db.serverLists, db.serverItems, db.users, db.meta],
     async () => {
-      if (page.reset) {
-        await db.serverLists.clear();
-        await db.serverItems.clear();
-      }
+      // An old server sends no `now`.
+      if (typeof page.now === "number") await saveClockOffset(db, page.now);
+      const marker: MetaValues["resetting"] | undefined = page.reset
+        ? { lists: [], items: [] }
+        : await getMeta(db, "resetting");
       await db.serverLists.bulkPut(page.lists);
       await db.serverItems.bulkPut(page.items);
       await db.users.bulkPut(page.users);
+      if (marker) {
+        marker.lists.push(...page.lists.map((l) => l.id));
+        marker.items.push(...page.items.map((i) => i.id));
+        if (page.hasMore) {
+          await setMeta(db, "resetting", marker);
+        } else {
+          await deleteUnmarked(db.serverLists, marker.lists);
+          await deleteUnmarked(db.serverItems, marker.items);
+          await db.meta.delete("resetting");
+        }
+      }
       if (page.hlc) {
         // The next local op must sort after each change that this device
         // saw. The server already limits the drift, thus there is no limit.
@@ -198,25 +244,46 @@ export async function savePullPage(
   );
 }
 
-/** Delete the lists, items, users, and outbox. Call it in a transaction. */
-async function clearData(db: ClientDb) {
-  // Keep meta: the device keeps its client ID and its clock.
+/** Delete the rows whose ID is not in `keep`. */
+async function deleteUnmarked<T extends { id: string }>(
+  table: EntityTable<T, "id">,
+  keep: string[],
+) {
+  const marked = new Set(keep);
+  const ids = (await table.toCollection().primaryKeys()) as string[];
+  const gone = ids.filter((id) => !marked.has(id));
+  if (gone.length > 0) await table.bulkDelete(gone as never);
+}
+
+/**
+ * Delete the lists, items, users, and outbox. Keep the outbox entries of
+ * `keepFor`: the ops that the new user made before the user check (#115).
+ * Call it in a transaction.
+ */
+async function clearData(db: ClientDb, keepFor?: string) {
+  // Keep meta: the device keeps its client ID, its clock, and its offset.
   for (const table of db.tables) {
-    if (table.name !== "meta") await table.clear();
+    if (table.name !== "meta" && table.name !== "outbox") await table.clear();
   }
-  await db.meta.bulkDelete(["cursor", "purgedSeq"]);
+  await db.outbox
+    .filter((e) => keepFor === undefined || e.userId !== keepFor)
+    .delete();
+  await db.meta.bulkDelete(["cursor", "purgedSeq", "resetting"]);
 }
 
 /**
  * A different user signed in on this browser. Delete the local data, so that
- * the ops of the first user do not go to the server as the second user.
+ * the ops of the first user do not go to the server as the second user. The
+ * ops that the page of the new user made stay, on an empty view.
  */
 export async function resetForUser(db: ClientDb, userId: string) {
   await db.transaction("rw", db.tables, async () => {
     const current = await getMeta(db, "userId");
     if (current === userId) return;
-    if (current !== undefined) await clearData(db);
     await setMeta(db, "userId", userId);
+    if (current === undefined) return;
+    await clearData(db, userId);
+    if ((await db.outbox.count()) > 0) await rebuildView(db);
   });
 }
 
@@ -229,4 +296,9 @@ export async function clearForSignOut(db: ClientDb) {
     await clearData(db);
     await db.meta.delete("userId");
   });
+}
+
+/** The ops that the server does not have yet: the entries with no ack. */
+export function pendingCount(db: ClientDb): Promise<number> {
+  return db.outbox.filter((e) => !e.acked).count();
 }

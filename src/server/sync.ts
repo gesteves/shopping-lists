@@ -66,9 +66,10 @@ export async function handlePush(
  */
 export function handlePull(
   request: Request,
-  options: { db?: Db } = {},
+  options: { db?: Db; now?: () => number } = {},
 ): Response {
   const db = options.db ?? getDb();
+  const now = options.now ?? Date.now;
   const url = new URL(request.url);
   const parsed = pullQuerySchema.safeParse(
     Object.fromEntries(url.searchParams),
@@ -99,6 +100,7 @@ export function handlePull(
         : Math.max(changes.lastSeq ?? from, state.seq),
       hasMore: changes.hasMore,
       purgedSeq: state.purgedSeq,
+      now: now(),
     };
   });
   return json(body);

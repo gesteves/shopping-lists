@@ -22,6 +22,19 @@ export function emptyChanged(): Changed {
   return { lists: new Set(), items: new Set() };
 }
 
+/** The fields that a write sets, not a change of the row. */
+const STAMP_FIELDS = new Set(["updatedAt", "updatedBy", "updatedVia"]);
+
+/** True if the two rows differ in a field that is not a stamp field. */
+function differs(a: object, b: object): boolean {
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+    if (!STAMP_FIELDS.has(key) && ra[key] !== rb[key]) return true;
+  }
+  return false;
+}
+
 /** Apply `op` to `state`, and add the IDs of the changed rows to `changed`. */
 export function applyLocal(
   state: LocalState,
@@ -36,11 +49,17 @@ export function applyLocal(
     updatedVia: "app",
     updatedAt: Math.max(row.updatedAt, time),
   });
+  // As on the server, an op that changes no field does not stamp the row
+  // (#115). Thus the row does not go to the top until the next pull.
   const putList = (row: ListRecord) => {
+    const old = state.lists.get(row.id);
+    if (old && !differs(old, row)) return;
     state.lists.set(row.id, stamp(row));
     changed.lists.add(row.id);
   };
   const putItem = (row: ItemRecord) => {
+    const old = state.items.get(row.id);
+    if (old && !differs(old, row)) return;
     state.items.set(row.id, stamp(row));
     changed.items.add(row.id);
   };
