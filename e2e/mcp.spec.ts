@@ -9,7 +9,7 @@ import {
 } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { mcpCall, signIn, synced } from "./helpers";
+import { createList, mcpCall, openList, signIn, synced } from "./helpers";
 
 const REDIRECT = "http://127.0.0.1:59999/callback";
 
@@ -92,15 +92,8 @@ test("a change through Claude appears live, marked via Claude", async ({
   // Ana has the list open.
   await signIn(page);
   const list = `MCP ${randomUUID().slice(0, 8)}`;
-  const index = page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-  await index.getByLabel(copy.lists.newName).fill(list);
-  await index.getByRole("button", { name: copy.lists.create }).click();
-  await index.getByRole("link", { name: list }).click();
-  await expect(
-    page.getByRole("heading", { level: 1, name: list }),
-  ).toBeVisible();
+  await createList(page, list);
+  await openList(page, list);
   // The list must be on the server before Claude can find it.
   await synced(page);
 

@@ -88,6 +88,9 @@ export function createAuth(
     },
     onAPIError: { errorURL: "/sign-in" },
     telemetry: { enabled: false },
+    // The limit is for each IP, and all the e2e requests come from one IP.
+    // Parallel tests then get 429. The stub is never on in production.
+    ...(authStubEnabled(env) && { rateLimit: { enabled: false } }),
     hooks: { before: oauthRequestRules },
     plugins: [
       ...(authStubEnabled(env) ? [authStub(env)] : []),

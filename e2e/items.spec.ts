@@ -1,18 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { anyCount, dialog, signIn, synced } from "./helpers";
+import {
+  anyCount,
+  createList,
+  dialog,
+  openList,
+  signIn,
+  synced,
+} from "./helpers";
 
 /** Make a list in the UI and open it. */
 async function openNewList(page: Page) {
   const name = `Items ${randomUUID().slice(0, 8)}`;
-  const index = page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-  await index.getByLabel(copy.lists.newName).fill(name);
-  await index.getByRole("button", { name: copy.lists.create }).click();
-  await index.getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await createList(page, name);
+  await openList(page, name);
   return name;
 }
 

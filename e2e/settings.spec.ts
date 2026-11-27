@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { anyCount, escapeRegExp, signIn, switchControl } from "./helpers";
+import {
+  anyCount,
+  createList,
+  escapeRegExp,
+  openList,
+  signIn,
+  switchControl,
+} from "./helpers";
 
 /** A device with a fake push endpoint, saved through the API. */
 async function fakeDevice(page: Page) {
@@ -24,11 +31,15 @@ async function fakeDevice(page: Page) {
   return label;
 }
 
-test("the push routes need a session", async ({ request }) => {
-  expect((await request.get("/api/push/subscriptions")).status()).toBe(401);
-  expect((await request.post("/api/push/test")).status()).toBe(401);
-  expect((await request.get("/api/push/mutes")).status()).toBe(401);
-});
+test(
+  "the push routes need a session",
+  { tag: "@once" },
+  async ({ request }) => {
+    expect((await request.get("/api/push/subscriptions")).status()).toBe(401);
+    expect((await request.post("/api/push/test")).status()).toBe(401);
+    expect((await request.get("/api/push/mutes")).status()).toBe(401);
+  },
+);
 
 test("turn a device off and on, send a test, and remove it", async ({
   page,
@@ -43,8 +54,17 @@ test("turn a device off and on, send a test, and remove it", async ({
   const toggleName = copy.settings.deviceSwitch(label);
   const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
+  // The switch changes at the click, before the server saves. Wait for the
+  // save: a reload stops the request.
+  const saved = page.waitForResponse(
+    (r) =>
+      r.request().method() === "PATCH" &&
+      r.url().includes("/api/push/subscriptions/") &&
+      r.ok(),
+  );
   await switchControl(page, toggleName).click();
   await expect(toggle).not.toBeChecked();
+  await saved;
   await page.reload();
   await expect(toggle).not.toBeChecked();
   await switchControl(page, toggleName).click();
@@ -71,15 +91,20 @@ test("turn a device off and on, send a test, and remove it", async ({
   await expect(toggle).toHaveCount(0);
 });
 
+/** The response to a mute change, after the server saves it. */
+function savedMute(page: Page) {
+  return page.waitForResponse(
+    (r) =>
+      r.request().method() === "PUT" &&
+      r.url().endsWith("/api/push/mutes") &&
+      r.ok(),
+  );
+}
+
 test("mute and unmute a list", async ({ page }) => {
   await signIn(page);
   const name = `Mute ${randomUUID().slice(0, 8)}`;
-  const index = page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-  await index.getByLabel(copy.lists.newName).fill(name);
-  await index.getByRole("button", { name: copy.lists.create }).click();
-  await expect(index.getByRole("link", { name })).toBeVisible();
+  await createList(page, name);
   await expect
     .poll(async () => {
       const pull = await page.request.get("/api/sync/pull?since=0");
@@ -93,20 +118,24 @@ test("mute and unmute a list", async ({ page }) => {
   const toggleName = copy.settings.listSwitch(name);
   const toggle = page.getByRole("switch", { name: toggleName });
   await expect(toggle).toBeChecked();
+  // The switch changes at the click, before the server saves. Wait for the
+  // save: a reload stops the request.
+  let saved = savedMute(page);
   await switchControl(page, toggleName).click();
   await expect(toggle).not.toBeChecked();
+  await saved;
   await page.reload();
   await expect(toggle).not.toBeChecked();
+  saved = savedMute(page);
   await switchControl(page, toggleName).click();
-  // The switch changes after the server saves it. Then reload.
   await expect(toggle).toBeChecked();
+  await saved;
   await page.reload();
   await expect(toggle).toBeChecked();
 
   // The list page has the same switch, below the list name (#82).
   await page.goto("/");
-  await index.getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await openList(page, name);
   const listName = copy.list.notifications;
   const listToggle = page.getByRole("switch", { name: listName, exact: true });
   await expect(listToggle).toBeChecked();

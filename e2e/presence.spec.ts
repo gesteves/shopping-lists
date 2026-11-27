@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { signIn, synced } from "./helpers";
+import { createList, openList, signIn, synced } from "./helpers";
 
 test("each person sees what the other has open and is editing", async ({
   browser,
@@ -15,12 +15,8 @@ test("each person sees what the other has open and is editing", async ({
 
     // A makes a list with one item. B gets it through realtime.
     const name = `Presence ${randomUUID().slice(0, 8)}`;
-    const indexA = a
-      .getByRole("region", { name: copy.lists.heading })
-      .filter({ visible: true });
-    await indexA.getByLabel(copy.lists.newName).fill(name);
-    await indexA.getByRole("button", { name: copy.lists.create }).click();
-    await indexA.getByRole("link", { name }).click();
+    await createList(a, name);
+    await openList(a, name);
     await a.getByLabel(copy.addBar.name).fill("Milk");
     await a.getByLabel(copy.addBar.name).press("Enter");
     await synced(a);
@@ -36,7 +32,7 @@ test("each person sees what the other has open and is editing", async ({
     await expect(dot).toBeVisible({ timeout: 2000 });
 
     // A edits the item: B sees the badge in the list.
-    await indexB.getByRole("link", { name }).click();
+    await openList(b, name);
     await a.getByRole("button", { name: copy.item.edit("Milk") }).click();
     const badge = b
       .getByRole("checkbox", { name: /^Milk/ })
@@ -66,33 +62,34 @@ test("each person sees what the other has open and is editing", async ({
   }
 });
 
-test("a closed page goes away within the TTL", async ({ browser }) => {
-  test.slow();
-  const a = await browser.newPage();
-  const b = await browser.newPage();
-  try {
-    await signIn(a);
-    await signIn(b, E2E_SECOND_EMAIL, "Ben");
-    const name = `Gone ${randomUUID().slice(0, 8)}`;
-    const indexA = a
-      .getByRole("region", { name: copy.lists.heading })
-      .filter({ visible: true });
-    await indexA.getByLabel(copy.lists.newName).fill(name);
-    await indexA.getByRole("button", { name: copy.lists.create }).click();
-    await indexA.getByRole("link", { name }).click();
-    await synced(a);
-    const dot = b
-      .getByRole("region", { name: copy.lists.heading })
-      .filter({ visible: true })
-      .getByRole("listitem")
-      .filter({ hasText: name })
-      .getByRole("img", { name: copy.presence.viewing("Ana") });
-    await expect(dot).toBeVisible();
+test(
+  "a closed page goes away within the TTL",
+  { tag: "@once" },
+  async ({ browser }) => {
+    // Only on desktop: the TTL is on the server, and the wait is long.
+    test.slow();
+    const a = await browser.newPage();
+    const b = await browser.newPage();
+    try {
+      await signIn(a);
+      await signIn(b, E2E_SECOND_EMAIL, "Ben");
+      const name = `Gone ${randomUUID().slice(0, 8)}`;
+      await createList(a, name);
+      await openList(a, name);
+      await synced(a);
+      const dot = b
+        .getByRole("region", { name: copy.lists.heading })
+        .filter({ visible: true })
+        .getByRole("listitem")
+        .filter({ hasText: name })
+        .getByRole("img", { name: copy.presence.viewing("Ana") });
+      await expect(dot).toBeVisible();
 
-    // No clear message: the page just goes. The 30 s TTL removes it.
-    await a.close({ runBeforeUnload: false });
-    await expect(dot).toHaveCount(0, { timeout: 40_000 });
-  } finally {
-    await b.close();
-  }
-});
+      // No clear message: the page just goes. The 30 s TTL removes it.
+      await a.close({ runBeforeUnload: false });
+      await expect(dot).toHaveCount(0, { timeout: 40_000 });
+    } finally {
+      await b.close();
+    }
+  },
+);

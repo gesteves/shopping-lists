@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { dialog, signIn, synced } from "./helpers";
+import {
+  createList,
+  dialog,
+  listAction,
+  openList,
+  signIn,
+  synced,
+} from "./helpers";
 
 /** The visible list index: the page on a phone, the sidebar on a desktop. */
 function lists(page: Page) {
@@ -17,7 +24,8 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   const name = `Store ${randomUUID().slice(0, 8)}`;
   const renamed = `${name} renamed`;
 
-  // Create.
+  // Create. The one test that clicks the button: the other tests use
+  // createList(), which presses Enter.
   await lists(page).getByLabel(copy.lists.newName).fill(name);
   await lists(page).getByRole("button", { name: copy.lists.create }).click();
   const row = lists(page).getByRole("listitem").filter({ hasText: name });
@@ -27,10 +35,7 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   await expect(lists(page).getByRole("link", { name })).toBeVisible();
 
   // Rename.
-  await lists(page)
-    .getByRole("button", { name: copy.lists.more(name) })
-    .click();
-  await lists(page).getByRole("menuitem", { name: copy.common.rename }).click();
+  await listAction(page, name, copy.common.rename);
   const input = lists(page).getByLabel(copy.lists.renameLabel(name));
   await input.fill(renamed);
   await input.press("Enter");
@@ -40,18 +45,14 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   await expect(lists(page).getByRole("link", { name: renamed })).toBeVisible();
 
   // Delete, after a confirmation.
-  await lists(page)
-    .getByRole("button", { name: copy.lists.more(renamed) })
-    .click();
-  await lists(page).getByRole("menuitem", { name: copy.common.delete }).click();
+  await listAction(page, renamed, copy.common.delete);
   const confirm = dialog(page, copy.lists.deleteTitle(renamed));
   await confirm.getByRole("button", { name: copy.common.cancel }).click();
   await expect(confirm).toBeHidden();
+  // Wait for the end of the hide animation: an open during it does nothing.
+  await expect(page.locator("wa-dialog[open]")).toHaveCount(0);
   await expect(lists(page).getByRole("link", { name: renamed })).toBeVisible();
-  await lists(page)
-    .getByRole("button", { name: copy.lists.more(renamed) })
-    .click();
-  await lists(page).getByRole("menuitem", { name: copy.common.delete }).click();
+  await listAction(page, renamed, copy.common.delete);
   await confirm.getByRole("button", { name: copy.lists.deleteConfirm }).click();
   await expect(lists(page).getByRole("link", { name: renamed })).toHaveCount(0);
   await synced(page);
@@ -70,11 +71,8 @@ for (const { width, height, sidebar } of [
     await page.setViewportSize({ width, height });
     await signIn(page);
     const name = `Layout ${randomUUID().slice(0, 8)}`;
-    await lists(page).getByLabel(copy.lists.newName).fill(name);
-    await lists(page).getByRole("button", { name: copy.lists.create }).click();
-    await lists(page).getByRole("link", { name }).click();
-
-    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await createList(page, name);
+    await openList(page, name);
     // The header is there on the list page too.
     await expect(
       page.getByRole("link", { name: copy.header.settings }),

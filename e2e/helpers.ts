@@ -1,5 +1,6 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
+import { copy } from "../src/copy";
 
 /** Sign in through the stub, as Google would. */
 export async function signIn(
@@ -10,6 +11,48 @@ export async function signIn(
   const params = new URLSearchParams({ email, name });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);
   await expect(page).toHaveURL("/");
+}
+
+/**
+ * The list index. Next.js keeps the last page hidden in the DOM, thus find
+ * only a visible one.
+ */
+export function listIndex(page: Page) {
+  return page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true });
+}
+
+// All tests use the same lists, and parallel tests add lists at the same
+// time. Thus the rows and the Create button can move between the scroll and
+// the click of Playwright, and the click hits a different element. Thus
+// these helpers use the Enter key, not a click.
+
+/** Make a list on the index, then wait for its row. */
+export async function createList(page: Page, name: string) {
+  const field = listIndex(page).getByLabel(copy.lists.newName);
+  await field.fill(name);
+  await field.press("Enter");
+  await expect(listIndex(page).getByRole("link", { name })).toBeVisible();
+}
+
+/** Open a list from the index, then wait for its page. */
+export async function openList(page: Page, name: string) {
+  await listIndex(page).getByRole("link", { name }).press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+}
+
+/**
+ * Open the menu of a list on the index, then select an item. The click
+ * events go to the elements with no hit test, because the rows can move.
+ */
+export async function listAction(page: Page, name: string, action: string) {
+  await listIndex(page)
+    .getByRole("button", { name: copy.lists.more(name) })
+    .dispatchEvent("click");
+  const item = listIndex(page).getByRole("menuitem", { name: action });
+  await expect(item).toBeVisible();
+  await item.dispatchEvent("click");
 }
 
 /** The number of ops in the local outbox (Dexie database "shopping-lists"). */

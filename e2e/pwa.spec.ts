@@ -1,41 +1,49 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
-import { escapeRegExp, signIn, synced } from "./helpers";
+import { createList, escapeRegExp, openList, signIn, synced } from "./helpers";
 
 /** Wait until the service worker controls the page. */
 async function controlled(page: Page) {
   await page.waitForFunction(() => navigator.serviceWorker?.controller);
 }
 
-test("the service worker file needs no session and is not cached", async ({
-  request,
-}) => {
-  const res = await request.get("/sw.js");
-  expect(res.status()).toBe(200);
-  expect(res.headers()["cache-control"]).toBe("no-cache");
-  expect(res.headers()["content-type"]).toContain("javascript");
-  expect(await res.text()).toContain("/~offline");
-});
+test(
+  "the service worker file needs no session and is not cached",
+  { tag: "@once" },
+  async ({ request }) => {
+    const res = await request.get("/sw.js");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["cache-control"]).toBe("no-cache");
+    expect(res.headers()["content-type"]).toContain("javascript");
+    expect(await res.text()).toContain("/~offline");
+  },
+);
 
-test("the manifest has what an install needs", async ({ request }) => {
-  const manifest = await (await request.get("/manifest.webmanifest")).json();
-  expect(manifest).toMatchObject({
-    name: copy.app.name,
-    short_name: copy.app.shortName,
-    start_url: "/",
-    display: "standalone",
-  });
-  const sizes = (purpose: string) =>
-    manifest.icons
-      .filter((i: { purpose?: string }) => (i.purpose ?? "any") === purpose)
-      .map((i: { sizes: string }) => i.sizes);
-  expect(sizes("any")).toEqual(expect.arrayContaining(["192x192", "512x512"]));
-  expect(sizes("maskable")).toContain("512x512");
-  for (const icon of manifest.icons) {
-    expect((await request.get(icon.src)).status(), icon.src).toBe(200);
-  }
-});
+test(
+  "the manifest has what an install needs",
+  { tag: "@once" },
+  async ({ request }) => {
+    const manifest = await (await request.get("/manifest.webmanifest")).json();
+    expect(manifest).toMatchObject({
+      name: copy.app.name,
+      short_name: copy.app.shortName,
+      start_url: "/",
+      display: "standalone",
+    });
+    const sizes = (purpose: string) =>
+      manifest.icons
+        .filter((i: { purpose?: string }) => (i.purpose ?? "any") === purpose)
+        .map((i: { sizes: string }) => i.sizes);
+    expect(sizes("any")).toEqual(
+      expect.arrayContaining(["192x192", "512x512"]),
+    );
+    expect(sizes("maskable")).toContain("512x512");
+    for (const icon of manifest.icons) {
+      expect((await request.get(icon.src)).status(), icon.src).toBe(200);
+    }
+  },
+);
 
 test("Chrome finds no installability errors", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "The check uses the Chrome protocol.");
@@ -56,13 +64,8 @@ test("the app opens offline, takes a change, and syncs it online", async ({
   await controlled(page);
 
   const name = `Camping ${randomUUID().slice(0, 8)}`;
-  const index = page
-    .getByRole("region", { name: copy.lists.heading })
-    .filter({ visible: true });
-  await index.getByLabel(copy.lists.newName).fill(name);
-  await index.getByRole("button", { name: copy.lists.create }).click();
-  await index.getByRole("link", { name }).click();
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await createList(page, name);
+  await openList(page, name);
   const listUrl = page.url();
   await synced(page);
   // A load through the worker, so it saves the page.
