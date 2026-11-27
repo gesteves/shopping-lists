@@ -5,15 +5,20 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
+import { LIST_SHELL_PATH } from "@/shared/offline";
 
 let serwist: Serwist | undefined;
 
-/** Save the current page in the service worker cache, for offline use. */
+/**
+ * Save the current page in the service worker cache, for offline use. Also
+ * the list shell (#103): the worker gives it for a list that this device did
+ * not open online.
+ */
 function cacheCurrentPage() {
   if (!navigator.onLine) return;
   void serwist?.messageSW({
     type: "CACHE_URLS",
-    payload: { urlsToCache: [location.href] },
+    payload: { urlsToCache: [location.href, LIST_SHELL_PATH] },
   });
 }
 

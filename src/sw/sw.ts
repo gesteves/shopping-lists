@@ -3,9 +3,15 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 import { defaultCache } from "@serwist/turbopack/worker";
-import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import type {
+  PrecacheEntry,
+  RouteMatchCallback,
+  SerwistGlobalConfig,
+  SerwistPlugin,
+} from "serwist";
+import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
 import { copy } from "../copy";
+import { LIST_SHELL_PATH } from "../shared/offline";
 import { openUrl, targetUrl } from "./open-url";
 
 declare global {
@@ -26,19 +32,91 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+// Pages and RSC payloads (#103). The default rules keep a page for 24 h
+// from the fetch. Thus a cold start offline one day after the last use gave
+// /~offline, also with all the data in IndexedDB. These rules come before
+// the default rules: network first with a short wait, then the copy, for 30
+// days from the last use.
+const PAGE_CACHE = "pages";
+const PAGE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const NETWORK_TIMEOUT_SECONDS = 3;
+
+function pageCache(cacheName: string, plugins: SerwistPlugin[] = []) {
+  return new NetworkFirst({
+    cacheName,
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: PAGE_MAX_AGE_SECONDS,
+        maxAgeFrom: "last-used",
+      }),
+      ...plugins,
+    ],
+  });
+}
+
+/** A same-origin path of the app: not the API, not a build or static file. */
+function isAppPath(url: URL, sameOrigin: boolean): boolean {
+  return (
+    sameOrigin &&
+    !url.pathname.startsWith("/api/") &&
+    !url.pathname.startsWith("/_next/") &&
+    !/\.[a-z0-9]+$/i.test(url.pathname)
+  );
+}
+
+const isRsc: RouteMatchCallback = ({ request, url, sameOrigin }) =>
+  request.headers.get("RSC") === "1" &&
+  request.headers.get("Next-Router-Prefetch") !== "1" &&
+  isAppPath(url, sameOrigin);
+
+/**
+ * A page: a navigation, or a CACHE_URLS request from the app (a plain GET
+ * with no RSC header, src/app/service-worker.tsx).
+ */
+const isPage: RouteMatchCallback = ({ request, url, sameOrigin }) =>
+  request.method === "GET" &&
+  request.headers.get("RSC") !== "1" &&
+  isAppPath(url, sameOrigin);
+
+const OFFLINE_PATH = "/~offline";
+
+/**
+ * A page that is not in the cache, offline. A list: the cached list shell.
+ * The list page reads the list ID from the URL, and the data from
+ * IndexedDB. Another page: /~offline. Serwist does not add its fallback to a
+ * handler with a handlerDidError plugin, thus this plugin gives both.
+ */
+const pageFallback: SerwistPlugin = {
+  handlerDidError: async ({ request }) => {
+    if (new URL(request.url).pathname.startsWith("/lists/")) {
+      const cache = await caches.open(PAGE_CACHE);
+      const shell = await cache.match(LIST_SHELL_PATH, { ignoreVary: true });
+      if (shell) return shell;
+    }
+    if (request.destination !== "document") return undefined;
+    return serwist.matchPrecache(OFFLINE_PATH);
+  },
+};
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
   // Pages are network first, then the cached copy. The app caches each page
-  // that it shows (src/app/service-worker.tsx).
-  runtimeCaching: defaultCache,
+  // that it shows, and the list shell (src/app/service-worker.tsx).
+  runtimeCaching: [
+    { matcher: isRsc, handler: pageCache("pages-rsc") },
+    { matcher: isPage, handler: pageCache(PAGE_CACHE, [pageFallback]) },
+    ...defaultCache,
+  ],
   fallbacks: {
     entries: [
       {
         // A page that this device never opened while online.
-        url: "/~offline",
+        url: OFFLINE_PATH,
         matcher: ({ request }) => request.destination === "document",
       },
     ],

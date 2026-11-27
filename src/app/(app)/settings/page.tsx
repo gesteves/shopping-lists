@@ -6,10 +6,10 @@ import { requireUser } from "@/lib/session";
 import { getDb } from "@/db/client";
 import { listConnectedApps } from "@/server/connected-apps";
 import { getVapidConfig } from "@/server/push";
-import { signOut } from "../../actions";
 import { KeepScreenOnSetting } from "../_components/keep-screen-on";
 import { ConnectedApps } from "./connected-apps";
 import { NotificationSettings } from "./notification-settings";
+import { SignOutForm } from "./sign-out-form";
 
 export const metadata: Metadata = {
   title: copy.app.pageTitle(copy.settings.title),
@@ -44,14 +44,7 @@ async function Settings() {
         <h2 id="account" className="text-xl font-semibold">
           {copy.settings.account}
         </h2>
-        <form action={signOut} className="flex items-center gap-4">
-          <p className="flex-1 text-ink-muted">
-            {copy.settings.signedInAs(user.name)}
-          </p>
-          <wa-button type="submit" appearance="outlined">
-            {copy.settings.signOut}
-          </wa-button>
-        </form>
+        <SignOutForm name={user.name} />
       </section>
     </>
   );

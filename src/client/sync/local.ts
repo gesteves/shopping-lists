@@ -198,6 +198,15 @@ export async function savePullPage(
   );
 }
 
+/** Delete the lists, items, users, and outbox. Call it in a transaction. */
+async function clearData(db: ClientDb) {
+  // Keep meta: the device keeps its client ID and its clock.
+  for (const table of db.tables) {
+    if (table.name !== "meta") await table.clear();
+  }
+  await db.meta.bulkDelete(["cursor", "purgedSeq"]);
+}
+
 /**
  * A different user signed in on this browser. Delete the local data, so that
  * the ops of the first user do not go to the server as the second user.
@@ -206,13 +215,18 @@ export async function resetForUser(db: ClientDb, userId: string) {
   await db.transaction("rw", db.tables, async () => {
     const current = await getMeta(db, "userId");
     if (current === userId) return;
-    if (current !== undefined) {
-      // Keep meta: the device keeps its client ID and its clock.
-      for (const table of db.tables) {
-        if (table.name !== "meta") await table.clear();
-      }
-      await db.meta.bulkDelete(["cursor", "purgedSeq"]);
-    }
+    if (current !== undefined) await clearData(db);
     await setMeta(db, "userId", userId);
+  });
+}
+
+/**
+ * Sign-out (#103): delete the local data and the user. The device keeps its
+ * client ID and its clock.
+ */
+export async function clearForSignOut(db: ClientDb) {
+  await db.transaction("rw", db.tables, async () => {
+    await clearData(db);
+    await db.meta.delete("userId");
   });
 }
