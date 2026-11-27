@@ -56,6 +56,7 @@ The server applies new migrations at start (`src/instrumentation.ts`).
   - `better-sqlite3` is pinned to an exact version, because it must build its native module. When Dependabot bumps it, CI fails. To fix it: read the changes in the new version, then check out the Dependabot branch, run `npm install-scripts approve better-sqlite3` and `npm install-scripts prune`, and push.
   - `esbuild` and `fsevents` are denied. They work without their scripts: esbuild loads its binary from an `@esbuild/<platform>` package, and fsevents has a prebuilt binary.
   - For a new package with an install script, find out if it needs the script. If not, deny it. If it does, approve it pinned to the version.
+- `overrides` in `package.json` gives `@esbuild-kit/core-utils` (from `drizzle-kit`) the esbuild of the project. Its own esbuild (0.18) has a security advisory. Remove the override when `drizzle-kit` no longer uses `@esbuild-kit`.
 - A Node major update changes the two `node` tags in the `Dockerfile`. Also change `.nvmrc` and the major of `@types/node`. Use only LTS (even) majors. Dependabot ignores the `@types/node` majors.
 
 ## Next.js
