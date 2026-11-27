@@ -39,21 +39,26 @@ export function ItemRow({
           {item.checked && <wa-icon name="check" className="text-sm"></wa-icon>}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex items-baseline gap-2">
+          {/* Inline flow, not flex: the badge has no text baseline, thus flex
+              baseline alignment puts it too low. The badge goes after the
+              last line of the name, in a box that is one line high. */}
+          <span className="text-lg leading-snug break-words">
             <span
-              className={`text-lg leading-snug font-medium break-words ${item.checked ? "line-through decoration-2" : ""}`}
+              className={`font-medium ${item.checked ? "line-through decoration-2" : ""}`}
             >
               {item.name}
             </span>
             {item.quantity > 1 && (
-              <wa-badge
-                pill
-                appearance="filled"
-                className="shrink-0 tabular-nums"
-              >
-                <span className="sr-only">{copy.item.quantityPrefix}</span>
-                {copy.item.quantity(item.quantity)}
-              </wa-badge>
+              <span className="ms-2 inline-flex h-lh items-center align-top">
+                <wa-badge
+                  pill
+                  appearance="filled"
+                  className="text-xs tabular-nums"
+                >
+                  <span className="sr-only">{copy.item.quantityPrefix}</span>
+                  {copy.item.quantity(item.quantity)}
+                </wa-badge>
+              </span>
             )}
           </span>
           <EditingBadge itemId={item.id} />
