@@ -6,6 +6,8 @@ import { WebAwesome } from "./web-awesome";
 export const metadata: Metadata = {
   title: copy.app.name,
   description: copy.app.description,
+  // The app is private: search engines must not index or follow it (#83).
+  robots: { index: false, follow: false },
   // Open as a standalone app from the iOS Home Screen. "default" gives dark
   // status bar text on the light theme color and light text on the dark one.
   appleWebApp: {
