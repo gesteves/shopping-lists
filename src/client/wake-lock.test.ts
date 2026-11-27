@@ -8,7 +8,7 @@ import {
 } from "./wake-lock";
 
 /** A fake browser: one page, a wake lock, and storage. */
-function fakeEnv(options: { fail?: boolean } = {}) {
+function fakeEnv(options: { fail?: boolean; defer?: boolean } = {}) {
   const listeners = new Set<() => void>();
   const store = new Map<string, string>();
   const sentinels: {
@@ -17,6 +17,8 @@ function fakeEnv(options: { fail?: boolean } = {}) {
     addEventListener: (t: "release", l: () => void) => void;
     fire: () => void;
   }[] = [];
+  /** With `defer`: each open request, resolved by a call. */
+  const open: (() => void)[] = [];
   const doc = {
     visibilityState: "visible" as DocumentVisibilityState,
     addEventListener: (_: string, l: () => void) => listeners.add(l),
@@ -26,6 +28,9 @@ function fakeEnv(options: { fail?: boolean } = {}) {
     wakeLock: {
       request: vi.fn(async () => {
         if (options.fail) throw new Error("NotAllowedError");
+        if (options.defer) {
+          await new Promise<void>((resolve) => open.push(resolve));
+        }
         let onRelease = () => {};
         const sentinel = {
           released: false,
@@ -65,6 +70,7 @@ function fakeEnv(options: { fail?: boolean } = {}) {
     store,
     sentinels,
     listeners,
+    open,
     hideAndShow,
   };
 }
@@ -122,5 +128,51 @@ describe("wake lock", () => {
     await Promise.resolve();
     expect(listeners.size).toBe(0);
     expect(c.held).toBe(false);
+  });
+
+  it("releases a lock that arrives after dispose", async () => {
+    const { env, sentinels, open } = fakeEnv({ defer: true });
+    const c = new WakeLockController(undefined, env);
+    const done = c.set(true);
+    await vi.waitFor(() => expect(open).toHaveLength(1));
+    c.dispose();
+    open[0]();
+    await done;
+    expect(c.on).toBe(false);
+    expect(c.held).toBe(false);
+    expect(sentinels[0].released).toBe(true);
+  });
+
+  it("makes one request for two acquires at the same time", async () => {
+    const { env, sentinels, listeners, open } = fakeEnv({ defer: true });
+    const c = new WakeLockController(undefined, env);
+    const done = c.set(true);
+    // The page becomes visible while the first request is open.
+    for (const l of listeners) l();
+    await vi.waitFor(() => expect(open).toHaveLength(1));
+    open[0]();
+    await done;
+    await Promise.resolve();
+    expect(env.wakeLock!.request).toHaveBeenCalledOnce();
+    expect(c.held).toBe(true);
+
+    // Off releases the one lock: the screen does not stay on.
+    await c.set(false);
+    expect(sentinels).toHaveLength(1);
+    expect(sentinels[0].released).toBe(true);
+    expect(c.held).toBe(false);
+  });
+
+  it("keeps the lock of an open request when the setting goes off and on", async () => {
+    const { env, sentinels, open } = fakeEnv({ defer: true });
+    const c = new WakeLockController(undefined, env);
+    const first = c.set(true);
+    await vi.waitFor(() => expect(open).toHaveLength(1));
+    const off = c.set(false);
+    const on = c.set(true);
+    open[0]();
+    await Promise.all([first, off, on]);
+    expect(sentinels).toHaveLength(1);
+    expect(c.held).toBe(true);
   });
 });

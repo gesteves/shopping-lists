@@ -74,6 +74,44 @@ test("a name already on the list asks first", async ({ page }) => {
   await expect(page.getByRole("checkbox", { name: /^Butter/ })).toHaveCount(1);
 });
 
+test("a checked duplicate keeps the quantity and the notes that the user typed", async ({
+  page,
+}) => {
+  await signIn(page);
+  const name = await newList(page, "Dupes");
+  await openList(page, name);
+  await add(page, "Flour");
+  await item(page, "Flour").click();
+  await expect(item(page, "Flour")).toHaveAttribute("aria-checked", "true");
+
+  const bar = page.getByRole("form", { name: copy.addBar.label });
+  await bar.getByRole("combobox", { name: copy.addBar.name }).fill("flour");
+  await bar.getByRole("button", { name: copy.addBar.details }).click();
+  await bar.getByRole("button", { name: copy.stepper.increment }).click();
+  await bar.getByRole("button", { name: copy.stepper.increment }).click();
+  await bar.getByRole("textbox", { name: copy.addBar.notes }).fill("Rye");
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  const prompt = dialog(page, copy.addBar.checkedTitle("Flour"));
+  await expect(
+    prompt.getByText(copy.addBar.checkedBodyChanges(3, true)),
+  ).toBeVisible();
+  const saved = page.waitForResponse("**/api/sync/push");
+  await prompt
+    .getByRole("button", { name: copy.addBar.checkedConfirm })
+    .click();
+  await expect(item(page, "Flour")).toHaveAttribute("aria-checked", "false");
+  await expect(item(page, "Flour")).toContainText(copy.item.quantity(3));
+  await expect(item(page, "Flour")).toContainText("Rye");
+
+  // The server has it too.
+  await saved;
+  await synced(page);
+  await page.reload();
+  await expect(item(page, "Flour")).toHaveAttribute("aria-checked", "false");
+  await expect(item(page, "Flour")).toContainText(copy.item.quantity(3));
+  await expect(item(page, "Flour")).toContainText("Rye");
+});
+
 test("two people adding the same name make one row", async ({ browser }) => {
   const a = await browser.newPage();
   const b = await browser.newPage();

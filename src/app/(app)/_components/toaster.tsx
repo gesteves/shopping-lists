@@ -1,9 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { useMergedOps, useRejectedOps } from "@/client/hooks";
-import { recreateFor } from "@/client/recreate";
+import { RecreateGroups, recreateMessage } from "@/client/recreate";
 import type { MergedDetail, RejectedDetail } from "@/client/sync";
 import { copy } from "@/copy";
 import {
@@ -23,8 +29,8 @@ interface WaToast extends HTMLElement {
 /**
  * The toasts (src/client/toasts.ts) in a <wa-toast>. Each item closes
  * itself after its duration; the store keeps the limit (3). Also a toast
- * for each change that the server refused, and for each add that it
- * merged.
+ * for each change that the server refused (one for each deleted list), and
+ * for each add that it merged.
  */
 export function Toaster() {
   const toasts = useSyncExternalStore(
@@ -52,20 +58,14 @@ export function Toaster() {
   }, [toasts]);
 
   const router = useRouter();
-
-  useRejectedOps(
-    useCallback(
-      async ({ op, reason }: RejectedDetail) => {
-        const recreate =
-          reason === "list_deleted" ? await recreateFor(op) : null;
-        if (recreate) {
+  // One toast for each deleted list, with all its refused adds and moves.
+  // The router of the App Router does not change, thus the groups stay.
+  const groups = useMemo(
+    () =>
+      new RecreateGroups({
+        show: (recreate) =>
           showToast({
-            message: (recreate.kind === "add"
-              ? copy.toasts.listDeletedAdd
-              : copy.toasts.listDeletedMove)(
-              recreate.listName,
-              recreate.itemName,
-            ),
+            message: recreateMessage(recreate),
             duration: 10_000,
             action: {
               label: copy.toasts.recreate,
@@ -79,9 +79,21 @@ export function Toaster() {
                 }
               },
             },
-          });
-          return;
-        }
+          }),
+        showFallback: () =>
+          showToast({
+            message: copy.toasts.rejected(copy.toasts.reasons.list_deleted),
+          }),
+        isShown: (id) => toastStore.getSnapshot().some((t) => t.id === id),
+        dismiss: dismissToast,
+      }),
+    [router],
+  );
+
+  useRejectedOps(
+    useCallback(
+      ({ op, reason }: RejectedDetail) => {
+        if (reason === "list_deleted" && groups.add(op)) return;
         // An unknown reason (a newer server) gets a general text.
         const text = (copy.toasts.reasons as Record<string, string>)[reason];
         showToast({
@@ -90,7 +102,7 @@ export function Toaster() {
             : copy.toasts.rejectedGeneral,
         });
       },
-      [router],
+      [groups],
     ),
   );
   useMergedOps(

@@ -196,6 +196,14 @@ export const en = {
     checkedTitle: (name: string) => `Already on the list. Uncheck ${q(name)}?`,
     checkedConfirm: "Uncheck",
     checkedBody: "It’s checked off. Uncheck it to get it again.",
+    /** The user typed a new quantity, new notes, or both. */
+    checkedBodyChanges: (quantity: number | undefined, notes: boolean) =>
+      quantity === undefined
+        ? "It’s checked off. Uncheck it to get it again, with your notes."
+        : `It’s checked off. Uncheck it to get ×${quantity}${notes ? ", with your notes" : ""}.`,
+    /** A write on this device failed. The form is clear already. */
+    failed: (name: string) =>
+      `${q(name)} wasn’t saved on this device. Add it again.`,
     duplicateTitle: (name: string) => `${q(name)} is already on the list.`,
     duplicateConfirm: "Add more",
     duplicateBody: (add: number, total: number) =>
@@ -235,6 +243,18 @@ export const en = {
       `The ${q(list)} list was deleted, so ${q(item)} wasn’t added.`,
     listDeletedMove: (list: string, item: string) =>
       `The ${q(list)} list was deleted, so ${q(item)} wasn’t moved.`,
+    /** Many adds or moves to one deleted list: one toast. */
+    listDeletedMany: (
+      list: string,
+      n: number,
+      kind: "add" | "move" | "mixed",
+    ) =>
+      `The ${q(list)} list was deleted, so ${items(n)} ${plural(n, {
+        one: "wasn’t",
+        other: "weren’t",
+      })} ${
+        kind === "add" ? "added" : kind === "move" ? "moved" : "added or moved"
+      }.`,
     recreate: "Re-create list",
     /** Why the server refused a change. */
     reasons: {
