@@ -135,7 +135,9 @@ The app runs on one Fly.io machine, behind Cloudflare. Do not add a second machi
      --build-secret "FONTAWESOME_NPM_AUTH_TOKEN=$FONTAWESOME_NPM_AUTH_TOKEN"
    ```
 
-   The server applies the migrations when it starts. On a new volume, it first restores the database from R2.
+   The server applies the migrations when it starts. On a new volume, it first restores the database from R2. If R2 has no replica, the machine does not start: this prevents a new empty database.
+
+   For the first deploy of a new app, R2 has no replica yet. Thus set `ALLOW_EMPTY_REPLICA=1` before the first deploy, check that Litestream wrote the first replica, then remove the secret. The steps are in [`docs/ops.md`](docs/ops.md).
 
 CI (`.github/workflows/ci.yml`) runs all checks on each pull request, and deploys each merge to `main` after the checks pass.
 

@@ -17,7 +17,7 @@ export async function register() {
   // sent at the next tick.
   const { startNotifier } = await import("@/server/notify/worker");
   const { createSummarizer } = await import("@/server/notify/summarize");
-  // Claude writes the text for more than one change (#17).
+  // Claude writes the text of each burst, also for one change (#89).
   startNotifier({ summarize: createSummarizer() });
   // Claude writes a summary of the unchecked items of each list. There is
   // no worker without ANTHROPIC_API_KEY: the lists page shows the count.
