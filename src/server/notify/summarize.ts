@@ -22,11 +22,22 @@ export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 const Summary = z.object({ body: z.string() });
 
+/**
+ * The most changes in the model input. A larger burst gives only the counts
+ * of the other changes, thus the request stays small.
+ */
+export const MAX_INPUT_CHANGES = 50;
+
 /** The model input: names only, never emails or IDs. */
 export function summaryInput(events: ActivityEvent[], actorName: string) {
+  const shown = events.slice(0, MAX_INPUT_CHANGES);
+  const rest = events.slice(MAX_INPUT_CHANGES);
+  const types: Record<string, number> = {};
+  for (const e of rest) types[e.type] = (types[e.type] ?? 0) + 1;
   return {
     actor: who(actorName, events[0].via),
-    changes: events.map((e) => ({
+    ...(rest.length > 0 && { more: { count: rest.length, types } }),
+    changes: shown.map((e) => ({
       type: e.type,
       list: e.snapshot.listName,
       ...(e.snapshot.itemName !== undefined && { item: e.snapshot.itemName }),

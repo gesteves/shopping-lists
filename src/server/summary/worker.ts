@@ -57,7 +57,10 @@ export class SummaryWorker {
     this.#summarize = options.summarize;
   }
 
-  /** One pass: make each summary that is ready. Not reentrant. */
+  /**
+   * One pass: make each summary that is ready. Not reentrant. It does not
+   * throw: an error goes to the log, and the next tick tries again.
+   */
   async tick(): Promise<void> {
     if (this.#running) return;
     this.#running = true;
@@ -75,6 +78,8 @@ export class SummaryWorker {
           });
         }
       }
+    } catch (error) {
+      console.error("Summary tick failed", error);
     } finally {
       this.#running = false;
     }

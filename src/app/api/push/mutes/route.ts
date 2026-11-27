@@ -1,4 +1,5 @@
 import { requireApiUser } from "@/lib/session";
+import { readJson } from "@/server/json";
 import { listMutedListIds, setListMuted } from "@/server/push";
 import { muteSchema } from "@/shared/push";
 
@@ -16,12 +17,10 @@ export async function GET() {
 export async function PUT(request: Request) {
   const user = await requireApiUser();
   if (user instanceof Response) return user;
-  const parsed = muteSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return Response.json({ error: "invalid_request" }, { status: 400 });
-  }
+  const body = await readJson(request, muteSchema);
+  if (!body.ok) return body.response;
   try {
-    setListMuted(user.id, parsed.data.listId, parsed.data.muted);
+    setListMuted(user.id, body.data.listId, body.data.muted);
   } catch {
     // The list does not exist (foreign key).
     return Response.json({ error: "not_found" }, { status: 404 });

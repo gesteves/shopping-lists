@@ -45,7 +45,8 @@ function toInfo(row: SubscriptionRow): SubscriptionInfo {
 
 /**
  * Save a browser subscription for a user. The endpoint is unique: a browser
- * that subscribes again (or for a different user) replaces its row.
+ * that subscribes again replaces its row. An endpoint of a different user
+ * does not move to the caller: it gives null.
  */
 export function saveSubscription(
   userId: string,
@@ -55,7 +56,7 @@ export function saveSubscription(
     deviceLabel: string | null;
   },
   db: Db = getDb(),
-): SubscriptionInfo {
+): SubscriptionInfo | null {
   const row = db
     .insert(pushSubscriptions)
     .values({
@@ -76,10 +77,11 @@ export function saveSubscription(
         deviceLabel: input.deviceLabel,
         enabled: true,
       },
+      where: eq(pushSubscriptions.userId, userId),
     })
     .returning()
     .get();
-  return toInfo(row);
+  return row ? toInfo(row) : null;
 }
 
 export function listSubscriptions(
@@ -151,6 +153,9 @@ export function setListMuted(
   }
 }
 
+/** The longest wait for a push service. */
+export const PUSH_TIMEOUT_MS = 10_000;
+
 export interface SendResult {
   sent: number;
   /** Subscriptions that the push service no longer knows, now deleted. */
@@ -209,6 +214,9 @@ export async function sendToUser(
             // A shopping change is useless after a day.
             TTL: 24 * 60 * 60,
             urgency: "normal",
+            // A push service that does not answer must not stop the
+            // notifier.
+            timeout: PUSH_TIMEOUT_MS,
             topic: payload.tag?.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32),
           },
         );

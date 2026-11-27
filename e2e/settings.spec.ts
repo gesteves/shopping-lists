@@ -16,7 +16,8 @@ async function fakeDevice(page: Page) {
   const res = await page.request.post("/api/push/subscriptions", {
     data: {
       // Refused at once, with no DNS lookup. A lookup that hangs blocks the
-      // Node thread pool and slows the whole server.
+      // Node thread pool and slows the whole server. The server accepts a
+      // loopback endpoint only with the auth stub (e2e).
       endpoint: `https://127.0.0.1:1/push/${randomUUID()}`,
       keys: {
         // A valid P-256 public key and auth secret, so web-push can encrypt.
@@ -36,7 +37,9 @@ test(
   { tag: "@once" },
   async ({ request }) => {
     expect((await request.get("/api/push/subscriptions")).status()).toBe(401);
-    expect((await request.post("/api/push/test")).status()).toBe(401);
+    expect((await request.post("/api/push/test", { data: {} })).status()).toBe(
+      401,
+    );
     expect((await request.get("/api/push/mutes")).status()).toBe(401);
   },
 );

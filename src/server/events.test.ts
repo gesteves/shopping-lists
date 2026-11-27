@@ -58,6 +58,18 @@ describe("createEventStream", () => {
     expect(bus.listenerCount("poke")).toBe(before);
   });
 
+  it("closes at the maximum age", async () => {
+    controller = new AbortController();
+    const before = bus.listenerCount("poke");
+    const reader = createEventStream(controller.signal, {
+      maxAgeMs: 10,
+    }).getReader();
+    await read(reader);
+    await read(reader);
+    expect(await read(reader)).toBeNull();
+    expect(bus.listenerCount("poke")).toBe(before);
+  });
+
   it("removes its listener when the client cancels", async () => {
     controller = new AbortController();
     const before = bus.listenerCount("poke");

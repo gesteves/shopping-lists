@@ -9,6 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { activity, items, users } from "@/db/schema";
 import {
+  ALLOWED,
   RESOURCE,
   SECOND,
   setupOAuthHarness,
@@ -700,6 +701,7 @@ describe("notifications", () => {
     const sent: { userId: string; payload: PushPayload }[] = [];
     const notifier = new Notifier({
       db: h.db,
+      allowlist: `${ALLOWED},${SECOND}`,
       now: () => Date.now() + QUIET_MS + 1,
       send: async (to, payload) => {
         sent.push({ userId: to, payload });

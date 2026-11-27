@@ -1,4 +1,5 @@
 import { requireApiUser } from "@/lib/session";
+import { readJson } from "@/server/json";
 import { getPresence } from "@/server/presence";
 import { presenceInputSchema } from "@/shared/presence";
 
@@ -6,13 +7,9 @@ import { presenceInputSchema } from "@/shared/presence";
 export async function POST(request: Request) {
   const user = await requireApiUser();
   if (user instanceof Response) return user;
-  const parsed = presenceInputSchema.safeParse(
-    await request.json().catch(() => null),
-  );
-  if (!parsed.success) {
-    return Response.json({ error: "invalid_request" }, { status: 400 });
-  }
-  getPresence().set(user.id, parsed.data);
+  const body = await readJson(request, presenceInputSchema);
+  if (!body.ok) return body.response;
+  getPresence().set(user.id, body.data);
   return new Response(null, {
     status: 204,
     headers: { "Cache-Control": "no-store" },

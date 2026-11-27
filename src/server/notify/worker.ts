@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { copy } from "@/copy";
 import { getDb, type Db } from "@/db/client";
 import { activity, listMutes, users } from "@/db/schema";
+import { isAllowedEmail } from "@/lib/allowlist";
 import type { PushPayload } from "@/shared/push";
 import { sendToUser } from "../push";
 import { collapse } from "./collapse";
@@ -26,7 +27,12 @@ export interface NotifierOptions {
    * is the fixed fallback.
    */
   summarize?: (events: ActivityEvent[], actorName: string) => Promise<string>;
+  /** `ALLOWED_EMAILS`. Only these users get pushes. */
+  allowlist?: string;
 }
+
+/** The most IDs in one `inArray` (SQLite limits the variables). */
+const ID_CHUNK = 500;
 
 export const TICK_MS = 10_000;
 export const QUIET_MS = 60_000;
@@ -64,6 +70,7 @@ export class Notifier {
   readonly #maxWaitMs: number;
   readonly #send: NonNullable<NotifierOptions["send"]>;
   readonly #summarize: NonNullable<NotifierOptions["summarize"]>;
+  readonly #allowlist: () => string | undefined;
   #running = false;
 
   constructor(options: NotifierOptions = {}) {
@@ -76,14 +83,21 @@ export class Notifier {
     this.#summarize =
       options.summarize ??
       (async (events, name) => renderFallback(events, name));
+    const allowlist = options.allowlist;
+    this.#allowlist = () => allowlist ?? process.env.ALLOWED_EMAILS;
   }
 
-  /** One pass: send each group that is ready. Not reentrant. */
+  /**
+   * One pass: send each group that is ready. Not reentrant. It does not
+   * throw: an error goes to the log, and the next tick tries again.
+   */
   async tick(): Promise<void> {
     if (this.#running) return;
     this.#running = true;
     try {
       for (const group of this.#readyGroups()) await this.#flush(group);
+    } catch (error) {
+      console.error("Notifier tick failed", error);
     } finally {
       this.#running = false;
     }
@@ -128,21 +142,34 @@ export class Notifier {
 
     // Mark the rows first. A crash after this loses one push; it never
     // sends the same push two times.
-    db.update(activity)
-      .set({ notifiedAt: new Date(this.#now()) })
-      .where(and(inArray(activity.id, ids), isNull(activity.notifiedAt)))
-      .run();
+    const at = new Date(this.#now());
+    db.transaction((tx) => {
+      for (let i = 0; i < ids.length; i += ID_CHUNK) {
+        tx.update(activity)
+          .set({ notifiedAt: at })
+          .where(
+            and(
+              inArray(activity.id, ids.slice(i, i + ID_CHUNK)),
+              isNull(activity.notifiedAt),
+            ),
+          )
+          .run();
+      }
+    });
 
     const actor = db
       .select({ name: users.name })
       .from(users)
       .where(eq(users.id, actorId))
       .get();
+    // A user who is no longer in ALLOWED_EMAILS gets nothing.
+    const allowlist = this.#allowlist();
     const recipients = db
-      .select({ id: users.id })
+      .select({ id: users.id, email: users.email })
       .from(users)
       .where(ne(users.id, actorId))
-      .all();
+      .all()
+      .filter((user) => isAllowedEmail(user.email, allowlist));
 
     for (const recipient of recipients) {
       const muted = new Set(
