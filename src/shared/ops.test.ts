@@ -44,6 +44,7 @@ const VALID: Record<OpType, unknown> = {
   moveItem: { itemId: ITEM, toListId: LIST_2 },
   clearChecked: { listId: LIST },
   uncheckAll: { listId: LIST },
+  checkAll: { listId: LIST },
 };
 
 // Bad args for each type.
@@ -84,13 +85,14 @@ const INVALID: Record<OpType, unknown[]> = {
   moveItem: [{ itemId: ITEM }, { itemId: ITEM, toListId: "x" }],
   clearChecked: [{ itemId: ITEM }],
   uncheckAll: [{}],
+  checkAll: [{ listId: LIST, itemId: ITEM }],
 };
 
 describe("op schemas", () => {
   it("cover every op type", () => {
     expect(Object.keys(VALID).sort()).toEqual([...OP_TYPES].sort());
     expect(Object.keys(opSchemas).sort()).toEqual([...OP_TYPES].sort());
-    expect(OP_TYPES).toHaveLength(13);
+    expect(OP_TYPES).toHaveLength(14);
   });
 
   for (const type of OP_TYPES) {

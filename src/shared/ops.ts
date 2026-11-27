@@ -70,10 +70,11 @@ const ARGS = {
   deleteItem: itemArgs,
   restoreItem: itemArgs,
   moveItem: z.strictObject({ itemId: id, toListId: id }),
-  // These two change the items of the list that the server has when it
-  // applies the op. #5 sets the rules.
+  // These three change the items of the list that the server has when it
+  // applies the op. #5 and #67 set the rules.
   clearChecked: listArgs,
   uncheckAll: listArgs,
+  checkAll: listArgs,
 } as const;
 
 export type OpType = keyof typeof ARGS;
@@ -111,6 +112,7 @@ export const opSchemas = {
   moveItem: opSchemaFor("moveItem"),
   clearChecked: opSchemaFor("clearChecked"),
   uncheckAll: opSchemaFor("uncheckAll"),
+  checkAll: opSchemaFor("checkAll"),
 } satisfies { [T in OpType]: ReturnType<typeof opSchemaFor<T>> };
 
 /**

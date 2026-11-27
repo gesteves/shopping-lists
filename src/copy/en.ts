@@ -138,15 +138,17 @@ export const en = {
     remaining: (n: number) => `${n} to get`,
     items: "Items",
     actions: "List actions",
+    checkAll: "Check all",
     uncheckAll: "Uncheck all",
-    clearChecked: "Clear checked items",
+    deleteChecked: "Delete checked items",
     deleteList: "Delete list",
+    checkedAll: (n: number) => `Checked ${items(n)}.`,
     unchecked: (n: number) => `Unchecked ${items(n)}.`,
-    cleared: (n: number) => `Cleared ${items(n)}.`,
-    clearTitle: (n: number, list: string) =>
-      `Clear ${items(n)} checked off ${q(list)}?`,
-    clearConfirm: "Clear",
-    clearBody: "They go from the list for both of you.",
+    deletedChecked: (n: number) => `Deleted ${items(n)}.`,
+    deleteCheckedTitle: (n: number, list: string) =>
+      `Delete ${items(n)} checked off ${q(list)}?`,
+    deleteCheckedConfirm: "Delete",
+    deleteCheckedBody: "They go from the list for both of you.",
   },
 
   item: {
@@ -336,9 +338,11 @@ export const en = {
       moveItem: (e: PushEvent) =>
         `${e.who} moved ${q(e.item)} from the ${q(e.fromList)} list to the ${q(e.list)} list`,
       clearChecked: (e: PushEvent) =>
-        `${e.who} cleared checked items from the ${q(e.list)} list`,
+        `${e.who} deleted the checked items from the ${q(e.list)} list`,
       uncheckAll: (e: PushEvent) =>
         `${e.who} unchecked everything in the ${q(e.list)} list`,
+      checkAll: (e: PushEvent) =>
+        `${e.who} checked everything off the ${q(e.list)} list`,
     },
     /**
      * More than one event, when Claude gives no summary: "Sam made 3

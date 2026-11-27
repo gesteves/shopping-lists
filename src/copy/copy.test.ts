@@ -50,8 +50,9 @@ describe("the dictionary", () => {
   });
 
   it("uses plurals for counts", () => {
-    expect(copy.list.cleared(1)).toBe("Cleared 1 item.");
-    expect(copy.list.cleared(3)).toBe("Cleared 3 items.");
+    expect(copy.list.deletedChecked(1)).toBe("Deleted 1 item.");
+    expect(copy.list.deletedChecked(3)).toBe("Deleted 3 items.");
+    expect(copy.list.checkedAll(2)).toBe("Checked 2 items.");
     expect(copy.sync.changesToSync(1)).toBe("1 change to sync");
     expect(copy.sync.offlineWithChanges(2)).toBe("Offline · 2 changes to sync");
     expect(copy.settings.testSent(1)).toBe(

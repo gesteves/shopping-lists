@@ -513,7 +513,7 @@ describe("dedupe on addItem", () => {
   });
 });
 
-describe("clearChecked and uncheckAll", () => {
+describe("clearChecked, uncheckAll, and checkAll", () => {
   function seedThree() {
     seed();
     apply(
@@ -546,6 +546,41 @@ describe("clearChecked and uncheckAll", () => {
     apply(ALEX, op("uncheckAll", { listId: LIST }, T3));
     expect(getItem(ITEM)?.checked).toBe(false);
     expect(getItem(ITEM_3)?.checked).toBe(true);
+  });
+
+  it("checkAll checks the items unchecked before it", () => {
+    seed();
+    apply(
+      SAM,
+      op("addItem", { itemId: ITEM_2, listId: LIST, name: "Eggs" }, T1),
+      op("check", { itemId: ITEM_2 }, T2),
+      // Unchecked after the bulk op below. The bulk op must keep it.
+      op("uncheck", { itemId: ITEM_2 }, T4),
+      // Added after the bulk op below. The person did not see it.
+      op("addItem", { itemId: ITEM_3, listId: LIST, name: "Bread" }, T4),
+    );
+    const { results } = apply(ALEX, op("checkAll", { listId: LIST }, T3));
+    expect(results[0]).toMatchObject({ status: "applied", changed: true });
+    expect(getItem(ITEM)).toMatchObject({
+      checked: true,
+      checkedAt: new Date(T3),
+    });
+    expect(getItem(ITEM_2)?.checked).toBe(false);
+    expect(getItem(ITEM_3)?.checked).toBe(false);
+    const last = db.select().from(activity).orderBy(activity.id).all().at(-1);
+    expect(last).toMatchObject({
+      type: "checkAll",
+      itemId: null,
+      snapshot: { listName: "Whole Foods", count: 1 },
+    });
+  });
+
+  it("checkAll does nothing when all items are checked", () => {
+    seed();
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    const { results, seq } = apply(SAM, op("checkAll", { listId: LIST }, T3));
+    expect(results[0]).toMatchObject({ status: "applied", changed: false });
+    expect(seq).toBeNull();
   });
 
   it("does nothing when no item is checked", () => {

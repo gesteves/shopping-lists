@@ -658,10 +658,10 @@ export const TOOLS = [
     defineTool({
       name,
       title:
-        name === "clear_checked" ? "Clear checked items" : "Uncheck all items",
+        name === "clear_checked" ? "Delete checked items" : "Uncheck all items",
       description:
         name === "clear_checked"
-          ? "Remove all checked items from a list, for both people. Confirm with the user first."
+          ? "Delete all checked items from a list, for both people. Confirm with the user first."
           : "Uncheck all items of a list, to shop for them again.",
       scope: "lists:write",
       annotations:

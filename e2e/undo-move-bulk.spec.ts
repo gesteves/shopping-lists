@@ -115,36 +115,79 @@ test("move an item to a different list", async ({ page }) => {
   await expect(item(page, "Tortillas")).toBeVisible();
 });
 
-test("uncheck all and clear checked items, and they sync", async ({ page }) => {
+test("check all, uncheck all, and delete checked items, with undo", async ({
+  page,
+}) => {
   await signIn(page);
   const name = `Bulk ${randomUUID().slice(0, 8)}`;
   await createList(page, name);
   await openList(page, name);
   await add(page, "Rice", "Beans", "Salsa");
   await item(page, "Rice").click();
-  await item(page, "Beans").click();
+  await expect(item(page, "Rice")).toHaveAttribute("aria-checked", "true");
+  const menu = (label: string) =>
+    page
+      .getByRole("button", { name: copy.list.actions })
+      .click()
+      .then(() =>
+        page.getByRole("menuitem", { name: label, exact: true }).click(),
+      );
+
+  // Check all, then undo: only the items that it checked go back.
+  await menu(copy.list.checkAll);
+  for (const n of ["Rice", "Beans", "Salsa"]) {
+    await expect(item(page, n)).toHaveAttribute("aria-checked", "true");
+  }
+  await toast(page, copy.list.checkedAll(2))
+    .getByRole("button", { name: copy.common.undo })
+    .click();
+  await expect(item(page, "Beans")).toHaveAttribute("aria-checked", "false");
+  await expect(item(page, "Salsa")).toHaveAttribute("aria-checked", "false");
+  await expect(item(page, "Rice")).toHaveAttribute("aria-checked", "true");
+
+  // Check all, and it syncs.
+  await menu(copy.list.checkAll);
+  await expect(item(page, "Salsa")).toHaveAttribute("aria-checked", "true");
+  await synced(page);
+  await page.reload();
   await expect(item(page, "Beans")).toHaveAttribute("aria-checked", "true");
 
-  // Uncheck all.
-  await page.getByRole("button", { name: copy.list.actions }).click();
-  await page.getByRole("menuitem", { name: copy.list.uncheckAll }).click();
+  // Uncheck all, then undo.
+  await menu(copy.list.uncheckAll);
   for (const n of ["Rice", "Beans", "Salsa"]) {
     await expect(item(page, n)).toHaveAttribute("aria-checked", "false");
   }
+  await toast(page, copy.list.unchecked(3))
+    .getByRole("button", { name: copy.common.undo })
+    .click();
+  await expect(item(page, "Rice")).toHaveAttribute("aria-checked", "true");
+
+  // Uncheck all, and it syncs.
+  await menu(copy.list.uncheckAll);
+  await expect(item(page, "Rice")).toHaveAttribute("aria-checked", "false");
   await synced(page);
   await page.reload();
   await expect(item(page, "Rice")).toHaveAttribute("aria-checked", "false");
 
-  // Clear checked items, after a confirmation.
+  // Delete the checked items, after a confirmation, then undo.
   await item(page, "Salsa").click();
   await expect(item(page, "Salsa")).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("button", { name: copy.list.actions }).click();
-  await page.getByRole("menuitem", { name: copy.list.clearChecked }).click();
-  await dialog(page, copy.list.clearTitle(1, name))
-    .getByRole("button", { name: copy.list.clearConfirm })
+  const deleteChecked = async () => {
+    await menu(copy.list.deleteChecked);
+    await dialog(page, copy.list.deleteCheckedTitle(1, name))
+      .getByRole("button", { name: copy.list.deleteCheckedConfirm })
+      .click();
+    await expect(item(page, "Salsa")).toHaveCount(0);
+    await expect(item(page, "Rice")).toBeVisible();
+  };
+  await deleteChecked();
+  await toast(page, copy.list.deletedChecked(1))
+    .getByRole("button", { name: copy.common.undo })
     .click();
-  await expect(item(page, "Salsa")).toHaveCount(0);
-  await expect(item(page, "Rice")).toBeVisible();
+  await expect(item(page, "Salsa")).toBeVisible();
+
+  // Delete them again, and it syncs.
+  await deleteChecked();
   await synced(page);
   await page.reload();
   await expect(item(page, "Salsa")).toHaveCount(0);

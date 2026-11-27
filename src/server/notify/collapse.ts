@@ -12,7 +12,7 @@
 //   - Create a list, then delete it → nothing, also for its items.
 //   - Create, then rename → "created" with the new name. Renames that end at
 //     the first name → nothing.
-// Bulk events (clear checked, uncheck all) stay.
+// Bulk events (delete checked, uncheck all, check all) stay.
 import type { ActivityEvent } from "./types";
 
 const ITEM_TYPES = new Set([
