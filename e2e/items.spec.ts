@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
+import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
 import {
   anyCount,
@@ -183,4 +184,90 @@ test("the quantity badge is centered on the last line of the name", async ({
     if (name === long) expect(lines).toBeGreaterThan(1);
     expect(Math.abs(offset), name).toBeLessThanOrEqual(2);
   }
+});
+
+/** The item names in the local Dexie database of `page`. */
+function localItemNames(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open("shopping-lists");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const all = db.transaction("items").objectStore("items").getAll();
+          all.onsuccess = () => {
+            resolve(all.result.map((i: { name: string }) => i.name));
+            db.close();
+          };
+        };
+      }),
+  );
+}
+
+test("the sheet keeps the edits of the other person", async ({
+  page,
+  browser,
+}) => {
+  await signIn(page);
+  await openNewList(page);
+  await add(page, "Milk");
+  await add(page, "Eggs");
+  await synced(page);
+  const sheet = dialog(page, copy.itemSheet.title);
+
+  const ben = await browser.newPage();
+  try {
+    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
+    await ben.goto(page.url());
+    const benSheet = dialog(ben, copy.itemSheet.title);
+    await ben.getByRole("button", { name: copy.item.edit("Milk") }).click();
+    await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
+
+    // Ana renames the item while the sheet of Ben is open.
+    await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+    await sheet.getByLabel(copy.itemSheet.name).fill("Oat milk");
+    await sheet.getByRole("button", { name: copy.common.save }).click();
+    await expect(sheet).toBeHidden();
+    await synced(page);
+    await expect.poll(() => localItemNames(ben)).toContain("Oat milk");
+
+    // Ben changes only the quantity. The rename stays.
+    await benSheet
+      .getByRole("button", { name: copy.stepper.increment })
+      .click();
+    await benSheet.getByRole("button", { name: copy.common.save }).click();
+    await expect(benSheet).toBeHidden();
+    await expect(item(ben, "Oat milk")).toContainText(copy.item.quantity(2));
+    await expect(item(page, "Oat milk")).toContainText(copy.item.quantity(2));
+
+    // Ana deletes an item while the sheet of Ben is open: it closes.
+    await ben.getByRole("button", { name: copy.item.edit("Eggs") }).click();
+    await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
+    await page.getByRole("button", { name: copy.item.edit("Eggs") }).click();
+    await sheet.getByRole("button", { name: copy.common.delete }).click();
+    await expect(benSheet).toBeHidden();
+    await expect(
+      ben.locator("wa-toast-item", { hasText: copy.itemSheet.gone("Eggs") }),
+    ).toBeVisible();
+    await expect(item(ben, "Eggs")).toHaveCount(0);
+  } finally {
+    await ben.close();
+  }
+});
+
+test.describe("sync errors", () => {
+  // page.route does not see the requests that go through a service worker.
+  test.use({ serviceWorkers: "block" });
+
+  test("the header shows a sync error", async ({ page }) => {
+    await signIn(page);
+    await page.route("**/api/sync/pull*", (route) =>
+      route.fulfill({ status: 500 }),
+    );
+    await page.reload();
+    await expect(
+      page.getByRole("status").filter({ hasText: copy.sync.error }),
+    ).toBeVisible();
+  });
 });

@@ -105,6 +105,9 @@ export const en = {
       `Offline · ${plural(n, { one: `${n} change`, other: `${n} changes` })} to sync`,
     changesToSync: (n: number) =>
       `${plural(n, { one: `${n} change`, other: `${n} changes` })} to sync`,
+    error: "Can’t sync · Trying again",
+    errorWithChanges: (n: number) =>
+      `Can’t sync ${plural(n, { one: `${n} change`, other: `${n} changes` })} · Trying again`,
   },
 
   newVersion: {
@@ -198,6 +201,8 @@ export const en = {
     deleted: (name: string) => `Deleted ${q(name)}.`,
     moved: (name: string, list: string) =>
       `Moved ${q(name)} to the ${q(list)} list.`,
+    /** The item went from the list (a delete or a move on another device). */
+    gone: (name: string) => `${q(name)} isn’t on this list anymore.`,
   },
 
   presence: {

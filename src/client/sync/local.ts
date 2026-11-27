@@ -1,6 +1,6 @@
 // Local writes and the view rebuild. Each function runs in one Dexie
 // transaction.
-import { HlcClock } from "@/shared/hlc";
+import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
 import { opSchema, type Op, type OpInput, type OpType } from "@/shared/ops";
 import type { PullResponse } from "@/shared/sync";
 import type { EntityTable } from "dexie";
@@ -26,12 +26,48 @@ export async function ensureClientId(db: ClientDb): Promise<string> {
 /**
  * The clock of this browser, from the meta table. Read and write it only in
  * a transaction on `meta`: then two tabs cannot give the same HLC.
+ *
+ * If the stored HLC is more than MAX_DRIFT_MS after `now`, it came from a
+ * clock that was too far ahead, and the server refuses each op after it.
+ * Thus the clock starts again from `now`.
  */
 async function loadClock(
   db: ClientDb,
+  now: () => number = Date.now,
 ): Promise<{ clientId: string; clock: HlcClock }> {
   const clientId = await ensureClientId(db);
-  return { clientId, clock: new HlcClock(clientId, await getMeta(db, "hlc")) };
+  let last = await getMeta(db, "hlc");
+  if (last !== undefined && parse(last).wall - now() > MAX_DRIFT_MS) {
+    last = serialize({ wall: Math.floor(now()), counter: 0, node: clientId });
+  }
+  return { clientId, clock: new HlcClock(clientId, last, now) };
+}
+
+/**
+ * Stamp outbox ops again with a new opId and a new HLC, after the server
+ * refused them with `clock_ahead`. The time is `serverNow` if the device
+ * clock is after it. Each op keeps its place in the outbox.
+ */
+export async function restampOps(
+  db: ClientDb,
+  seqs: number[],
+  serverNow: number,
+): Promise<void> {
+  await db.transaction("rw", [db.meta, db.outbox], async () => {
+    const now = () => Math.min(Date.now(), serverNow);
+    const { clock } = await loadClock(db, now);
+    for (const seq of seqs) {
+      const entry = await db.outbox.get(seq);
+      if (!entry) continue;
+      const op = opSchema.parse({
+        ...entry.op,
+        opId: crypto.randomUUID(),
+        hlc: clock.now(),
+      });
+      await db.outbox.update(seq, { opId: op.opId, op, restamped: true });
+    }
+    await setMeta(db, "hlc", clock.last);
+  });
 }
 
 /**
@@ -154,6 +190,10 @@ export async function savePullPage(
         await setMeta(db, "hlc", clock.last);
       }
       await setMeta(db, "cursor", page.cursor);
+      // An old server sends no purgedSeq.
+      if (typeof page.purgedSeq === "number") {
+        await setMeta(db, "purgedSeq", page.purgedSeq);
+      }
     },
   );
 }
@@ -171,7 +211,7 @@ export async function resetForUser(db: ClientDb, userId: string) {
       for (const table of db.tables) {
         if (table.name !== "meta") await table.clear();
       }
-      await db.meta.delete("cursor");
+      await db.meta.bulkDelete(["cursor", "purgedSeq"]);
     }
     await setMeta(db, "userId", userId);
   });

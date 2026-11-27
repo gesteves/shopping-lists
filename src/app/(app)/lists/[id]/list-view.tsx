@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useList, useReportPresence } from "@/client/hooks";
+import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import type { ItemRecord } from "@/shared/sync";
 import { AddBar } from "./add-bar";
@@ -19,9 +20,17 @@ export function ListView() {
   const [editing, setEditing] = useState<ItemRecord | null>(null);
 
   // Keep the sheet on the newest copy of the item (sync can change it).
-  const current = editing
-    ? (view?.items.find((i) => i.id === editing.id) ?? editing)
-    : null;
+  const live = editing && view?.items.find((i) => i.id === editing.id);
+  // The item went from the list on another device while the sheet is open.
+  // Close the sheet: a save would bring the item back. The sheet calls
+  // onClose when it is hidden.
+  const gone = editing !== null && view !== undefined && !live;
+  const current = gone ? null : (live ?? editing);
+  const goneName = gone ? editing.name : null;
+  useEffect(() => {
+    if (goneName !== null)
+      showToast({ message: copy.itemSheet.gone(goneName) });
+  }, [goneName]);
   const remaining = view?.items.filter((i) => !i.checked).length ?? 0;
   useReportPresence({
     listId: view ? view.list.id : null,

@@ -70,6 +70,9 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   const users = useUsers();
   const lists = useLists();
   const others = lists?.filter((l) => l.id !== item.listId) ?? [];
+  // The values when the sheet opened. A save sends only the fields that the
+  // user changed, thus it keeps an edit of the other person in the meantime.
+  const [initial] = useState(item);
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity);
   const [notes, setNotes] = useState(item.notes);
@@ -77,18 +80,20 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     const fields: { name?: string; quantity?: number; notes?: string } = {};
-    if (name.trim() && name.trim() !== item.name) fields.name = name.trim();
-    if (quantity !== item.quantity) fields.quantity = quantity;
-    if (notes.trim() !== item.notes) fields.notes = notes.trim();
+    if (name.trim() && name.trim() !== initial.name) fields.name = name.trim();
+    if (quantity !== initial.quantity) fields.quantity = quantity;
+    if (notes.trim() !== initial.notes.trim()) fields.notes = notes.trim();
     if (Object.keys(fields).length > 0) {
       await mutate({ type: "updateItem", args: { itemId: item.id, fields } });
     }
     onDone();
   }
 
+  // Close before the write. Then the list view does not take the delete or
+  // the move for a change from another device.
   async function remove() {
-    await mutate({ type: "deleteItem", args: { itemId: item.id } });
     onDone();
+    await mutate({ type: "deleteItem", args: { itemId: item.id } });
     showToast({
       message: copy.itemSheet.deleted(item.name),
       action: {
@@ -102,8 +107,8 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   async function move(toListId: string) {
     const target = lists?.find((l) => l.id === toListId);
     if (!target) return;
-    await mutate({ type: "moveItem", args: { itemId: item.id, toListId } });
     onDone();
+    await mutate({ type: "moveItem", args: { itemId: item.id, toListId } });
     showToast({
       message: copy.itemSheet.moved(item.name, target.name),
       action: {
