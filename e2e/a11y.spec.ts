@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, synced } from "./helpers";
+import { signIn, switchControl, synced } from "./helpers";
 
 async function scan(page: Page, screen: string) {
   // Wait for the Web Awesome components: undefined tags are hidden.
@@ -165,20 +165,29 @@ test("Keep screen on holds the wake lock and is remembered", async ({
     );
 
   await signIn(page);
-  const toggle = page.getByRole("button", { name: "Keep screen on" });
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/settings");
+  const setting = page.getByRole("switch", { name: "Keep screen on" });
+  // The control itself: the middle of the host is the hint text.
+  const screenSwitch = switchControl(page, "Keep screen on").locator(
+    '[part~="control"]',
+  );
+  await expect(setting).not.toBeChecked();
+  // A click before hydration ends is lost: try again until it is on.
+  await expect(async () => {
+    await screenSwitch.click();
+    await expect(setting).toBeChecked({ timeout: 1_000 });
+  }).toPass();
   await expect.poll(wake).toBe(1);
 
-  // The setting is kept on this device.
-  await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Keep screen on" }),
-  ).toHaveAttribute("aria-pressed", "true");
+  // The lock stays on other pages, and after a reload (kept on the device).
+  await page.goto("/");
+  await expect.poll(wake).toBe(1);
+  await page.goto("/settings");
+  await expect(setting).toBeChecked();
   await expect.poll(wake).toBe(1);
 
-  await page.getByRole("button", { name: "Keep screen on" }).click();
+  await screenSwitch.click();
+  await expect(setting).not.toBeChecked();
   await expect.poll(wake).toBe(0);
 });
 
@@ -187,8 +196,11 @@ test("Keep screen on is hidden without the Wake Lock API", async ({ page }) => {
     Object.defineProperty(navigator, "wakeLock", { value: undefined });
   });
   await signIn(page);
-  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  await page.goto("/settings");
   await expect(
-    page.getByRole("button", { name: "Keep screen on" }),
+    page.getByRole("heading", { name: "Connected apps" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Keep screen on" }),
   ).toHaveCount(0);
 });

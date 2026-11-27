@@ -5,6 +5,7 @@ import { getDb } from "@/db/client";
 import { listConnectedApps } from "@/server/connected-apps";
 import { getVapidConfig } from "@/server/push";
 import { signOut } from "../../actions";
+import { KeepScreenOnSetting } from "../_components/keep-screen-on";
 import { ConnectedApps } from "./connected-apps";
 import { NotificationSettings } from "./notification-settings";
 
@@ -28,6 +29,7 @@ async function Settings() {
   return (
     <>
       <NotificationSettings publicKey={publicKey} />
+      <KeepScreenOnSetting />
       <ConnectedApps apps={listConnectedApps(getDb(), user.id)} />
       <section aria-labelledby="account" className="flex flex-col gap-3">
         <h2 id="account" className="text-xl font-semibold">
