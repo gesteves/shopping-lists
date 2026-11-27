@@ -164,6 +164,7 @@ function dispatch(ctx: Ctx, op: Op): Outcome {
       return changeItem(ctx, op);
     case "clearChecked":
     case "uncheckAll":
+    case "checkAll":
       return changeAllItems(ctx, op);
   }
 }
@@ -515,24 +516,27 @@ function changeItem(
 
 /**
  * clearChecked deletes, and uncheckAll unchecks, each item that is checked
- * with a check older than the op. An item that someone checked after the op
- * HLC stays: the person did not see that check.
+ * with a check older than the op. checkAll (#67) checks each item that is
+ * not checked, with an uncheck older than the op. An item that someone
+ * checked or unchecked after the op HLC stays: the person did not see that
+ * change. An item added after the op stays too, because addItem sets its
+ * check clock.
  */
 function changeAllItems(
   ctx: Ctx,
-  op: OpOf<"clearChecked" | "uncheckAll">,
+  op: OpOf<"clearChecked" | "uncheckAll" | "checkAll">,
 ): Outcome {
   const list = getList(ctx, op.args.listId);
   if (!list) return reject(op, "list_not_found");
   if (list.deletedAt) return reject(op, "list_deleted");
 
-  const checkedItems = ctx.tx
+  const rows = ctx.tx
     .select()
     .from(items)
     .where(
       and(
         eq(items.listId, list.id),
-        eq(items.checked, true),
+        eq(items.checked, op.type !== "checkAll"),
         isNull(items.deletedAt),
       ),
     )
@@ -540,7 +544,7 @@ function changeAllItems(
     .all();
 
   let count = 0;
-  for (const row of checkedItems) {
+  for (const row of rows) {
     if (!newer(op.hlc, row.clocks.checked)) continue;
     const set: ItemSet = {};
     const clocks: ItemClocks = { ...row.clocks };
@@ -550,9 +554,10 @@ function changeAllItems(
       clocks.deleted = op.hlc;
       set.deletedAt = opTime(op);
     } else {
+      const checked = op.type === "checkAll";
       clocks.checked = op.hlc;
-      set.checked = false;
-      set.checkedAt = null;
+      set.checked = checked;
+      set.checkedAt = checked ? opTime(op) : null;
       markAlive(clocks, row.deletedAt, set, op.hlc);
     }
     if (saveItem(ctx, op, row, set, clocks)) count++;

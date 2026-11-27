@@ -166,6 +166,13 @@ export function applyLocal(
       }
       break;
     }
+    case "checkAll": {
+      if (!liveList(op.args.listId)) break;
+      for (const item of liveItemsOf(op.args.listId)) {
+        if (!item.checked) putItem({ ...item, checked: true, checkedAt: time });
+      }
+      break;
+    }
   }
   return changed;
 }

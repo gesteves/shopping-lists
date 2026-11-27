@@ -10,8 +10,8 @@ import { DeleteDialog, RenameForm } from "../../_components/list-index";
 import { ConfirmDialog, useWaEvents } from "../../_components/wa";
 
 /**
- * The list name, and a menu: rename, uncheck all, clear checked items, and
- * delete the list.
+ * The list name, and a menu: rename, check all, uncheck all, delete the
+ * checked items, and delete the list. Each bulk change has an undo (#67).
  */
 export function ListHeader({ view }: { view: ListView }) {
   const { list, items } = view;
@@ -20,7 +20,23 @@ export function ListHeader({ view }: { view: ListView }) {
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const checked = items.filter((i) => i.checked).map((i) => i.id);
-  const remaining = items.length - checked.length;
+  const unchecked = items.filter((i) => !i.checked).map((i) => i.id);
+  const remaining = unchecked.length;
+
+  async function checkAll() {
+    await mutate({ type: "checkAll", args: { listId: list.id } });
+    showToast({
+      message: copy.list.checkedAll(unchecked.length),
+      action: {
+        label: copy.common.undo,
+        run: async () => {
+          for (const itemId of unchecked) {
+            await mutate({ type: "uncheck", args: { itemId } });
+          }
+        },
+      },
+    });
+  }
 
   async function uncheckAll() {
     await mutate({ type: "uncheckAll", args: { listId: list.id } });
@@ -37,11 +53,11 @@ export function ListHeader({ view }: { view: ListView }) {
     });
   }
 
-  async function clearChecked() {
+  async function deleteChecked() {
     setClearing(false);
     await mutate({ type: "clearChecked", args: { listId: list.id } });
     showToast({
-      message: copy.list.cleared(checked.length),
+      message: copy.list.deletedChecked(checked.length),
       action: {
         label: copy.common.undo,
         run: async () => {
@@ -58,8 +74,9 @@ export function ListHeader({ view }: { view: ListView }) {
       const value = (event as CustomEvent<{ item: { value: string } }>).detail
         .item.value;
       if (value === "rename") setRenaming(true);
+      if (value === "check-all") void checkAll();
       if (value === "uncheck-all") void uncheckAll();
-      if (value === "clear-checked") setClearing(true);
+      if (value === "delete-checked") setClearing(true);
       if (value === "delete") setDeleting(true);
     },
   });
@@ -86,16 +103,20 @@ export function ListHeader({ view }: { view: ListView }) {
             <wa-icon slot="icon" name="pen"></wa-icon>
             {copy.common.rename}
           </wa-dropdown-item>
+          <wa-dropdown-item value="check-all" disabled={unchecked.length === 0}>
+            <wa-icon slot="icon" name="square-check"></wa-icon>
+            {copy.list.checkAll}
+          </wa-dropdown-item>
           <wa-dropdown-item value="uncheck-all" disabled={checked.length === 0}>
-            <wa-icon slot="icon" name="rotate-left"></wa-icon>
+            <wa-icon slot="icon" name="square"></wa-icon>
             {copy.list.uncheckAll}
           </wa-dropdown-item>
           <wa-dropdown-item
-            value="clear-checked"
+            value="delete-checked"
             disabled={checked.length === 0}
           >
-            <wa-icon slot="icon" name="broom"></wa-icon>
-            {copy.list.clearChecked}
+            <wa-icon slot="icon" name="trash-can-check"></wa-icon>
+            {copy.list.deleteChecked}
           </wa-dropdown-item>
           <wa-divider></wa-divider>
           <wa-dropdown-item value="delete" variant="danger">
@@ -106,12 +127,12 @@ export function ListHeader({ view }: { view: ListView }) {
       </div>
       <ConfirmDialog
         open={clearing}
-        label={copy.list.clearTitle(checked.length, list.name)}
-        confirmLabel={copy.list.clearConfirm}
-        onConfirm={clearChecked}
+        label={copy.list.deleteCheckedTitle(checked.length, list.name)}
+        confirmLabel={copy.list.deleteCheckedConfirm}
+        onConfirm={deleteChecked}
         onClose={() => setClearing(false)}
       >
-        {copy.list.clearBody}
+        {copy.list.deleteCheckedBody}
       </ConfirmDialog>
       <DeleteDialog
         open={deleting}

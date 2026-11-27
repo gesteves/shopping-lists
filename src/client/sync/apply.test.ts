@@ -161,6 +161,21 @@ describe("applyLocal", () => {
     expect(s.items.get("x")?.deletedAt).toBeNull();
   });
 
+  it("checks only the unchecked items of the list", () => {
+    const s = state(
+      [list()],
+      [
+        item({ checked: true, checkedAt: T - 9 }),
+        item({ id: ITEM_2, name: "Eggs" }),
+        item({ id: "x", listId: LIST_2 }),
+      ],
+    );
+    applyLocal(s, op("checkAll", { listId: LIST }), ME);
+    expect(s.items.get(ITEM)?.checkedAt).toBe(T - 9);
+    expect(s.items.get(ITEM_2)).toMatchObject({ checked: true, checkedAt: T });
+    expect(s.items.get("x")?.checked).toBe(false);
+  });
+
   it("renames, deletes, and restores a list", () => {
     const s = state([list()]);
     applyLocal(s, op("renameList", { listId: LIST, name: "Costco" }), ME);

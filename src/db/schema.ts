@@ -419,7 +419,7 @@ export interface ActivitySnapshot {
   oldName?: string;
   /** moveItem: the name of the list before. */
   fromListName?: string;
-  /** clearChecked and uncheckAll: the number of items they changed. */
+  /** clearChecked, uncheckAll, and checkAll: the number of items they changed. */
   count?: number;
 }
 

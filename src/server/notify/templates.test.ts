@@ -61,11 +61,15 @@ describe("renderEvent", () => {
       ],
       [
         ev("clearChecked", { count: 3 }, list),
-        "Sam cleared checked items from the “Whole Foods” list",
+        "Sam deleted the checked items from the “Whole Foods” list",
       ],
       [
         ev("uncheckAll", { count: 3 }, list),
         "Sam unchecked everything in the “Whole Foods” list",
+      ],
+      [
+        ev("checkAll", { count: 3 }, list),
+        "Sam checked everything off the “Whole Foods” list",
       ],
     ];
     for (const [event, text] of cases)
