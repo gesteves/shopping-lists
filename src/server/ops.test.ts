@@ -396,6 +396,57 @@ describe("deleted and missing lists", () => {
   });
 });
 
+describe("a move that does not change the list", () => {
+  function lastActivity() {
+    return db.select().from(activity).orderBy(desc(activity.id)).get();
+  }
+
+  it("writes a restore on the list of the item, not a move", () => {
+    seed();
+    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    apply(SAM, op("deleteItem", { itemId: ITEM }, T2));
+    // A device that did not see the delete moves the item to its own list.
+    apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST }, T3));
+    expect(getItem()).toMatchObject({ listId: LIST, deletedAt: null });
+    expect(lastActivity()).toMatchObject({
+      type: "restoreItem",
+      listId: LIST,
+      itemId: ITEM,
+      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+    });
+    expect(lastActivity()?.snapshot).toEqual({
+      listName: "Whole Foods",
+      itemName: "Milk",
+    });
+  });
+
+  it("writes a restore when the move loses on its list clock", () => {
+    seed();
+    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    // The item is on LIST with a list clock of T3, and deleted with an
+    // older clock (T2). Only a clock change in the database gives this
+    // state: the server keeps the deleted clock at or after the list clock.
+    apply(SAM, op("deleteItem", { itemId: ITEM }, T2));
+    const row = getItem()!;
+    db.update(items)
+      .set({
+        clocks: {
+          ...row.clocks,
+          listId: serialize({ wall: T4, counter: 0, node: PHONE }),
+        },
+      })
+      .where(eq(items.id, ITEM))
+      .run();
+    apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3));
+    expect(getItem()).toMatchObject({ listId: LIST, deletedAt: null });
+    expect(lastActivity()).toMatchObject({
+      type: "restoreItem",
+      listId: LIST,
+      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+    });
+  });
+});
+
 describe("idempotency", () => {
   it("applies the same op one time, in one call or in two", () => {
     seed();

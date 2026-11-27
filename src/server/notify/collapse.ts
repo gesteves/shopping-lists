@@ -8,14 +8,17 @@
 //     that also unchecked the item (#112) counts as an uncheck too; the edit
 //     or the move stays.
 //   - Add, then delete → nothing. Delete, then undo (restore) → nothing.
+//   - An item or a list that is not there at the start and at the end (new
+//     or deleted before, and deleted at the end) → nothing, also for the
+//     items of such a list.
 //   - Add, then update or move → only "added" (with the last names).
 //   - More than one update → one update. More than one move → one move from
 //     the first list to the last list; a move back → nothing.
-//   - Create a list, then delete it → nothing, also for its items.
 //   - Create, then rename → "created" with the new name. Renames that end at
 //     the first name → nothing.
-// Bulk events (delete checked, uncheck all, check all) stay.
-import type { ActivityEvent } from "./types";
+// Bulk events (delete checked, uncheck all, check all) stay. Each event keeps
+// only the snapshot keys of its type (SNAPSHOT_KEYS).
+import { snapshotFor, type ActivityEvent } from "./types";
 
 const ITEM_TYPES = new Set([
   "addItem",
@@ -55,30 +58,43 @@ function withLastNames(
   };
 }
 
-/** Keep a delete or a restore only if the deleted state changed. */
-function netDelete(
+interface Presence {
+  /** The thing was not there before the burst: new, or deleted. */
+  goneAtStart: boolean;
+  /** The thing is deleted at the end of the burst. */
+  goneAtEnd: boolean;
+  /** The last delete or restore. */
+  lastFlip?: ActivityEvent;
+}
+
+/** If the item or the list was there at the start and at the end. */
+function presence(
   events: ActivityEvent[],
-  deleteType: string,
-): ActivityEvent | null {
+  deleteType: "deleteItem" | "deleteList",
+  restoreType: "restoreItem" | "restoreList",
+  made: boolean,
+): Presence {
   const flips = events.filter(
-    (e) =>
-      e.type === deleteType ||
-      e.type === deleteType.replace("delete", "restore"),
+    (e) => e.type === deleteType || e.type === restoreType,
   );
-  if (flips.length === 0) return null;
-  const startedDeleted = flips[0].type !== deleteType;
-  const endsDeleted = flips.at(-1)!.type === deleteType;
-  return startedDeleted === endsDeleted ? null : flips.at(-1)!;
+  return {
+    goneAtStart: made || flips[0]?.type === restoreType,
+    goneAtEnd: flips.at(-1)?.type === deleteType,
+    lastFlip: flips.at(-1),
+  };
 }
 
 function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
   const last = events.at(-1)!;
   const add = events.find((e) => e.type === "addItem");
-  const del = netDelete(events, "deleteItem");
+  const state = presence(events, "deleteItem", "restoreItem", !!add);
+
+  // Not there at the start and not there at the end: nothing to say.
+  if (state.goneAtStart && state.goneAtEnd) return [];
+  // A removed item: the other changes do not matter.
+  if (state.goneAtEnd) return [withLastNames(state.lastFlip!, last)];
 
   if (add) {
-    // A new item that is gone again: nothing to say.
-    if (del?.type === "deleteItem") return [];
     const out = [withLastNames(add, last)];
     // A new item starts unchecked. Say "checked" only if it ends checked.
     const checks = checkEvents(events);
@@ -129,24 +145,28 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
       out.push(withLastNames(final, last));
   }
 
-  if (del) {
-    // A removed item: the other changes do not matter.
-    if (del.type === "deleteItem") return [withLastNames(del, last)];
-    out.push(withLastNames(del, last));
-  }
+  // Deleted before the burst, and there at the end: a restore.
+  if (state.goneAtStart) out.push(withLastNames(state.lastFlip!, last));
   return out;
 }
 
-function collapseList(events: ActivityEvent[]): ActivityEvent[] {
+/**
+ * The events that are left for a list. `hidden` is true if the list was not
+ * there at the start and at the end of the burst: then the changes of its
+ * items do not matter.
+ */
+function collapseList(events: ActivityEvent[]): {
+  events: ActivityEvent[];
+  hidden: boolean;
+} {
   const last = events.at(-1)!;
   const create = events.find((e) => e.type === "createList");
-  const del = netDelete(events, "deleteList");
+  const state = presence(events, "deleteList", "restoreList", !!create);
 
-  if (create) {
-    if (del?.type === "deleteList") return [];
-    return [withLastNames(create, last)];
-  }
-  if (del?.type === "deleteList") return [withLastNames(del, last)];
+  if (state.goneAtStart && state.goneAtEnd) return { events: [], hidden: true };
+  if (state.goneAtEnd)
+    return { events: [withLastNames(state.lastFlip!, last)], hidden: false };
+  if (create) return { events: [withLastNames(create, last)], hidden: false };
 
   const out: ActivityEvent[] = [];
   const renames = events.filter((e) => e.type === "renameList");
@@ -160,12 +180,11 @@ function collapseList(events: ActivityEvent[]): ActivityEvent[] {
       });
     }
   }
-  if (del) out.push(withLastNames(del, last));
-  return out;
+  if (state.goneAtStart) out.push(withLastNames(state.lastFlip!, last));
+  return { events: out, hidden: false };
 }
 
 export function collapse(events: ActivityEvent[]): ActivityEvent[] {
-  // Lists that this burst made and deleted: drop everything on them.
   const listGroups = new Map<string, ActivityEvent[]>();
   const itemGroups = new Map<string, ActivityEvent[]>();
   const kept: { first: number; events: ActivityEvent[] }[] = [];
@@ -184,12 +203,13 @@ export function collapse(events: ActivityEvent[]): ActivityEvent[] {
     }
   }
 
+  // Lists that are not there at the start and at the end: drop everything
+  // on them.
   const gone = new Set<string>();
   for (const [listId, group] of listGroups) {
-    const made = group.some((e) => e.type === "createList");
     const out = collapseList(group);
-    if (made && out.length === 0) gone.add(listId);
-    kept.push({ first: group[0].id, events: out });
+    if (out.hidden) gone.add(listId);
+    kept.push({ first: group[0].id, events: out.events });
   }
   for (const group of itemGroups.values()) {
     kept.push({ first: group[0].id, events: collapseItem(group) });
@@ -198,5 +218,6 @@ export function collapse(events: ActivityEvent[]): ActivityEvent[] {
   return kept
     .sort((a, b) => a.first - b.first)
     .flatMap((k) => k.events)
-    .filter((e) => !gone.has(e.listId));
+    .filter((e) => !gone.has(e.listId))
+    .map((e) => ({ ...e, snapshot: snapshotFor(e.type, e.snapshot) }));
 }

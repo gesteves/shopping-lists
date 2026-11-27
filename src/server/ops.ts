@@ -26,7 +26,14 @@ import {
 import { DAY_MS, EXPIRE_AFTER_DAYS } from "@/shared/expiry";
 import { HlcError, parse, type HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
-import type { ItemClocks, ListClocks, Op, OpOf, Via } from "@/shared/ops";
+import type {
+  ItemClocks,
+  ListClocks,
+  Op,
+  OpOf,
+  OpType,
+  Via,
+} from "@/shared/ops";
 import type { OpResult, RejectReason, StoredResult } from "@/shared/sync";
 import { bus } from "./bus";
 import { getServerClock } from "./clock";
@@ -68,6 +75,8 @@ interface Ctx {
 interface Outcome {
   result: StoredResult;
   activity?: {
+    /** The type of the activity row, if it is not the op type. */
+    type?: OpType;
     listId: string;
     itemId?: string;
     snapshot: ActivitySnapshot;
@@ -220,7 +229,7 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
         opId: op.opId,
         actorId: ctx.actor.id,
         via: ctx.via,
-        type: op.type,
+        type: outcome.activity.type ?? op.type,
         listId: outcome.activity.listId,
         itemId: outcome.activity.itemId ?? null,
         snapshot: outcome.activity.snapshot,
@@ -631,6 +640,22 @@ function changeItem(
 
   const changed = saveItem(ctx, op, row, set, clocks);
   if (!changed) return { result: applied(op, false) };
+
+  // A move that did not change the list (it lost on its clock, or the item
+  // is on that list) changed only the deleted state: it is a restore, on
+  // the list where the item is (#118).
+  if (op.type === "moveItem" && set.listId === undefined) {
+    const list = getList(ctx, row.listId);
+    return {
+      result: applied(op, true),
+      activity: {
+        type: "restoreItem",
+        listId: row.listId,
+        itemId: row.id,
+        snapshot: { listName: list?.name ?? "", itemName: row.name },
+      },
+    };
+  }
 
   const list = target ?? getList(ctx, row.listId);
   const snapshot: ActivitySnapshot = {

@@ -50,6 +50,13 @@
       "when": 1795806968065,
       "tag": "0006_tombstoned_at",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795818534657,
+      "tag": "0007_push_failures",
+      "breakpoints": true
     }
   ]
 }

@@ -489,6 +489,11 @@ export const pushSubscriptions = sqliteTable(
       .notNull()
       .default(now),
     lastSuccessAt: integer("last_success_at", { mode: "timestamp_ms" }),
+    /** The failed pushes since the last success (#118). */
+    failureCount: integer("failure_count").notNull().default(0),
+    /** The first failure since the last success. */
+    failingSince: integer("failing_since", { mode: "timestamp_ms" }),
+    lastFailureAt: integer("last_failure_at", { mode: "timestamp_ms" }),
   },
   (t) => [index("push_subscriptions_user_id_idx").on(t.userId)],
 );

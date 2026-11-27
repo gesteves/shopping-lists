@@ -156,6 +156,23 @@ describe("summaryInput", () => {
       },
     ]);
   });
+
+  it("sends only the keys of the type", () => {
+    const input = summaryInput(
+      [
+        ev("addItem", {
+          itemName: "Oat milk",
+          oldName: "Milk",
+          fromListName: "A",
+          fields: ["name"],
+        }),
+      ],
+      "Sam",
+    );
+    expect(input.changes).toEqual([
+      { type: "addItem", list: "Whole Foods", item: "Oat milk" },
+    ]);
+  });
 });
 
 describe("cleanBody", () => {

@@ -7,13 +7,14 @@ import { opSchema, type OpInput } from "@/shared/ops";
 import type { PushPayload } from "@/shared/push";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { applyOps } from "../ops";
-import { setListMuted } from "../push";
+import { saveSubscription, setListMuted } from "../push";
 import { MAX_INPUT_CHANGES, summaryInput } from "./summarize";
 import type { ActivityEvent } from "./types";
 import {
   MAX_WAIT_MS,
   Notifier,
   QUIET_MS,
+  pendingActivity,
   type NotifierOptions,
 } from "./worker";
 
@@ -43,6 +44,7 @@ function notifier(options: NotifierOptions = {}) {
     send: async (userId, payload) => {
       sent.push({ userId, payload });
     },
+    canPush: () => true,
     ...options,
   });
 }
@@ -167,6 +169,7 @@ describe("Notifier", () => {
       send: async (userId, payload) => {
         sent.push({ userId, payload });
       },
+      canPush: () => true,
       summarize: async (events) => {
         seen.push(events.length);
         return "Sam added eggs to the “Whole Foods” list.";
@@ -303,6 +306,78 @@ describe("Notifier", () => {
     expect(
       db.select().from(activity).where(isNull(activity.notifiedAt)).all(),
     ).toEqual([]);
+  });
+
+  describe("with no push target", () => {
+    const VAPID_ENV = {
+      VAPID_PUBLIC_KEY: "pub",
+      VAPID_PRIVATE_KEY: "priv",
+      VAPID_SUBJECT: "https://x.test",
+    };
+    afterEach(() => vi.unstubAllEnvs());
+
+    function stubVapid() {
+      for (const [key, value] of Object.entries(VAPID_ENV))
+        vi.stubEnv(key, value);
+    }
+
+    function subscribeAlex() {
+      saveSubscription(
+        ALEX.id,
+        {
+          endpoint: "https://fcm.googleapis.com/fcm/send/alex",
+          keys: { p256dh: "p", auth: "a" },
+          deviceLabel: null,
+        },
+        db,
+      );
+    }
+
+    async function run() {
+      seedLists();
+      addItem("Milk");
+      now += QUIET_MS;
+      const summarize = vi.fn(async () => "Sam added milk.");
+      // The default canPush: VAPID keys and the devices in the database.
+      await notifier({ canPush: undefined, summarize }).tick();
+      return summarize;
+    }
+
+    it("makes no Claude call when the recipient has no enabled device", async () => {
+      stubVapid();
+      const summarize = await run();
+      expect(summarize).not.toHaveBeenCalled();
+      expect(sent).toEqual([]);
+      // The rows are marked: they do not wait for a device.
+      expect(
+        db.select().from(activity).where(isNull(activity.notifiedAt)).all(),
+      ).toEqual([]);
+    });
+
+    it("makes no Claude call when there are no VAPID keys", async () => {
+      for (const key of Object.keys(VAPID_ENV)) vi.stubEnv(key, "");
+      subscribeAlex();
+      const summarize = await run();
+      expect(summarize).not.toHaveBeenCalled();
+    });
+
+    it("calls Claude when the recipient has an enabled device", async () => {
+      stubVapid();
+      subscribeAlex();
+      const summarize = await run();
+      expect(summarize).toHaveBeenCalledTimes(1);
+      expect(sent).toHaveLength(1);
+    });
+  });
+
+  it("reads the pending rows through activity_pending_idx", () => {
+    const query = pendingActivity(db).toSQL();
+    const plan = db.$client
+      .prepare(`EXPLAIN QUERY PLAN ${query.sql}`)
+      .all(...query.params) as { detail: string }[];
+    expect(plan.map((p) => p.detail)).toEqual([
+      "SCAN activity USING INDEX activity_pending_idx",
+    ]);
   });
 
   it("logs an error in a tick, and does not throw", async () => {

@@ -8,7 +8,7 @@ import { getDb, type Db } from "@/db/client";
 import { activity, listMutes, users } from "@/db/schema";
 import { isAllowedEmail } from "@/lib/allowlist";
 import type { PushPayload } from "@/shared/push";
-import { sendToUser } from "../push";
+import { canPushTo, sendToUser } from "../push";
 import { collapse } from "./collapse";
 import { renderFallback } from "./templates";
 import type { ActivityEvent } from "./types";
@@ -22,6 +22,11 @@ export interface NotifierOptions {
   maxWaitMs?: number;
   /** Sends a push to the devices of a user. */
   send?: (userId: string, payload: PushPayload) => Promise<unknown>;
+  /**
+   * True if a push to the user can go out (VAPID keys and an enabled
+   * device). If not, the notifier makes no text, thus no Claude call.
+   */
+  canPush?: (userId: string) => boolean;
   /**
    * The text for the events. #17 and #89 give a Claude summary. The default
    * is the fixed fallback.
@@ -63,12 +68,21 @@ export async function buildPayload(
   };
 }
 
+/**
+ * The rows that the notifier did not send. With no ORDER BY, SQLite reads
+ * them through activity_pending_idx, and not the sent rows.
+ */
+export function pendingActivity(db: Db) {
+  return db.select().from(activity).where(isNull(activity.notifiedAt));
+}
+
 export class Notifier {
   readonly #db: Db;
   readonly #now: () => number;
   readonly #quietMs: number;
   readonly #maxWaitMs: number;
   readonly #send: NonNullable<NotifierOptions["send"]>;
+  readonly #canPush: NonNullable<NotifierOptions["canPush"]>;
   readonly #summarize: NonNullable<NotifierOptions["summarize"]>;
   readonly #allowlist: () => string | undefined;
   #running = false;
@@ -80,6 +94,8 @@ export class Notifier {
     this.#maxWaitMs = options.maxWaitMs ?? MAX_WAIT_MS;
     this.#send =
       options.send ?? ((userId, payload) => sendToUser(userId, payload));
+    this.#canPush =
+      options.canPush ?? ((userId) => canPushTo(userId, { db: this.#db }));
     this.#summarize =
       options.summarize ??
       (async (events, name) => renderFallback(events, name));
@@ -104,12 +120,11 @@ export class Notifier {
   }
 
   #readyGroups(): ActivityEvent[][] {
-    const rows = this.#db
-      .select()
-      .from(activity)
-      .where(isNull(activity.notifiedAt))
-      .orderBy(activity.id)
-      .all();
+    // Sort in JS: with ORDER BY id, SQLite scans the whole table and not
+    // activity_pending_idx (#118).
+    const rows = pendingActivity(this.#db)
+      .all()
+      .sort((a, b) => a.id - b.id);
     const groups = new Map<string, ActivityEvent[]>();
     for (const row of rows) {
       // One group for each person and channel: "(via Claude)" is for all
@@ -172,6 +187,8 @@ export class Notifier {
       .filter((user) => isAllowedEmail(user.email, allowlist));
 
     for (const recipient of recipients) {
+      // No push can go out: make no text, thus no Claude call.
+      if (!this.#canPush(recipient.id)) continue;
       const muted = new Set(
         db
           .select({ listId: listMutes.listId })

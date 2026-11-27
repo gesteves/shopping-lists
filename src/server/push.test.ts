@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { lists } from "@/db/schema";
+import { lists, pushSubscriptions } from "@/db/schema";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import {
+  FAILING_DISABLE_MS,
+  MAX_RETRY_AFTER_MS,
+  canPushTo,
   getVapidConfig,
+  retryAfterMs,
   listMutedListIds,
   listSubscriptions,
   removeSubscription,
@@ -234,6 +238,148 @@ describe("sendToUser", () => {
     expect(listSubscriptions(SAM.id, db).map((s) => s.endpoint)).toEqual([
       "https://fcm.googleapis.com/fcm/send/2",
     ]);
+  });
+
+  const status = (statusCode: number, headers = {}) =>
+    Object.assign(new Error(`HTTP ${statusCode}`), { statusCode, headers });
+
+  it("counts failures, and turns a device off after 7 days of them", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sub = subscribe(SAM.id, 1);
+    let now = 1_764_000_000_000;
+    const forbidden = (async () => {
+      throw status(403);
+    }) satisfies Send;
+    const options = () => ({
+      db,
+      vapid: VAPID,
+      send: forbidden,
+      now: () => now,
+    });
+    const row = () => listSubscriptions(SAM.id, db)[0];
+    const failures = () =>
+      db
+        .select({
+          count: pushSubscriptions.failureCount,
+          since: pushSubscriptions.failingSince,
+        })
+        .from(pushSubscriptions)
+        .get();
+
+    const start = now;
+    expect(await sendToUser(SAM.id, payload, options())).toEqual({
+      sent: 0,
+      removed: 0,
+      failed: 1,
+    });
+    now += FAILING_DISABLE_MS - 1;
+    await sendToUser(SAM.id, payload, options());
+    expect(failures()).toEqual({ count: 2, since: new Date(start) });
+    expect(row()).toMatchObject({ enabled: true, notDelivering: false });
+
+    now += 1;
+    await sendToUser(SAM.id, payload, options());
+    expect(failures()?.count).toBe(3);
+    expect(row()).toMatchObject({ enabled: false, notDelivering: true });
+    expect(canPushTo(SAM.id, { db, vapid: VAPID })).toBe(false);
+
+    // On again: a new try, with no failures.
+    setSubscriptionEnabled(SAM.id, sub.id, true, db);
+    expect(failures()).toEqual({ count: 0, since: null });
+    expect(row()).toMatchObject({ enabled: true, notDelivering: false });
+    errors.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("clears the failures on a success", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    subscribe(SAM.id, 1);
+    let fail = true;
+    const send = (async () => {
+      if (fail) throw status(500);
+      return ok;
+    }) satisfies Send;
+    await sendToUser(SAM.id, payload, { db, vapid: VAPID, send });
+    fail = false;
+    await sendToUser(SAM.id, payload, { db, vapid: VAPID, send });
+    expect(
+      db
+        .select({
+          count: pushSubscriptions.failureCount,
+          since: pushSubscriptions.failingSince,
+          last: pushSubscriptions.lastFailureAt,
+        })
+        .from(pushSubscriptions)
+        .get(),
+    ).toEqual({ count: 0, since: null, last: null });
+    errors.mockRestore();
+  });
+
+  it("tries a 429 once more after a short Retry-After", async () => {
+    subscribe(SAM.id, 1);
+    const waits: number[] = [];
+    let calls = 0;
+    const result = await sendToUser(SAM.id, payload, {
+      db,
+      vapid: VAPID,
+      wait: async (ms) => {
+        waits.push(ms);
+      },
+      send: (async () => {
+        calls++;
+        if (calls === 1) throw status(429, { "retry-after": "2" });
+        return ok;
+      }) satisfies Send,
+    });
+    expect(result).toEqual({ sent: 1, removed: 0, failed: 0 });
+    expect(waits).toEqual([2000]);
+    expect(calls).toBe(2);
+  });
+
+  it("does not try a 429 again with a long or no Retry-After", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    subscribe(SAM.id, 1);
+    for (const headers of [{ "retry-after": "60" }, {}]) {
+      let calls = 0;
+      const result = await sendToUser(SAM.id, payload, {
+        db,
+        vapid: VAPID,
+        wait: async () => {},
+        send: (async () => {
+          calls++;
+          throw status(429, headers);
+        }) satisfies Send,
+      });
+      expect(result.failed).toBe(1);
+      expect(calls).toBe(1);
+    }
+    errors.mockRestore();
+  });
+
+  it("reads Retry-After as seconds or as a date", () => {
+    const now = Date.parse("2026-01-01T00:00:00Z");
+    expect(retryAfterMs(status(429, { "retry-after": "3" }), now)).toBe(3000);
+    expect(
+      retryAfterMs(
+        status(429, { "retry-after": "Thu, 01 Jan 2026 00:00:04 GMT" }),
+        now,
+      ),
+    ).toBe(4000);
+    expect(retryAfterMs(status(429, { "retry-after": "soon" }), now)).toBe(
+      null,
+    );
+    expect(retryAfterMs(status(429), now)).toBeNull();
+    expect(MAX_RETRY_AFTER_MS).toBeLessThan(10_000);
+  });
+
+  it("can push only with VAPID keys and an enabled device", () => {
+    expect(canPushTo(SAM.id, { db, vapid: VAPID })).toBe(false);
+    const sub = subscribe(SAM.id, 1);
+    expect(canPushTo(SAM.id, { db, vapid: VAPID })).toBe(true);
+    expect(canPushTo(SAM.id, { db, vapid: null })).toBe(false);
+    setSubscriptionEnabled(SAM.id, sub.id, false, db);
+    expect(canPushTo(SAM.id, { db, vapid: VAPID })).toBe(false);
   });
 
   it("sends nothing when push is not set up", async () => {

@@ -8,7 +8,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prompts } from "@/prompts";
 import { renderFallback, who } from "./templates";
-import type { ActivityEvent } from "./types";
+import { snapshotFor, type ActivityEvent } from "./types";
 
 export const MODEL = "claude-sonnet-5-5";
 /**
@@ -37,17 +37,19 @@ export function summaryInput(events: ActivityEvent[], actorName: string) {
   return {
     actor: who(actorName, events[0].via),
     ...(rest.length > 0 && { more: { count: rest.length, types } }),
-    changes: shown.map((e) => ({
-      type: e.type,
-      list: e.snapshot.listName,
-      ...(e.snapshot.itemName !== undefined && { item: e.snapshot.itemName }),
-      ...(e.snapshot.oldName !== undefined && { oldName: e.snapshot.oldName }),
-      ...(e.snapshot.fromListName !== undefined && {
-        fromList: e.snapshot.fromListName,
-      }),
-      ...(e.snapshot.count !== undefined && { count: e.snapshot.count }),
-      ...(e.snapshot.fields !== undefined && { fields: e.snapshot.fields }),
-    })),
+    changes: shown.map((e) => {
+      // Only the keys of the type: an add never says "renamed" or "moved".
+      const s = snapshotFor(e.type, e.snapshot);
+      return {
+        type: e.type,
+        list: s.listName,
+        ...(s.itemName !== undefined && { item: s.itemName }),
+        ...(s.oldName !== undefined && { oldName: s.oldName }),
+        ...(s.fromListName !== undefined && { fromList: s.fromListName }),
+        ...(s.count !== undefined && { count: s.count }),
+        ...(s.fields !== undefined && { fields: s.fields }),
+      };
+    }),
   };
 }
 
