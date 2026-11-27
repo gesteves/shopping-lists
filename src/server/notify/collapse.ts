@@ -4,7 +4,9 @@
 // event.
 //
 // Rules, for each item and each list:
-//   - Check, then uncheck (or the other way) → nothing.
+//   - Check, then uncheck (or the other way) → nothing. An edit or a move
+//     that also unchecked the item (#112) counts as an uncheck too; the edit
+//     or the move stays.
 //   - Add, then delete → nothing. Delete, then undo (restore) → nothing.
 //   - Add, then update or move → only "added" (with the last names).
 //   - More than one update → one update. More than one move → one move from
@@ -30,6 +32,16 @@ const LIST_TYPES = new Set([
   "deleteList",
   "restoreList",
 ]);
+
+/** True for an uncheck, also an edit or a move that unchecked (#112). */
+function unchecks(e: ActivityEvent): boolean {
+  return e.type === "uncheck" || e.snapshot.unchecked === true;
+}
+
+/** The check and uncheck events, with the edits that unchecked. */
+function checkEvents(events: ActivityEvent[]): ActivityEvent[] {
+  return events.filter((e) => e.type === "check" || unchecks(e));
+}
 
 /** The last event of a group, with the names of the last event. */
 function withLastNames(
@@ -69,9 +81,7 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
     if (del?.type === "deleteItem") return [];
     const out = [withLastNames(add, last)];
     // A new item starts unchecked. Say "checked" only if it ends checked.
-    const checks = events.filter(
-      (e) => e.type === "check" || e.type === "uncheck",
-    );
+    const checks = checkEvents(events);
     if (checks.at(-1)?.type === "check")
       out.push(withLastNames(checks.at(-1)!, last));
     return out;
@@ -106,14 +116,17 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
     }
   }
 
-  const checks = events.filter(
-    (e) => e.type === "check" || e.type === "uncheck",
-  );
+  const checks = checkEvents(events);
   if (checks.length > 0) {
-    const startedChecked = checks[0].type === "uncheck";
+    const startedChecked = unchecks(checks[0]);
     const endsChecked = checks.at(-1)!.type === "check";
-    if (startedChecked !== endsChecked)
-      out.push(withLastNames(checks.at(-1)!, last));
+    const final = checks.at(-1)!;
+    // An edit or a move that unchecked is in `out` already.
+    if (
+      startedChecked !== endsChecked &&
+      (final.type === "check" || final.type === "uncheck")
+    )
+      out.push(withLastNames(final, last));
   }
 
   if (del) {

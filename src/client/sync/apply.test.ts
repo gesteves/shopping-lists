@@ -66,6 +66,38 @@ function state(lists: ListRecord[], items: ItemRecord[] = []): LocalState {
 }
 
 describe("applyLocal", () => {
+  it("unchecks a checked item on an edit or a move (#112)", () => {
+    const checked = { checked: true, checkedAt: T - 50 };
+    let s = state([list()], [item(checked)]);
+    applyLocal(
+      s,
+      op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }),
+      ME,
+    );
+    expect(s.items.get(ITEM)).toMatchObject({
+      notes: "2%",
+      checked: false,
+      checkedAt: null,
+    });
+
+    s = state([list(), list({ id: LIST_2, name: "Costco" })], [item(checked)]);
+    applyLocal(s, op("moveItem", { itemId: ITEM, toListId: LIST_2 }), ME);
+    expect(s.items.get(ITEM)).toMatchObject({ listId: LIST_2, checked: false });
+  });
+
+  it("does not uncheck on an edit that changes nothing", () => {
+    const s = state([list()], [item({ checked: true, checkedAt: T - 50 })]);
+    applyLocal(
+      s,
+      op("updateItem", { itemId: ITEM, fields: { name: "Milk" } }),
+      ME,
+    );
+    expect(s.items.get(ITEM)).toMatchObject({
+      checked: true,
+      checkedAt: T - 50,
+    });
+  });
+
   it("adds an item and stamps it with the user and the op time", () => {
     const s = state([list()]);
     const changed = applyLocal(

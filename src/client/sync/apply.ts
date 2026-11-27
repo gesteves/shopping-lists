@@ -123,7 +123,18 @@ export function applyLocal(
     }
     case "updateItem": {
       const item = state.items.get(op.args.itemId);
-      if (item) putItem({ ...item, ...op.args.fields, deletedAt: null });
+      if (!item) break;
+      // An edit that changes the item also unchecks it (#112).
+      const { fields } = op.args;
+      const changes = (Object.keys(fields) as (keyof typeof fields)[]).some(
+        (key) => fields[key] !== undefined && fields[key] !== item[key],
+      );
+      putItem({
+        ...item,
+        ...fields,
+        ...(changes && { checked: false, checkedAt: null }),
+        deletedAt: null,
+      });
       break;
     }
     case "check":
@@ -154,7 +165,14 @@ export function applyLocal(
     case "moveItem": {
       const item = state.items.get(op.args.itemId);
       if (!item || !liveList(op.args.toListId)) break;
-      putItem({ ...item, listId: op.args.toListId, deletedAt: null });
+      // A move to another list also unchecks the item (#112).
+      const moved = item.listId !== op.args.toListId;
+      putItem({
+        ...item,
+        listId: op.args.toListId,
+        ...(moved && { checked: false, checkedAt: null }),
+        deletedAt: null,
+      });
       break;
     }
     case "clearChecked":

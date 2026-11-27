@@ -145,6 +145,8 @@ export const en = {
     empty: "Nothing on this list yet. Add the first item below.",
     allChecked: "Everything is checked off.",
     items: "Items",
+    /** The checked items that the server deletes soon (#112). */
+    olderItems: "Older items",
     actions: "List actions",
     notifications: "Notifications",
     notificationsFailed:
@@ -172,6 +174,13 @@ export const en = {
     editing: (names: string[]) => `${names.join(", ")} is editing…`,
     added: (who: string, when: string) => `Added by ${who} · ${when}`,
     updated: (who: string, when: string) => `Updated by ${who} · ${when}`,
+    /** The automatic delete of an old checked item (#112). Local calendar days. */
+    expiresIn: (days: number) =>
+      days <= 0
+        ? "Expires today"
+        : days === 1
+          ? "Expires tomorrow"
+          : `Expires in ${plural(days, { one: `${days} day`, other: `${days} days` })}`,
   },
 
   addBar: {

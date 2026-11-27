@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useList, useReportPresence } from "@/client/hooks";
+import { splitOlder } from "@/client/queries";
+import { useNow } from "@/client/use-now";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
+import { daysLeft, expiresAt } from "@/shared/expiry";
 import type { ItemRecord } from "@/shared/sync";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
@@ -35,6 +38,11 @@ export function ListView() {
       showToast({ message: copy.itemSheet.gone(goneName) });
   }, [goneName]);
   const remaining = view?.items.filter((i) => !i.checked).length ?? 0;
+  // The checked items that the server deletes soon go in "Older items"
+  // (#112), at the bottom.
+  const now = useNow();
+  const { current: shownItems, older } = splitOlder(view?.items ?? [], now);
+  const olderId = useId();
   useReportPresence({
     listId: view ? view.list.id : null,
     editingItemId: current?.id ?? null,
@@ -73,10 +81,30 @@ export function ListView() {
             aria-label={copy.list.items}
             className="mt-5 mb-4 flex flex-col gap-2"
           >
-            {view.items.map((item) => (
+            {shownItems.map((item) => (
               <ItemRow key={item.id} item={item} onEdit={setEditing} />
             ))}
           </ul>
+          {older.length > 0 && now !== null && (
+            <section aria-labelledby={olderId} className="mb-4">
+              <h2
+                id={olderId}
+                className="mb-2 px-1 text-sm font-semibold tracking-wide text-ink-muted uppercase"
+              >
+                {copy.list.olderItems}
+              </h2>
+              <ul aria-labelledby={olderId} className="flex flex-col gap-2">
+                {older.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    onEdit={setEditing}
+                    expiresInDays={daysLeft(expiresAt(item.checkedAt!), now)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
           <AddBar listId={view.list.id} items={view.items} />
           <ItemSheet item={current} onClose={() => setEditing(null)} />
         </>

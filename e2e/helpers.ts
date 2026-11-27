@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
@@ -231,4 +232,46 @@ export async function removeFakeSubscription(page: Page, endpoint: string) {
   for (const s of subscriptions.filter((s) => s.endpoint === endpoint)) {
     await page.request.delete(`/api/push/subscriptions/${s.id}`);
   }
+}
+
+/**
+ * Run axe (WCAG 2.2 A and AA) on the page, after the Web Awesome components
+ * are defined and their animations end. No serious or critical issues.
+ */
+export async function scan(page: Page, screen: string) {
+  // Wait for the Web Awesome components: undefined tags are hidden.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("*")].every(
+      (el) =>
+        !el.localName.startsWith("wa-") || customElements.get(el.localName),
+    ),
+  );
+  // Colors in the middle of a fade-in are not the real colors.
+  // Web Awesome animates in its shadow roots, which document.getAnimations()
+  // does not include.
+  await page.waitForFunction(() =>
+    [
+      document,
+      ...[...document.querySelectorAll("*")].flatMap((el) =>
+        el.shadowRoot ? [el.shadowRoot] : [],
+      ),
+    ].every((root) =>
+      root.getAnimations().every((a) => a.playState !== "running"),
+    ),
+  );
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  const serious = result.violations.filter(
+    (v) => v.impact === "serious" || v.impact === "critical",
+  );
+  expect(
+    serious.map(
+      (v) =>
+        `${v.id}: ${v.nodes
+          .map((n) => `${n.target} (${n.any.map((c) => c.message).join("; ")})`)
+          .join(" | ")}`,
+    ),
+    screen,
+  ).toEqual([]);
 }

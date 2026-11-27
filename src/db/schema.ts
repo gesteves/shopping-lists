@@ -434,6 +434,8 @@ export interface ActivitySnapshot {
   count?: number;
   /** updateItem: the fields that changed (#89). Older rows do not have it. */
   fields?: ItemField[];
+  /** updateItem and moveItem: the change also unchecked the item (#112). */
+  unchecked?: boolean;
 }
 
 /** The fields that updateItem can change. */
