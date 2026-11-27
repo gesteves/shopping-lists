@@ -92,7 +92,7 @@ export function ListHeader({ view }: { view: ListView }) {
   return (
     <div className="mt-2">
       <div className="flex items-start gap-2">
-        <h1 className="flex-1 text-4xl font-bold tracking-tight text-balance break-words">
+        <h1 className="min-w-0 flex-1 text-4xl font-bold tracking-tight text-balance break-words">
           {list.name}
         </h1>
         <wa-dropdown ref={menu} placement="bottom-end">

@@ -264,6 +264,12 @@ export const en = {
       lastUsed === null
         ? `${host} · Connected ${connected}`
         : `${host} · Connected ${connected} · Last used ${lastUsed}`,
+    connectorUrl: "Connector URL",
+    connectorUrlHint:
+      "To connect Claude, add a custom connector in Claude’s settings with this URL.",
+    copyUrl: "Copy URL",
+    copied: "Copied the URL.",
+    copyFailed: "Can’t copy the URL. Select it and copy it.",
     disconnect: "Disconnect",
     disconnectTitle: (app: string) => `Disconnect ${app}?`,
     disconnectBody:

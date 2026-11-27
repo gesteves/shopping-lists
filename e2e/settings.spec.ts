@@ -127,3 +127,31 @@ test("this device: Safari on iPhone asks for the Home Screen app", async ({
     await expect(section).not.toContainText(copy.settings.pushNeedsInstall);
   }
 });
+
+test("the connector URL shows, and the copy button copies it", async ({
+  page,
+  baseURL,
+}) => {
+  // Keep the copied text in the page. The real clipboard needs a permission
+  // that WebKit does not give to tests.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { copied: string }).copied = text;
+        },
+      },
+    });
+  });
+  await signIn(page);
+  await page.goto("/settings");
+  const url = `${baseURL}/mcp`;
+  await expect(
+    page.getByRole("textbox", { name: copy.settings.connectorUrl }),
+  ).toHaveValue(url);
+  await page.getByRole("button", { name: copy.settings.copyUrl }).click();
+  await expect(page.getByText(copy.settings.copied)).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => (window as { copied?: string }).copied))
+    .toBe(url);
+});
