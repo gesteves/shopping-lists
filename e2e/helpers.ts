@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
 
 /** Sign in through the stub, as Google would. */
@@ -59,4 +59,35 @@ export function switchControl(page: Page, name: string) {
   return page
     .locator("wa-switch")
     .filter({ has: page.getByRole("switch", { name }) });
+}
+
+/** A JSON-RPC request to /mcp as a 2026-07-28 client, with a token. */
+export function mcpCall(
+  request: APIRequestContext,
+  token: string,
+  method: string,
+  params: Record<string, unknown> = {},
+) {
+  const version = "2026-07-28";
+  return request.post("/mcp", {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json, text/event-stream",
+      "mcp-protocol-version": version,
+      "mcp-method": method,
+      ...(typeof params.name === "string" && { "mcp-name": params.name }),
+    },
+    data: {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: {
+        ...params,
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": version,
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
+    },
+  });
 }

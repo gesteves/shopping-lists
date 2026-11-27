@@ -1,7 +1,7 @@
 // The read module. The sync pull (#6) and the MCP tools (#19) read through
 // it. Writes go through applyOps (src/server/ops.ts).
 import "server-only";
-import { asc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, like, sql } from "drizzle-orm";
 import { getDb, type Reader } from "@/db/client";
 import { items, lists, serverSeq, users } from "@/db/schema";
 import type { ItemRecord, ListRecord, UserRecord } from "@/shared/sync";
@@ -124,4 +124,76 @@ export function readChanges(
   }
   out.hlc = hlc;
   return out;
+}
+
+// Reads for the MCP tools (#19). They return live rows only: no tombstones.
+// The order is the order of the app (src/client/queries.ts).
+
+/** The lists that are not deleted, by name, with their item counts. */
+export function readLiveLists(db: Reader = getDb()) {
+  const rows = db
+    .select({
+      list: lists,
+      itemCount: sql<number>`count(${items.id})`,
+      uncheckedCount: sql<number>`coalesce(sum(case when ${items.checked} = 0 then 1 else 0 end), 0)`,
+    })
+    .from(lists)
+    .leftJoin(items, and(eq(items.listId, lists.id), isNull(items.deletedAt)))
+    .where(isNull(lists.deletedAt))
+    .groupBy(lists.id)
+    .orderBy(sql`${lists.name} collate nocase`, asc(lists.createdAt))
+    .all();
+  return rows.map((r) => ({
+    list: toListRecord(r.list),
+    itemCount: Number(r.itemCount),
+    uncheckedCount: Number(r.uncheckedCount),
+  }));
+}
+
+/** A list by ID, tombstone included, or undefined. */
+export function readListById(id: string, db: Reader = getDb()) {
+  const row = db.select().from(lists).where(eq(lists.id, id)).get();
+  return row && toListRecord(row);
+}
+
+/** The live items of a list: unchecked first, then the last updated first. */
+export function readListItems(listId: string, db: Reader = getDb()) {
+  return db
+    .select()
+    .from(items)
+    .where(and(eq(items.listId, listId), isNull(items.deletedAt)))
+    .orderBy(asc(items.checked), desc(items.updatedAt), asc(items.name))
+    .all()
+    .map(toItemRecord);
+}
+
+/**
+ * The live items on live lists whose name contains `key` (a nameKey of
+ * the query), with their list. At most `limit` rows.
+ */
+export function searchLiveItems(
+  key: string,
+  limit: number,
+  db: Reader = getDb(),
+) {
+  const pattern = `%${key.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return db
+    .select({ item: items, listName: lists.name })
+    .from(items)
+    .innerJoin(lists, eq(lists.id, items.listId))
+    .where(
+      and(
+        isNull(items.deletedAt),
+        isNull(lists.deletedAt),
+        like(items.nameKey, sql`${pattern} escape '\\'`),
+      ),
+    )
+    .orderBy(
+      asc(items.checked),
+      sql`${lists.name} collate nocase`,
+      asc(items.nameKey),
+    )
+    .limit(limit)
+    .all()
+    .map((r) => ({ item: toItemRecord(r.item), listName: r.listName }));
 }

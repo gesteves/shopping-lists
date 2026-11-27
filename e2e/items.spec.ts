@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import Database from "better-sqlite3";
 import { expect, test, type Page } from "@playwright/test";
-import { E2E_DATABASE_PATH } from "../playwright.config";
 import { dialog, signIn, synced } from "./helpers";
 
 /** Make a list in the UI and open it. */
@@ -123,34 +121,6 @@ test("every item action works offline and syncs when online", async ({
   await expect.poll(() => order(page)).toEqual(["Pears", "Apples"]);
   await expect(item(page, "Apples")).toHaveAttribute("aria-checked", "true");
   await expect(item(page, "Pears")).toContainText("Ripe");
-});
-
-test("the sheet says when Claude made a change", async ({ page, browser }) => {
-  await signIn(page);
-  const list = await openNewList(page);
-  await add(page, "Coffee");
-  await synced(page);
-
-  // An MCP write sets updated_via. Set it in the database, then open the
-  // list in a new browser, which pulls every row.
-  const db = new Database(E2E_DATABASE_PATH);
-  db.prepare(
-    "UPDATE items SET updated_via = 'mcp', updated_at = updated_at + 1 WHERE list_id = (SELECT id FROM lists WHERE name = ?)",
-  ).run(list);
-  db.close();
-
-  const url = page.url();
-  const other = await browser.newPage();
-  try {
-    await signIn(other);
-    await other.goto(url);
-    await other.getByRole("button", { name: "Edit Coffee" }).click();
-    await expect(
-      other.getByText(/^Updated by Ana \(via Claude\) · just now$/),
-    ).toBeVisible();
-  } finally {
-    await other.close();
-  }
 });
 
 test("fast entry keeps every item", async ({ page }) => {
