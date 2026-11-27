@@ -131,7 +131,7 @@ Because of this, realtime updates, notifications and attribution behave the same
 - `clearChecked` deletes, and `uncheckAll` unchecks, the items whose check clock is older than the op. An item checked after the op stays.
 - Item ops on an item in a deleted list are applied as usual. Only `addItem` and `moveItem` to a deleted list are rejected.
 - Adding an item to a list that was deleted while you were offline is rejected. The client shows a toast offering to re-create the list.
-- Tombstones are purged after 30 days (`purgeTombstones`). It also deletes the items of purged lists, `processed_ops` rows, and sent `activity` rows older than the limit. It sets `server_seq.purged_seq` to the largest seq that it deleted. A pull with a cursor below `purged_seq` must start again from 0 (#6).
+- Tombstones are purged after 30 days (`purgeTombstones`). The server runs it 5 minutes after boot, then each day (`src/server/purge.ts`, #20). It also deletes the items of purged lists, `processed_ops` rows, and sent `activity` rows older than the limit. It sets `server_seq.purged_seq` to the largest seq that it deleted. A pull with a cursor below `purged_seq` must start again from 0 (#6).
 
 **Offline auth:** if the session has expired, the outbox keeps queuing. On a 401, show "Sign in again to sync N changes" without dropping anything.
 
@@ -310,7 +310,8 @@ Mobile-first. Routes under `src/app/(app)/`.
   - built in #13: a "List actions" menu beside the `h1` (rename, uncheck all, clear checked items with a confirmation, delete list) and "Move to" in the item sheet. Each delete, move, and bulk action shows a toast with Undo for 5 s (`src/client/toasts.ts`, `_components/toaster.tsx`). Undo sends `restoreItem`, `restoreList`, `moveItem` back, or one `restoreItem`/`check` for each item that the bulk op changed. The toaster also shows each change that the server refused.
   - an "editing…" badge on items the other person is editing.
   - Built in #9 (`src/app/(app)/lists/[id]/`): each row is one large `role="checkbox"` button with an Edit button beside it. The add bar is sticky at the bottom, with quantity and notes behind a "Quantity and notes" icon button; they open below the name (#56). The sheet is a `<dialog>`: a bottom sheet on a phone, centered at `lg`. It takes focus itself, so the keyboard does not open. Delete is in the sheet; swipe-to-delete is not built. Forms clear before the write, so fast entry keeps each item.
-- **Header:** an offline indicator with the number of pending changes, and a **Keep screen on** toggle. The toggle uses the Screen Wake Lock API, re-acquires the lock on `visibilitychange`, is remembered per device, and is hidden where the API isn't supported.
+- **Header:** an offline indicator with the number of pending changes.
+- **Keep screen on (#20):** a switch in Settings (owner's choice: not in the header). It uses the Screen Wake Lock API, re-acquires the lock on `visibilitychange`, is remembered per device, and is hidden where the API isn't supported. `WakeLockKeeper` in the `(app)` layout holds the lock on every page while the setting is on (`_components/keep-screen-on.tsx`, logic in `src/client/wake-lock.ts`). A refused request shows a toast.
 - **PWA:** `manifest.webmanifest` (standalone, icons, theme color), apple-touch-icon, safe-area insets.
 - **Service worker (#10):** Serwist. `src/sw/sw.ts` (its own `tsconfig.json` with the `webworker` lib). `scripts/build-sw.mjs` runs after `next build`: it calls the `@serwist/turbopack` route handler one time and writes `public/sw.js`. Thus the server and the Docker image need no esbuild and no source at runtime (a route handler is dynamic under Cache Components, and would bundle at the first request). `/sw.js` has `Cache-Control: no-cache` and scope `/`.
   - Caching: the precache has the build assets and `/~offline`. Pages and RSC payloads are network first, then the cache (`defaultCache`). `/api/*` never goes through the worker: a first `fetch` listener stops the Serwist listeners, so sync sees the server and SSE stays native.
@@ -335,6 +336,8 @@ Mobile-first. Routes under `src/app/(app)/`.
 - **Cloudflare:** a proxied CNAME to Fly. The Fly certificate uses the ACME DNS challenge and the `_fly-ownership` TXT record, because the proxy hides Fly. The zone is shared with other hosts, so a Configuration Rule sets SSL Full (strict) for this host only, and a Cache Rule for this host bypasses the cache for `/api/*` and `/sw.js`. The service worker is served with `Cache-Control: no-cache`. Use the `cf` CLI with `--dry-run` first.
 - **CI/CD (#24):** GitHub Actions runs the checks (format, lint, typecheck, unit and e2e tests, `npm audit`, unapproved install scripts) on each PR and on `main`. A green push to `main` runs `flyctl deploy --remote-only`, then the health check. `[skip deploy]` in the commit message skips the deploy. Results go to Slack through an incoming webhook. Each third-party action is pinned to a commit SHA, `FLY_API_TOKEN` goes only to the deploy step, and event values reach scripts only through `env:`. `PRODUCTION_URL` is a secret, because the repo is public. Migrations run at boot, not in a Fly `release_command`, because that machine has no volume.
 - **Dependabot (#25):** weekly updates for npm, GitHub Actions (including the composite actions), and the Docker base images, with a short cooldown. Minor and patch updates are grouped. `allowScripts` pins `better-sqlite3`, so a bump of it needs a new approval. `esbuild` and `fsevents` are denied: they work without their install scripts.
+
+- **Backups (#20):** the restore drill and the steps to restore the live app are in `docs/ops.md`. The drill runs `scripts/restore-drill.sh` (in the image) on a scratch machine: it restores to `/tmp`, checks the database, and only reads from R2.
 
 **Biggest platform risk:** Google sign-in from an installed iOS PWA. OAuth redirects in standalone mode and cookies not being shared with Safari could break it, so #3 tests it before anything else builds on it.
 
@@ -368,6 +371,8 @@ Mobile-first. Routes under `src/app/(app)/`.
 - `iss` in authorization responses.
 
 **MCP clients:** MCP Inspector (a version that supports 2026-07-28) for the full OAuth flow and every tool. Then connect from Claude.ai and Duet, and confirm that "add milk and eggs to Whole Foods" appears live in the app and triggers one grouped push attributed "via Claude".
+
+**Accessibility (#20):** `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A and AA) on the main screens in light and dark, on a phone and a desktop: no serious or critical issues. It waits for the Web Awesome animations, also in shadow roots, because colors in a fade are not the real colors. It also tests the item sheet with reduced motion, and the "Keep screen on" toggle with a fake Wake Lock API.
 
 **On a real device (installed iPhone PWA):** Google sign-in, push permission and delivery, deep links from notifications, the wake lock keeping the screen on, airplane-mode shopping and then sync.
 

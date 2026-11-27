@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { ServiceWorker } from "../service-worker";
 import { SessionRefresh } from "../session-refresh";
 import { AppHeader, HeaderFrame } from "./_components/app-header";
+import { WakeLockKeeper } from "./_components/keep-screen-on";
 import { ListIndex } from "./_components/list-index";
 import { Toaster } from "./_components/toaster";
 
@@ -12,6 +13,8 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="flex min-h-dvh flex-col">
       <SessionRefresh />
+      {/* "Keep screen on" (#20): holds the lock on every page. */}
+      <WakeLockKeeper />
       {/* usePathname() reads the request, thus it needs a boundary. */}
       <Suspense>
         <ServiceWorker />
