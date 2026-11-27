@@ -8,7 +8,7 @@ export default function ListPage() {
       <Suspense>
         <RequireUser />
       </Suspense>
-      {/* useParams() reads the request, thus it needs a boundary. */}
+      {/* usePathname() reads the request, thus it needs a boundary. */}
       <Suspense>
         <ListView />
       </Suspense>

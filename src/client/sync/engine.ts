@@ -224,9 +224,14 @@ export class SyncEngine {
         try {
           await this.#push(run);
           await this.#pull(run);
+          // The pull has the changes of the acked ops now.
+          if ((await this.#db.outbox.filter((e) => !!e.acked).delete()) > 0) {
+            run.dirty = true;
+          }
         } finally {
-          // Also after an error: an op that left the outbox must leave the
-          // view. No change on either side: the view is already right.
+          // Also after an error: a rejected op must leave the view. An acked
+          // op stays in the outbox, thus the view keeps it. No change on
+          // either side: the view is already right.
           if (run.dirty) await rebuildView(this.#db);
         }
       });
@@ -294,7 +299,11 @@ export class SyncEngine {
     const clientId = await ensureClientId(db);
     let size = MAX_PUSH_OPS;
     for (let round = 0; round < MAX_PUSHES; round++) {
-      const entries = await db.outbox.orderBy("seq").limit(size).toArray();
+      const entries = await db.outbox
+        .orderBy("seq")
+        .filter((e) => !e.acked)
+        .limit(size)
+        .toArray();
       if (entries.length === 0) return;
 
       const res = await this.#request<PushResponse>("/api/sync/push", {
@@ -329,6 +338,7 @@ export class SyncEngine {
       const body = res.body;
       const restamp: number[] = [];
       const done: number[] = [];
+      const acked: number[] = [];
       entries.forEach((entry, i) => {
         const result = body.results[i];
         const final = result?.status === "duplicate" ? result.original : result;
@@ -342,7 +352,10 @@ export class SyncEngine {
           restamp.push(entry.seq!);
           return;
         }
-        done.push(entry.seq!);
+        // An applied op stays until the pull. A rejected op goes. A merged
+        // op goes too: the server kept a different item.
+        if (final?.status === "applied") acked.push(entry.seq!);
+        else done.push(entry.seq!);
         if (final?.status === "rejected") this.#reject(entry.op, final.reason);
         // Only a new result: a duplicate was shown the first time.
         if (result?.status === "merged") {
@@ -358,6 +371,9 @@ export class SyncEngine {
         }
       });
       await db.outbox.bulkDelete(done);
+      await db.outbox.bulkUpdate(
+        acked.map((seq) => ({ key: seq, changes: { acked: true } })),
+      );
       if (restamp.length > 0) {
         await restampOps(db, restamp, body.now ?? Date.now());
       }

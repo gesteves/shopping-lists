@@ -535,6 +535,41 @@ describe("sync", () => {
   });
 });
 
+describe("an applied op and a failed pull", () => {
+  it("keeps the change in the view until a pull brings it", async () => {
+    await seed();
+    await mutateLocal(db, {
+      type: "addItem",
+      args: { itemId: ITEM_2, listId: LIST, name: "Eggs" },
+    });
+    net.failPull = true;
+    const { engine } = makeEngine();
+    await engine.sync();
+
+    expect(engine.getStatus().state).toBe("error");
+    // The server has it, and the view keeps it.
+    expect(
+      serverDb
+        .select()
+        .from(serverItems)
+        .where(eq(serverItems.id, ITEM_2))
+        .get(),
+    ).toBeDefined();
+    expect(await db.items.get(ITEM_2)).toBeDefined();
+    expect(await db.outbox.toArray()).toEqual([
+      expect.objectContaining({ acked: true }),
+    ]);
+
+    // The next run does not push it again, and the pull removes it.
+    net.failPull = false;
+    net.pushes = 0;
+    await engine.sync();
+    expect(net.pushes).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+    expect((await db.items.get(ITEM_2))?.name).toBe("Eggs");
+  });
+});
+
 describe("a device clock that is too far ahead", () => {
   const AHEAD = MAX_DRIFT_MS + 10 * 60_000;
 

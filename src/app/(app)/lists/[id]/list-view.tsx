@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useList, useReportPresence } from "@/client/hooks";
 import { showToast } from "@/client/toasts";
@@ -15,7 +15,10 @@ import { ListSwitches } from "./list-switches";
 
 /** One list: its items (unchecked first), the add bar, and the item sheet. */
 export function ListView() {
-  const { id } = useParams<{ id: string }>();
+  // The ID from the URL, not from useParams(): offline, the service worker
+  // can give the HTML of the list shell for each list (#103). The pathname
+  // follows the URL of the browser.
+  const id = decodeURIComponent(usePathname().split("/")[2] ?? "");
   const view = useList(id);
   const [editing, setEditing] = useState<ItemRecord | null>(null);
 

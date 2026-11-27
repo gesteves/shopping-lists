@@ -14,7 +14,7 @@ export const SECURITY_HEADERS = [
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), screen-wake-lock=(self)",
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), screen-wake-lock=(self)",
   },
 ];
 

@@ -41,7 +41,14 @@ export function useList(id: string): ListView | null | undefined {
 
 /** The number of changes that the server does not have yet. */
 export function usePendingCount(): number | undefined {
-  return useLiveQuery(() => getClientDb().outbox.count(), []);
+  // An acked op is on the server: it is not a change to sync.
+  return useLiveQuery(
+    () =>
+      getClientDb()
+        .outbox.filter((e) => !e.acked)
+        .count(),
+    [],
+  );
 }
 
 /** All users, by ID: the names and the avatars. */

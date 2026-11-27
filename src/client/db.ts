@@ -18,6 +18,12 @@ export interface OutboxEntry {
   op: Op;
   /** True after the engine stamped the op again for `clock_ahead`. */
   restamped?: boolean;
+  /**
+   * True after the server applied the op. The entry stays until a pull
+   * brings the change, thus the view keeps it also when the pull fails. The
+   * engine does not push it again.
+   */
+  acked?: boolean;
 }
 
 /** Values in the meta table. */
