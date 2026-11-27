@@ -23,7 +23,7 @@ const LIST_SUMMARY_LENGTH = 60;
 
 const NOTIFICATION_SYSTEM = `You write the text of a push notification for a shared shopping list app used by two people.
 
-The input is JSON: the person who made the changes ("actor"), and the changes ("changes"), in order. Each change has a type and the names of the list and the item. An updateItem change can have "fields": the fields of the item that changed.
+The input is JSON: the person who made the changes ("actor"), and the changes ("changes"), in order. Each change has a type and the names of the list and the item. An updateItem change can have "fields": the fields of the item that changed. If there are too many changes, "more" gives the count of the changes that are not in "changes", and the count of each type.
 
 Write one complete sentence of at most ${NOTIFICATION_LENGTH} characters that tells the other person what the actor did. Examples:
 - Sam added eggs to the “Whole Foods” list.

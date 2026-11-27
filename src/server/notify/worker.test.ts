@@ -1,5 +1,5 @@
 import { eq, isNull } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { activity } from "@/db/schema";
 import { HlcClock, serialize } from "@/shared/hlc";
@@ -8,7 +8,16 @@ import type { PushPayload } from "@/shared/push";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { applyOps } from "../ops";
 import { setListMuted } from "../push";
-import { MAX_WAIT_MS, Notifier, QUIET_MS } from "./worker";
+import { MAX_INPUT_CHANGES, summaryInput } from "./summarize";
+import type { ActivityEvent } from "./types";
+import {
+  MAX_WAIT_MS,
+  Notifier,
+  QUIET_MS,
+  type NotifierOptions,
+} from "./worker";
+
+const ALLOWED = `${SAM.email},${ALEX.email}`;
 
 const LIST = "11111111-1111-4111-8111-111111111111";
 const LIST_2 = "22222222-2222-4222-8222-222222222222";
@@ -26,13 +35,15 @@ beforeEach(() => {
 });
 afterEach(() => db.$client.close());
 
-function notifier() {
+function notifier(options: NotifierOptions = {}) {
   return new Notifier({
     db,
     now: () => now,
+    allowlist: ALLOWED,
     send: async (userId, payload) => {
       sent.push({ userId, payload });
     },
+    ...options,
   });
 }
 
@@ -152,6 +163,7 @@ describe("Notifier", () => {
     await new Notifier({
       db,
       now: () => now,
+      allowlist: ALLOWED,
       send: async (userId, payload) => {
         sent.push({ userId, payload });
       },
@@ -253,5 +265,59 @@ describe("Notifier", () => {
       db.select().from(activity).where(eq(activity.type, "addItem")).get()
         ?.notifiedAt,
     ).not.toBeNull();
+  });
+
+  it("sends nothing to a user who is no longer allowed", async () => {
+    seedLists();
+    addItem("Milk");
+    now += QUIET_MS;
+    await notifier({ allowlist: SAM.email }).tick();
+    expect(sent).toEqual([]);
+    // The rows are marked: a later allowlist change does not send them.
+    expect(
+      db.select().from(activity).where(isNull(activity.notifiedAt)).all(),
+    ).toEqual([]);
+  });
+
+  it("sends one push for a large burst", async () => {
+    seedLists();
+    for (let n = 0; n < 1200; n++) addItem(`Item ${n}`);
+    now += QUIET_MS;
+    const inputs: ActivityEvent[][] = [];
+    await notifier({
+      summarize: async (events, name) => {
+        inputs.push(events);
+        // The model input stays small.
+        const input = summaryInput(events, name);
+        expect(input.changes).toHaveLength(MAX_INPUT_CHANGES);
+        expect(input.more).toEqual({
+          count: 1200 - MAX_INPUT_CHANGES,
+          types: { addItem: 1200 - MAX_INPUT_CHANGES },
+        });
+        return "Sam added 1200 items.";
+      },
+    }).tick();
+
+    expect(inputs).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    expect(
+      db.select().from(activity).where(isNull(activity.notifiedAt)).all(),
+    ).toEqual([]);
+  });
+
+  it("logs an error in a tick, and does not throw", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    seedLists();
+    addItem("Milk");
+    now += QUIET_MS;
+    const n = notifier();
+    db.$client.close();
+    await expect(n.tick()).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalledWith(
+      "Notifier tick failed",
+      expect.anything(),
+    );
+    error.mockRestore();
+    db = createTestDb();
   });
 });

@@ -124,6 +124,7 @@ export function NotificationSettings({
     try {
       const { sent, failed } = await api("/api/push/test", {
         method: "POST",
+        body: "{}",
       });
       showToast({
         message:

@@ -7,6 +7,11 @@ import { bus, type BusEvents } from "./bus";
 import { getPresence } from "./presence";
 
 export const PING_MS = 20_000;
+/**
+ * A stream closes after this time (#100). The browser connects again, and
+ * the route checks the session and the allowlist again.
+ */
+export const MAX_AGE_MS = 15 * 60_000;
 /** The wait before the browser connects again after a lost connection. */
 export const RETRY_MS = 3_000;
 
@@ -30,7 +35,7 @@ export function sseMessage(event: string, data: unknown): string {
  */
 export function createEventStream(
   signal: AbortSignal,
-  options: { pingMs?: number } = {},
+  options: { pingMs?: number; maxAgeMs?: number } = {},
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let cleanup = () => {};
@@ -53,8 +58,15 @@ export function createEventStream(
         options.pingMs ?? PING_MS,
       );
 
+      // The retry line tells the browser to connect again after RETRY_MS.
+      const maxAge = setTimeout(
+        () => onAbort(),
+        options.maxAgeMs ?? MAX_AGE_MS,
+      );
+
       cleanup = () => {
         clearInterval(timer);
+        clearTimeout(maxAge);
         bus.off("poke", onPoke);
         bus.off("presence", onPresence);
         signal.removeEventListener("abort", onAbort);

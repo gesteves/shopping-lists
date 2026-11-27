@@ -10,6 +10,7 @@ import {
   type PullResponse,
   type PushResponse,
 } from "@/shared/sync";
+import { readJson } from "./json";
 import { applyOps, type Actor, type ApplyOptions } from "./ops";
 import { readChanges, readSeqState, readUsers } from "./queries";
 
@@ -42,28 +43,13 @@ export async function handlePush(
   actor: Actor,
   options: ApplyOptions = {},
 ): Promise<Response> {
-  const type = request.headers.get("content-type")?.split(";")[0].trim();
-  if (type !== "application/json") {
-    return json({ error: "unsupported_media_type" }, 415);
-  }
-  const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > MAX_PUSH_BYTES) return json({ error: "too_large" }, 413);
-
-  const text = await request.text();
-  if (Buffer.byteLength(text) > MAX_PUSH_BYTES) {
-    return json({ error: "too_large" }, 413);
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return json({ error: "invalid_json" }, 400);
-  }
-  const parsed = pushRequestSchema.safeParse(body);
-  if (!parsed.success) return badRequest(parsed.error);
+  const body = await readJson(request, pushRequestSchema, {
+    maxBytes: MAX_PUSH_BYTES,
+  });
+  if (!body.ok) return body.response;
 
   const result: PushResponse = {
-    ...applyOps(actor, "app", parsed.data.ops, options),
+    ...applyOps(actor, "app", body.data.ops, options),
     now: (options.now ?? Date.now)(),
   };
   return json(result);

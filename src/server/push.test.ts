@@ -11,8 +11,10 @@ import {
   sendToUser,
   setListMuted,
   setSubscriptionEnabled,
+  PUSH_TIMEOUT_MS,
   type SendOptions,
 } from "./push";
+import { isPushEndpoint, subscribeSchema } from "@/shared/push";
 
 type Send = NonNullable<SendOptions["send"]>;
 const ok = { statusCode: 201, body: "", headers: {} };
@@ -31,10 +33,16 @@ beforeEach(() => {
 afterEach(() => db.$client.close());
 
 function subscribe(userId: string, n: number, label: string | null = null) {
+  const sub = trySubscribe(userId, n, label);
+  if (!sub) throw new Error("The endpoint belongs to another user");
+  return sub;
+}
+
+function trySubscribe(userId: string, n: number, label: string | null = null) {
   return saveSubscription(
     userId,
     {
-      endpoint: `https://push.test/${n}`,
+      endpoint: `https://fcm.googleapis.com/fcm/send/${n}`,
       keys: { p256dh: `p${n}`, auth: `a${n}` },
       deviceLabel: label,
     },
@@ -89,11 +97,66 @@ describe("subscriptions", () => {
   it("replaces the row when the same browser subscribes again", () => {
     const first = subscribe(SAM.id, 1);
     setSubscriptionEnabled(SAM.id, first.id, false, db);
-    const again = subscribe(ALEX.id, 1, "Mac");
+    const again = subscribe(SAM.id, 1, "Mac");
     expect(again.id).toBe(first.id);
     expect(again.enabled).toBe(true);
-    expect(listSubscriptions(SAM.id, db)).toEqual([]);
-    expect(listSubscriptions(ALEX.id, db)).toHaveLength(1);
+    expect(again.deviceLabel).toBe("Mac");
+    expect(listSubscriptions(SAM.id, db)).toHaveLength(1);
+  });
+
+  it("does not move an endpoint of another user to the caller", () => {
+    const first = subscribe(SAM.id, 1, "iPhone");
+    expect(trySubscribe(ALEX.id, 1, "Mac")).toBeNull();
+    expect(listSubscriptions(ALEX.id, db)).toEqual([]);
+    expect(listSubscriptions(SAM.id, db)).toEqual([
+      expect.objectContaining({ id: first.id, deviceLabel: "iPhone" }),
+    ]);
+  });
+});
+
+describe("push endpoints", () => {
+  const keys = { p256dh: "p", auth: "a" };
+
+  it("accepts the hosts of the browser push services", () => {
+    for (const endpoint of [
+      "https://fcm.googleapis.com/fcm/send/x",
+      "https://updates.push.services.mozilla.com/wpush/v2/x",
+      "https://web.push.apple.com/x",
+      "https://wns2-par02p.notify.windows.com/w/?token=x",
+    ]) {
+      expect(isPushEndpoint(endpoint), endpoint).toBe(true);
+      expect(subscribeSchema().safeParse({ endpoint, keys }).success).toBe(
+        true,
+      );
+    }
+  });
+
+  it("refuses any other host", () => {
+    for (const endpoint of [
+      "https://example.com/push",
+      "https://fcm.googleapis.com.evil.test/x",
+      "https://evilpush.apple.com/x",
+      "https://127.0.0.1/x",
+      "https://169.254.169.254/latest",
+    ]) {
+      expect(isPushEndpoint(endpoint), endpoint).toBe(false);
+      expect(subscribeSchema().safeParse({ endpoint, keys }).success).toBe(
+        false,
+      );
+    }
+    // Only the e2e tests accept a loopback endpoint.
+    expect(
+      isPushEndpoint("https://127.0.0.1:1/x", { allowLoopback: true }),
+    ).toBe(true);
+  });
+
+  it("accepts the JSON of a PushSubscription, and no other keys", () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/x";
+    const schema = subscribeSchema();
+    expect(
+      schema.safeParse({ endpoint, expirationTime: null, keys }).success,
+    ).toBe(true);
+    expect(schema.safeParse({ endpoint, keys, extra: 1 }).success).toBe(false);
   });
 });
 
@@ -141,9 +204,13 @@ describe("sendToUser", () => {
     expect(result).toEqual({ sent: 1, removed: 0, failed: 0 });
     expect(calls).toEqual([
       {
-        endpoint: "https://push.test/1",
+        endpoint: "https://fcm.googleapis.com/fcm/send/1",
         body: JSON.stringify(payload),
-        options: expect.objectContaining({ vapidDetails: VAPID, TTL: 86400 }),
+        options: expect.objectContaining({
+          vapidDetails: VAPID,
+          TTL: 86400,
+          timeout: PUSH_TIMEOUT_MS,
+        }),
       },
     ]);
     expect(
@@ -165,7 +232,7 @@ describe("sendToUser", () => {
     });
     expect(result).toEqual({ sent: 0, removed: 1, failed: 1 });
     expect(listSubscriptions(SAM.id, db).map((s) => s.endpoint)).toEqual([
-      "https://push.test/2",
+      "https://fcm.googleapis.com/fcm/send/2",
     ]);
   });
 
