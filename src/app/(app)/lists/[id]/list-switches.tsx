@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutedLists } from "@/client/mutes";
+import { usePushDevice } from "@/client/push-device";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import { KeepScreenOnSwitch } from "../../_components/keep-screen-on";
@@ -8,16 +9,45 @@ import { KeepScreenOnSwitch } from "../../_components/keep-screen-on";
 /**
  * "Keep screen on" and the notifications of this list, below the list name
  * (#82). Settings has the same switches. On a narrow screen they wrap.
+ *
+ * The Notifications switch shows this device (#98): it is on only if this
+ * device gets pushes and the list is not muted. It is hidden where push
+ * cannot work. On turns on push here (one tap) and unmutes the list. Off
+ * mutes the list on all devices.
  */
 export function ListSwitches({ listId }: { listId: string }) {
   const { muted, setListMuted } = useMutedLists();
+  const push = usePushDevice();
+  const show = muted !== undefined && push.status !== "loading";
+  const available = push.status !== "unavailable";
 
-  async function toggle(control: HTMLInputElement) {
+  async function turnOn(control: HTMLInputElement) {
+    if (push.status !== "on" && !(await push.enable())) {
+      control.checked = false;
+      showToast({
+        message:
+          Notification.permission === "denied"
+            ? copy.settings.pushBlocked
+            : copy.settings.enableFailed,
+      });
+      return;
+    }
+    if (muted?.has(listId)) {
+      try {
+        await setListMuted(listId, false);
+      } catch {
+        control.checked = false;
+        showToast({ message: copy.list.notificationsFailed });
+      }
+    }
+  }
+
+  async function turnOff(control: HTMLInputElement) {
     try {
-      await setListMuted(listId, !control.checked);
+      await setListMuted(listId, true);
+      showToast({ message: copy.list.mutedEverywhere });
     } catch {
-      // The switch changed itself. Put it back.
-      control.checked = !control.checked;
+      control.checked = true;
       showToast({ message: copy.list.notificationsFailed });
     }
   }
@@ -25,12 +55,13 @@ export function ListSwitches({ listId }: { listId: string }) {
   return (
     <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
       <KeepScreenOnSwitch />
-      {muted && (
+      {show && available && (
         <wa-switch
-          checked={!muted.has(listId)}
-          onChange={(event) =>
-            void toggle(event.currentTarget as unknown as HTMLInputElement)
-          }
+          checked={push.status === "on" && !muted.has(listId)}
+          onChange={(event) => {
+            const control = event.currentTarget as unknown as HTMLInputElement;
+            void (control.checked ? turnOn(control) : turnOff(control));
+          }}
         >
           {copy.list.notifications}
         </wa-switch>

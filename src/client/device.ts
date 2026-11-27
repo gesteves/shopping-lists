@@ -3,29 +3,30 @@ import { copy } from "@/copy";
 
 /** A short device name from the user agent, for example "iPhone · Safari". */
 export function deviceLabel(ua: string, maxTouchPoints = 0): string {
+  const names = copy.devices;
   const device = /iPhone/.test(ua)
-    ? "iPhone"
+    ? names.iphone
     : /iPad/.test(ua) || (/Macintosh/.test(ua) && maxTouchPoints > 1)
-      ? "iPad"
+      ? names.ipad
       : /Android/.test(ua)
-        ? "Android"
+        ? names.android
         : /Macintosh|Mac OS X/.test(ua)
-          ? "Mac"
+          ? names.mac
           : /Windows/.test(ua)
-            ? "Windows"
+            ? names.windows
             : /Linux|CrOS/.test(ua)
-              ? "Linux"
-              : copy.devices.unknown;
+              ? names.linux
+              : names.unknown;
   const browser = /Edg\//.test(ua)
-    ? "Edge"
+    ? names.edge
     : /Firefox\/|FxiOS/.test(ua)
-      ? "Firefox"
+      ? names.firefox
       : /Chrome\/|CriOS/.test(ua)
-        ? "Chrome"
+        ? names.chrome
         : /Safari\//.test(ua)
-          ? "Safari"
+          ? names.safari
           : null;
-  return browser ? copy.devices.label(device, browser) : device;
+  return browser ? names.label(device, browser) : device;
 }
 
 /** iPhone and iPad allow push only in an app on the Home Screen. */

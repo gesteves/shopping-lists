@@ -149,6 +149,8 @@ export const en = {
     notifications: "Notifications",
     notificationsFailed:
       "Notifications for this list didn’t change. Try again.",
+    mutedEverywhere:
+      "You won’t get notifications about this list on any of your devices.",
     checkAll: "Check all",
     uncheckAll: "Uncheck all",
     deleteChecked: "Delete checked items",
@@ -217,6 +219,14 @@ export const en = {
 
   toasts: {
     rejected: (reason: string) => `A change didn’t save: ${reason}.`,
+    /** A reason that this version of the app does not know. */
+    rejectedGeneral: "A change didn’t save.",
+    /** An add or a move to a list that someone deleted while you were offline. */
+    listDeletedAdd: (list: string, item: string) =>
+      `The ${q(list)} list was deleted, so ${q(item)} wasn’t added.`,
+    listDeletedMove: (list: string, item: string) =>
+      `The ${q(list)} list was deleted, so ${q(item)} wasn’t moved.`,
+    recreate: "Re-create list",
     /** Why the server refused a change. */
     reasons: {
       list_deleted: "the list was deleted",
@@ -247,6 +257,8 @@ export const en = {
     pushOffer: "Get a notification when the other person changes a list.",
     enablePush: "Enable notifications",
     enableFailed: "Notifications couldn’t be turned on. Try again.",
+    deviceFailed: "The device didn’t change. Try again.",
+    removeFailed: "The device wasn’t removed. Try again.",
     devices: "Your devices",
     noDevices: "No device gets notifications yet.",
     unnamedDevice: "Unnamed device",
@@ -298,6 +310,17 @@ export const en = {
   devices: {
     /** A device that the user agent does not name. */
     unknown: "Device",
+    /** Device and browser names, from the user agent. */
+    iphone: "iPhone",
+    ipad: "iPad",
+    android: "Android",
+    mac: "Mac",
+    windows: "Windows",
+    linux: "Linux",
+    edge: "Edge",
+    firefox: "Firefox",
+    chrome: "Chrome",
+    safari: "Safari",
     label: (device: string, browser: string) => `${device} · ${browser}`,
   },
 

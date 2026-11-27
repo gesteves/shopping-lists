@@ -5,7 +5,6 @@ import { mcpResource } from "@/lib/oauth";
 import { requireUser } from "@/lib/session";
 import { getDb } from "@/db/client";
 import { listConnectedApps } from "@/server/connected-apps";
-import { getVapidConfig } from "@/server/push";
 import { KeepScreenOnSetting } from "../_components/keep-screen-on";
 import { ConnectedApps } from "./connected-apps";
 import { NotificationSettings } from "./notification-settings";
@@ -30,11 +29,9 @@ export default function SettingsPage() {
 
 async function Settings() {
   const user = await requireUser();
-  // The public key only. The private key stays on the server.
-  const publicKey = getVapidConfig()?.publicKey ?? null;
   return (
     <>
-      <NotificationSettings publicKey={publicKey} />
+      <NotificationSettings />
       <KeepScreenOnSetting />
       <ConnectedApps
         apps={listConnectedApps(getDb(), user.id)}

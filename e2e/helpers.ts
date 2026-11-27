@@ -153,3 +153,82 @@ export function anyCount(text: (n: number) => string): RegExp {
   );
   return new RegExp(forms.join("|"));
 }
+
+/** A valid P-256 public key and auth secret, so web-push can encrypt. */
+const FAKE_KEYS = {
+  p256dh:
+    "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM",
+  auth: "tBHItJI5svbpez7KI4CCXg",
+};
+
+/**
+ * A browser with fake push (#98), for each page load of `page`: the
+ * permission, PushManager, and `navigator.standalone = true` (so WebKit on
+ * an iPhone is not "needs-install"). With `subscribed`, this browser has a
+ * subscription from the start; else `subscribe()` makes it. The endpoint is
+ * a loopback URL that refuses each push. Call it before the first `goto`.
+ */
+export async function fakePushBrowser(
+  page: Page,
+  options: { subscribed: boolean },
+) {
+  const endpoint = `https://127.0.0.1:1/push/${crypto.randomUUID()}`;
+  await page.addInitScript(
+    ({ endpoint, subscribed, keys }) => {
+      const KEY = "e2e-fake-push";
+      const state = () =>
+        localStorage.getItem(KEY) ?? (subscribed ? "subscribed" : "none");
+      Object.defineProperty(navigator, "standalone", { get: () => true });
+      if (!("Notification" in window)) return;
+      Object.defineProperty(Notification, "permission", {
+        get: () => (state() === "none" ? "default" : "granted"),
+      });
+      Notification.requestPermission = async () => {
+        if (state() === "none") localStorage.setItem(KEY, "granted");
+        return "granted";
+      };
+      if (!("PushManager" in window)) return;
+      const subscription = {
+        endpoint,
+        expirationTime: null,
+        toJSON: () => ({ endpoint, expirationTime: null, keys }),
+        unsubscribe: async () => {
+          localStorage.setItem(KEY, "granted");
+          return true;
+        },
+      };
+      PushManager.prototype.getSubscription = async () =>
+        (state() === "subscribed" ? subscription : null) as never;
+      PushManager.prototype.subscribe = async () => {
+        localStorage.setItem(KEY, "subscribed");
+        return subscription as never;
+      };
+    },
+    { endpoint, subscribed: options.subscribed, keys: FAKE_KEYS },
+  );
+  return endpoint;
+}
+
+/** Save a push subscription for the signed-in user. It returns its ID. */
+export async function saveFakeSubscription(
+  page: Page,
+  endpoint: string,
+  deviceLabel: string,
+): Promise<string> {
+  const res = await page.request.post("/api/push/subscriptions", {
+    data: { endpoint, keys: FAKE_KEYS, deviceLabel },
+  });
+  expect(res.status()).toBe(201);
+  return (await res.json()).subscription.id;
+}
+
+/** Remove the push subscriptions with this endpoint (all tests share a user). */
+export async function removeFakeSubscription(page: Page, endpoint: string) {
+  const res = await page.request.get("/api/push/subscriptions");
+  const { subscriptions } = (await res.json()) as {
+    subscriptions: { id: string; endpoint: string }[];
+  };
+  for (const s of subscriptions.filter((s) => s.endpoint === endpoint)) {
+    await page.request.delete(`/api/push/subscriptions/${s.id}`);
+  }
+}

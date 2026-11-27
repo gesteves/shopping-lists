@@ -1,17 +1,28 @@
 import { authStubEnabled } from "@/lib/auth-stub";
 import { requireApiUser } from "@/lib/session";
 import { readJson } from "@/server/json";
-import { listSubscriptions, saveSubscription } from "@/server/push";
+import {
+  getVapidConfig,
+  listSubscriptions,
+  saveSubscription,
+} from "@/server/push";
 import { subscribeSchema } from "@/shared/push";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** The devices of the signed-in user that can get pushes. */
+/**
+ * The devices of the signed-in user that can get pushes, and the VAPID
+ * public key (null without keys). The list page is a client shell, thus it
+ * gets the key here (#98). The private key stays on the server.
+ */
 export async function GET() {
   const user = await requireApiUser();
   if (user instanceof Response) return user;
   return Response.json(
-    { subscriptions: listSubscriptions(user.id) },
+    {
+      subscriptions: listSubscriptions(user.id),
+      publicKey: getVapidConfig()?.publicKey ?? null,
+    },
     { headers: NO_STORE },
   );
 }

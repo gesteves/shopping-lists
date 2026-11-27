@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { ItemRecord, UserRecord } from "@/shared/sync";
-import { itemHistory, relativeTime } from "./format";
+import { initials, itemHistory, relativeTime } from "./format";
+
+describe("initials", () => {
+  it("gives the first grapheme in capitals", () => {
+    expect(initials("ana")).toBe("A");
+    expect(initials(" Émile")).toBe("É");
+    // A flag and a family emoji have more than one code point.
+    expect(initials("🇦🇷 Guille")).toBe("🇦🇷");
+    expect(initials("👨‍👩‍👧 Home")).toBe("👨‍👩‍👧");
+    // "e" and a combining accent are one grapheme.
+    expect(initials("e\u0301lise")).toBe("E\u0301");
+    expect(initials("")).toBe("");
+  });
+});
 
 const NOW = Date.UTC(2026, 10, 26, 18, 0, 0);
 const MIN = 60_000;

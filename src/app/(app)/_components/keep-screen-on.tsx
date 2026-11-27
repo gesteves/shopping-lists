@@ -15,11 +15,25 @@ import {
 
 let shared: WakeLockController | undefined;
 
+const TOAST_SHOWN = "shopping-lists.wake-lock-toast";
+
+/**
+ * Tell about a refused lock one time in each session. The keeper asks again
+ * at each return to the app, and a toast each time is too much (#104).
+ */
+function toastOncePerSession() {
+  try {
+    if (sessionStorage.getItem(TOAST_SHOWN)) return;
+    sessionStorage.setItem(TOAST_SHOWN, "1");
+  } catch {
+    // No sessionStorage: show the toast.
+  }
+  showToast({ message: copy.settings.keepScreenOnFailed });
+}
+
 /** One controller for the page, thus one lock. */
 function wakeLock(): WakeLockController {
-  shared ??= new WakeLockController(() => {
-    showToast({ message: copy.settings.keepScreenOnFailed });
-  });
+  shared ??= new WakeLockController(toastOncePerSession);
   return shared;
 }
 
