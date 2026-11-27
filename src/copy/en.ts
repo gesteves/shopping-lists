@@ -332,35 +332,35 @@ export const en = {
     /** The sentence for one event (#16). See "Notification templates" in docs/PLAN.md. */
     events: {
       createList: (e: PushEvent) =>
-        `${e.who} created ${article(e.list)} ${q(e.list)} list`,
-      deleteList: (e: PushEvent) => `${e.who} deleted the ${q(e.list)} list`,
+        `${e.who} created ${article(e.list)} ${q(e.list)} list.`,
+      deleteList: (e: PushEvent) => `${e.who} deleted the ${q(e.list)} list.`,
       renameList: (e: PushEvent) =>
-        `${e.who} renamed the ${q(e.oldList)} list to ${q(e.list)}`,
-      restoreList: (e: PushEvent) => `${e.who} restored the ${q(e.list)} list`,
+        `${e.who} renamed the ${q(e.oldList)} list to ${q(e.list)}.`,
+      restoreList: (e: PushEvent) => `${e.who} restored the ${q(e.list)} list.`,
       addItem: (e: PushEvent) =>
-        `${e.who} added ${q(e.item)} to the ${q(e.list)} list`,
+        `${e.who} added ${q(e.item)} to the ${q(e.list)} list.`,
       updateItem: (e: PushEvent) =>
-        `${e.who} updated ${q(e.item)} in the ${q(e.list)} list`,
+        `${e.who} updated ${q(e.item)} in the ${q(e.list)} list.`,
       deleteItem: (e: PushEvent) =>
-        `${e.who} removed ${q(e.item)} from the ${q(e.list)} list`,
+        `${e.who} removed ${q(e.item)} from the ${q(e.list)} list.`,
       restoreItem: (e: PushEvent) =>
-        `${e.who} put ${q(e.item)} back on the ${q(e.list)} list`,
+        `${e.who} put ${q(e.item)} back on the ${q(e.list)} list.`,
       check: (e: PushEvent) =>
-        `${e.who} checked ${q(e.item)} off the ${q(e.list)} list`,
+        `${e.who} checked ${q(e.item)} off the ${q(e.list)} list.`,
       uncheck: (e: PushEvent) =>
-        `${e.who} unchecked ${q(e.item)} in the ${q(e.list)} list`,
+        `${e.who} unchecked ${q(e.item)} in the ${q(e.list)} list.`,
       moveItem: (e: PushEvent) =>
-        `${e.who} moved ${q(e.item)} from the ${q(e.fromList)} list to the ${q(e.list)} list`,
+        `${e.who} moved ${q(e.item)} from the ${q(e.fromList)} list to the ${q(e.list)} list.`,
       clearChecked: (e: PushEvent) =>
-        `${e.who} deleted the checked items from the ${q(e.list)} list`,
+        `${e.who} deleted the checked items from the ${q(e.list)} list.`,
       uncheckAll: (e: PushEvent) =>
-        `${e.who} unchecked everything in the ${q(e.list)} list`,
+        `${e.who} unchecked everything in the ${q(e.list)} list.`,
       checkAll: (e: PushEvent) =>
-        `${e.who} checked everything off the ${q(e.list)} list`,
+        `${e.who} checked everything off the ${q(e.list)} list.`,
     },
     /**
      * More than one event, when Claude gives no summary: "Sam made 3
-     * changes to the “Costco” list", or "… to 2 lists". `list` is the name
+     * changes to the “Costco” list.", or "… to 2 lists.". `list` is the name
      * when there is one list.
      */
     burst: (who: string, changes: number, lists: number, list: string) =>
@@ -368,6 +368,6 @@ export const en = {
         lists === 1
           ? `the ${q(list)} list`
           : plural(lists, { one: `${lists} list`, other: `${lists} lists` })
-      }`,
+      }.`,
   },
 };

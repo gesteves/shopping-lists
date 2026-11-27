@@ -24,14 +24,15 @@ export function renderEvent(event: ActivityEvent, actorName: string): string {
 }
 
 /**
- * The text when more than one event is left: "Sam made 3 changes to the
- * “Costco” list", or "… to 2 lists". #17 replaces it with a summary from
- * Claude, and keeps it as the fallback.
+ * The text when Claude gives none (#89): the sentence of the event for one
+ * event, else "Sam made 3 changes to the “Costco” list." or "… to 2
+ * lists.".
  */
 export function renderFallback(
   events: ActivityEvent[],
   actorName: string,
 ): string {
+  if (events.length === 1) return renderEvent(events[0], actorName);
   const lists = new Map(events.map((e) => [e.listId, e.snapshot.listName]));
   return copy.push.burst(
     who(actorName, events[0].via),

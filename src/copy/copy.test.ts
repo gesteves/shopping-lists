@@ -70,10 +70,10 @@ describe("the dictionary", () => {
     );
     expect(copy.lists.deleteBody(0)).toBe("The other person loses it too.");
     expect(copy.push.burst("Sam", 2, 1, "Costco")).toBe(
-      "Sam made 2 changes to the “Costco” list",
+      "Sam made 2 changes to the “Costco” list.",
     );
     expect(copy.push.burst("Sam", 5, 3, "Costco")).toBe(
-      "Sam made 5 changes to 3 lists",
+      "Sam made 5 changes to 3 lists.",
     );
   });
 

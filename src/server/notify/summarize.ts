@@ -1,7 +1,7 @@
-// A one-line summary from Claude for a push with more than one change
-// (#17). See "Notifications" in docs/PLAN.md. Each failure (no key, an
-// error, a timeout, a refusal, a bad answer) gives the fixed fallback from
-// templates.ts, so a push always goes out.
+// The push text from Claude (#17, #89): one sentence for the changes. See
+// "Notifications" in docs/PLAN.md. Each failure (no key, an error, a
+// timeout, a refusal, a bad answer, a too long answer) gives the fixed
+// fallback from templates.ts, so a push always goes out.
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
@@ -11,8 +11,12 @@ import { renderFallback, who } from "./templates";
 import type { ActivityEvent } from "./types";
 
 export const MODEL = "claude-opus-5-5";
-/** The server cuts at this. It is more than `prompts.notificationSummary.length`. */
-export const MAX_BODY = 160;
+/**
+ * A longer answer gives the fallback. The server does not cut the text: the
+ * device cuts it when necessary (Apple guidelines). It is more than
+ * `prompts.notificationSummary.length`.
+ */
+export const MAX_BODY = 200;
 /** A refused request goes again on the model that Anthropic recommends. */
 export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
@@ -31,6 +35,7 @@ export function summaryInput(events: ActivityEvent[], actorName: string) {
         fromList: e.snapshot.fromListName,
       }),
       ...(e.snapshot.count !== undefined && { count: e.snapshot.count }),
+      ...(e.snapshot.fields !== undefined && { fields: e.snapshot.fields }),
     })),
   };
 }
@@ -48,9 +53,15 @@ export function cleanLine(text: string, max: number): string {
   return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
-/** One line, at most MAX_BODY characters, cut at a word if it is longer. */
-export function cleanBody(text: string): string {
-  return cleanLine(text, MAX_BODY);
+/**
+ * One sentence with a period at the end, or null if it is empty or longer
+ * than MAX_BODY.
+ */
+export function cleanBody(text: string): string | null {
+  let body = cleanLine(text, Infinity);
+  if (!body) return null;
+  if (!/[.!?…]$/.test(body)) body = `${body}.`;
+  return body.length <= MAX_BODY ? body : null;
 }
 
 export interface SummarizerOptions {
@@ -98,7 +109,8 @@ export function createSummarizer(options: SummarizerOptions = {}) {
         return fallback;
       }
       const body = cleanBody(response.parsed_output.body);
-      return body || fallback;
+      if (!body) console.warn("Summary not used: empty or too long");
+      return body ?? fallback;
     } catch (error) {
       console.warn(
         "Summary failed:",

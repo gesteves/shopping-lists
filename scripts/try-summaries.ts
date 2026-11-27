@@ -1,6 +1,6 @@
-// Prints the Claude summary for three sample bursts (#17) and two sample
-// lists, for a manual check. Needs ANTHROPIC_API_KEY. Each run makes five
-// small API calls.
+// Prints the Claude push text for seven sample bursts (#17, #89) and the
+// summary for two sample lists, for a manual check. Needs
+// ANTHROPIC_API_KEY. Each run makes nine small API calls.
 //   ANTHROPIC_API_KEY=… npm run try:summaries
 import { createSummarizer } from "../src/server/notify/summarize";
 import {
@@ -30,6 +30,30 @@ function ev(
 
 const wf = "Whole Foods";
 const bursts: { name: string; events: ActivityEvent[] }[] = [
+  {
+    name: "One add",
+    events: [ev("addItem", { listName: wf, itemName: "Eggs" })],
+  },
+  {
+    name: "An add and a check on one list",
+    events: [
+      ev("addItem", { listName: wf, itemName: "Eggs" }),
+      ev("check", { listName: wf, itemName: "Milk" }),
+    ],
+  },
+  {
+    name: "Adds to two lists",
+    events: [
+      ev("addItem", { listName: wf, itemName: "Eggs" }),
+      ev("addItem", { listName: "Smith’s", itemName: "Milk" }),
+    ],
+  },
+  {
+    name: "New notes",
+    events: [
+      ev("updateItem", { listName: wf, itemName: "Eggs", fields: ["notes"] }),
+    ],
+  },
   {
     name: "Many adds to one list",
     events: ["Milk", "Eggs", "Bread", "Spinach", "Lemons", "Olive oil"].map(

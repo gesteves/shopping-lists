@@ -80,12 +80,16 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
   const out: ActivityEvent[] = [];
   const updates = events.filter((e) => e.type === "updateItem");
   if (updates.length > 0) {
+    const fields = [
+      ...new Set(updates.flatMap((e) => e.snapshot.fields ?? [])),
+    ];
     out.push({
       ...withLastNames(updates.at(-1)!, last),
       snapshot: {
         ...updates.at(-1)!.snapshot,
         listName: last.snapshot.listName,
         oldName: updates[0].snapshot.oldName,
+        ...(fields.length > 0 && { fields }),
       },
     });
   }

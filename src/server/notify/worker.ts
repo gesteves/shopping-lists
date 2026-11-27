@@ -9,7 +9,7 @@ import { activity, listMutes, users } from "@/db/schema";
 import type { PushPayload } from "@/shared/push";
 import { sendToUser } from "../push";
 import { collapse } from "./collapse";
-import { renderEvent, renderFallback } from "./templates";
+import { renderFallback } from "./templates";
 import type { ActivityEvent } from "./types";
 
 export interface NotifierOptions {
@@ -22,8 +22,8 @@ export interface NotifierOptions {
   /** Sends a push to the devices of a user. */
   send?: (userId: string, payload: PushPayload) => Promise<unknown>;
   /**
-   * The text for more than one event. #17 gives a Claude summary. The
-   * default is the fixed fallback.
+   * The text for the events. #17 and #89 give a Claude summary. The default
+   * is the fixed fallback.
    */
   summarize?: (events: ActivityEvent[], actorName: string) => Promise<string>;
 }
@@ -41,10 +41,10 @@ export async function buildPayload(
   if (events.length === 0) return null;
   const listIds = [...new Set(events.map((e) => e.listId))];
   const oneList = listIds.length === 1;
-  const body =
-    events.length === 1
-      ? renderEvent(events[0], actorName)
-      : await summarize(events, actorName);
+  // Claude writes each body, also for one event (#89): it writes item names
+  // in lowercase, as in a sentence. Without Claude, the fallback is a
+  // template.
+  const body = await summarize(events, actorName);
   const deleted = events.some(
     (e) => e.type === "deleteList" && e.listId === listIds[0],
   );
