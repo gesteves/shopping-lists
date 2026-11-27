@@ -222,14 +222,16 @@ Streamable HTTP at `/mcp`, stateless.
   | `Mcp-Name` | required on `tools/call` | |
 
 - An unknown version gets 400 with `UnsupportedProtocolVersion` (-32022), including `data.supported`.
-- Validate `Origin`: 403 if it's present and not allowed.
+- A request without the required `_meta` fields gets 400 with -32602. An unknown method gets 404 with -32601.
+- Validate `Origin` first: 403 if it's present and not the app host, `claude.ai` or `claude.com`. Then the token (401/403), then the protocol checks.
 - Return JSON responses. Only stream SSE if something needs it, and then send `X-Accel-Buffering: no` and keep-alives. Closing the stream counts as cancellation.
 - Not used: sampling, roots and logging (all deprecated); `subscriptions/listen` and the tasks extension (not needed); elicitation (Duet's own approval step covers destructive actions).
 
 ### Implementation
-Use the official SDK if, at ticket time, it supports 2026-07-28 statelessly alongside a 2025-11-25 fallback. Otherwise write a small JSON-RPC handler covering `server/discover`, `tools/list`, `tools/call` and legacy `initialize`, validated with zod and contract tests.
-
-At #18, the Better Auth MCP docs use `@modelcontextprotocol/server` v2 (`createMcpHandler`) for the stateless transport; check it first. #18 made `src/app/mcp/route.ts` with the token checks only (`withMcpAuth` and `requireScopes` in `src/server/mcp/auth.ts`).
+**Decided in #19:** the official SDK, `@modelcontextprotocol/server` v2. It serves 2026-07-28 statelessly and does the protocol checks above: `server/discover`, the header and version errors, `resultType`, and the cache hints.
+- `createMcpHandler` builds a new `McpServer` for each request, for the caller of that request. With its default `legacy: "stateless"`, a 2025-era client that sends `initialize` gets the same tools from the same factory, with no session.
+- `src/server/mcp/server.ts` has the factory and the route: the Origin check, then `withMcpAuth` (`src/server/mcp/auth.ts`, #18), then the SDK handler with the caller as `AuthInfo`.
+- `src/server/mcp/tools.ts` has the tools: one list (`TOOLS`) with the schemas, the annotations, the scope, and the code of each tool.
 
 ### Authorization
 OAuth 2.1. The app is both the authorization server (AS) and the resource server.
@@ -267,10 +269,12 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 ### Tools
 - `tools/list` returns tools in a fixed order, with `ttlMs` and `cacheScope: "private"`.
 - Every tool has `title`, `description`, `inputSchema` and `outputSchema`. Results return matching `structuredContent`, plus the same JSON in a text block.
-- Business errors (unknown list, deleted item) return `isError: true`. Malformed calls get -32602.
-- Each tool accepts a `list_id` (returned by `create_list`) or a case-insensitive list name.
-- Write tools accept an optional `idempotency_key`, which becomes the op_id.
-- Every write calls `applyOps`. Reads use `src/server/queries.ts`.
+- Business errors (unknown list, deleted item) return `isError: true`, with a message that helps the model recover: an unknown list names the lists. Arguments that fail the input schema also return `isError: true` (the SDK, per the spec), not -32602.
+- Each tool takes a list (`list`, `to_list`) as a `list_id` or a case-insensitive name, and an item (`item`, `items`) as an `item_id` or a case-insensitive name on that list. Two lists or items with the same name are an error that gives their IDs. If any item is unknown, the tool changes nothing.
+- Write tools accept an optional `idempotency_key`. The op IDs (and the IDs of new lists and items) come from a hash of the user, the tool, the key, and the position. Thus a retry with the same key gets "duplicate" results and changes nothing.
+- Every write calls `applyOps` with `via: "mcp"`. Reads use `src/server/queries.ts`.
+- Scopes: read tools need `lists:read`, write tools `lists:write`. A missing scope gets 403 `insufficient_scope` before the tool runs (the SDK `scopeChallenge`). `tools/list` shows all the tools.
+- `create_list` refuses a name that a live list has, because names are references. `add_items` does not change the quantity or the notes of an item that is already on the list: use `update_item`.
 - Every tool sets `openWorldHint: false`.
 
 | Tool | Annotations | Notes |
@@ -350,7 +354,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 - the undo toast;
 - a non-allowlisted account being rejected (a test auth stub stands in for Google). The stub (`src/lib/auth-stub.ts`) runs through the same Better Auth path as the Google callback. The standalone server always sets `NODE_ENV=production`, so the stub needs `AUTH_STUB=1`, an http loopback `BETTER_AUTH_URL`, and no `FLY_APP_NAME`.
 
-**MCP contract tests (vitest) against `/mcp`:**
+**MCP contract tests (vitest) against `/mcp`** (`src/server/mcp/auth.test.ts`, `src/server/mcp/server.test.ts`):
 - 405 on `GET`/`DELETE`;
 - `HeaderMismatch` and `UnsupportedProtocolVersion`;
 - `server/discover` shape;

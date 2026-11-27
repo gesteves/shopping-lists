@@ -1,27 +1,18 @@
 import { getDb } from "@/db/client";
 import { getAuth } from "@/lib/auth";
-import { SCOPES } from "@/lib/oauth";
-import { requireScopes, withMcpAuth } from "@/server/mcp/auth";
+import { createMcpRoute } from "@/server/mcp/server";
 
-// The MCP endpoint (spec 2026-07-28). This ticket (#18) adds only the token
-// checks. The JSON-RPC handler and the tools come in #19.
+// The MCP endpoint (#18, #19): stateless Streamable HTTP, spec 2026-07-28,
+// and 2025-era clients through the SDK fallback. See "MCP" in docs/PLAN.md.
 
-export const POST = withMcpAuth(
-  { auth: getAuth, db: getDb },
-  async (request, caller) => {
-    requireScopes(caller, [SCOPES.read]);
-    const body: unknown = await request.json().catch(() => null);
-    const id =
-      body && typeof body === "object" && "id" in body ? body.id : null;
-    return Response.json({
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32601, message: "Method not found" },
-    });
-  },
-);
+let route: ((request: Request) => Promise<Response>) | undefined;
 
-// Stateless Streamable HTTP: POST only.
+export function POST(request: Request) {
+  route ??= createMcpRoute({ auth: getAuth, db: getDb });
+  return route(request);
+}
+
+// No sessions and no standalone SSE stream: POST only.
 const notAllowed = () =>
   new Response(null, { status: 405, headers: { Allow: "POST" } });
 export { notAllowed as GET, notAllowed as DELETE };

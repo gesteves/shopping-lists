@@ -3,7 +3,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { dialog, signIn } from "./helpers";
+import { dialog, mcpCall, signIn } from "./helpers";
 
 // Nothing listens on this port: page.route answers for it. (Not a port that
 // browsers block, such as 9.)
@@ -86,11 +86,7 @@ test("connect an app, then disconnect it in settings", async ({
   });
   expect(tokens.status()).toBe(200);
   const { access_token } = (await tokens.json()) as { access_token: string };
-  const mcp = (token: string) =>
-    request.post("/mcp", {
-      headers: { authorization: `Bearer ${token}` },
-      data: { jsonrpc: "2.0", id: 1, method: "server/discover" },
-    });
+  const mcp = (token: string) => mcpCall(request, token, "tools/list");
   expect((await mcp(access_token)).status()).toBe(200);
 
   // Disconnect it.
@@ -100,7 +96,10 @@ test("connect an app, then disconnect it in settings", async ({
   await row.getByRole("button", { name: `Disconnect ${name}` }).click();
   const confirm = dialog(page, `Disconnect ${name}?`);
   await confirm.getByRole("button", { name: "Disconnect" }).click();
-  await expect(page.getByText(`Disconnected ${name}.`)).toBeVisible();
+  // The toast, not its copy in the screen reader live region.
+  await expect(
+    page.locator("wa-toast-item").filter({ hasText: `Disconnected ${name}.` }),
+  ).toBeVisible();
   await expect(row).toHaveCount(0);
 
   // The token that worked a moment ago does not work now.
