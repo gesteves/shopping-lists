@@ -1,4 +1,5 @@
 // Facts about this browser, for the notification settings (#15).
+import { copy } from "@/copy";
 
 /** A short device name from the user agent, for example "iPhone · Safari". */
 export function deviceLabel(ua: string, maxTouchPoints = 0): string {
@@ -14,7 +15,7 @@ export function deviceLabel(ua: string, maxTouchPoints = 0): string {
             ? "Windows"
             : /Linux|CrOS/.test(ua)
               ? "Linux"
-              : "Device";
+              : copy.devices.unknown;
   const browser = /Edg\//.test(ua)
     ? "Edge"
     : /Firefox\/|FxiOS/.test(ua)
@@ -24,7 +25,7 @@ export function deviceLabel(ua: string, maxTouchPoints = 0): string {
         : /Safari\//.test(ua)
           ? "Safari"
           : null;
-  return browser ? `${device} · ${browser}` : device;
+  return browser ? copy.devices.label(device, browser) : device;
 }
 
 /** iPhone and iPad allow push only in an app on the Home Screen. */

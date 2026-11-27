@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { copy } from "../src/copy";
 import { signIn, switchControl, synced } from "./helpers";
 
 async function scan(page: Page, screen: string) {
@@ -60,34 +61,38 @@ for (const colorScheme of ["light", "dark"] as const) {
 
       const name = `A11y ${randomUUID().slice(0, 8)}`;
       const index = page
-        .getByRole("region", { name: "Lists" })
+        .getByRole("region", { name: copy.lists.heading })
         .filter({ visible: true });
-      await index.getByLabel("New list name").fill(name);
-      await index.getByRole("button", { name: "Create" }).click();
+      await index.getByLabel(copy.lists.newName).fill(name);
+      await index.getByRole("button", { name: copy.lists.create }).click();
       await index.getByRole("link", { name }).click();
       for (const item of ["Milk", "Eggs"]) {
-        await page.getByLabel("Item name").fill(item);
-        await page.getByRole("button", { name: "Add", exact: true }).click();
+        await page.getByLabel(copy.addBar.name).fill(item);
+        await page
+          .getByRole("button", { name: copy.addBar.add, exact: true })
+          .click();
       }
       await page.getByRole("checkbox", { name: /^Eggs\b/ }).click();
       await synced(page);
       await scan(page, "list");
 
-      await page.getByRole("button", { name: "Edit Milk" }).click();
-      await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+      await expect(
+        page.getByLabel(copy.itemSheet.name, { exact: true }),
+      ).toBeVisible();
       await scan(page, "item sheet");
       await page.keyboard.press("Escape");
 
-      await page.getByRole("button", { name: "List actions" }).click();
+      await page.getByRole("button", { name: copy.list.actions }).click();
       await expect(
-        page.getByRole("menuitem", { name: "Rename" }),
+        page.getByRole("menuitem", { name: copy.common.rename }),
       ).toBeVisible();
       await scan(page, "list menu");
       await page.keyboard.press("Escape");
 
       await page.goto("/settings");
       await expect(
-        page.getByRole("heading", { name: "Settings" }),
+        page.getByRole("heading", { name: copy.settings.title }),
       ).toBeVisible();
       await scan(page, "settings");
 
@@ -111,14 +116,16 @@ test("the item sheet opens at once with reduced motion", async ({
     await signIn(page);
     const name = `Motion ${randomUUID().slice(0, 8)}`;
     const index = page
-      .getByRole("region", { name: "Lists" })
+      .getByRole("region", { name: copy.lists.heading })
       .filter({ visible: true });
-    await index.getByLabel("New list name").fill(name);
-    await index.getByRole("button", { name: "Create" }).click();
+    await index.getByLabel(copy.lists.newName).fill(name);
+    await index.getByRole("button", { name: copy.lists.create }).click();
     await index.getByRole("link", { name }).click();
-    await page.getByLabel("Item name").fill("Milk");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Milk" }).click();
+    await page.getByLabel(copy.addBar.name).fill("Milk");
+    await page
+      .getByRole("button", { name: copy.addBar.add, exact: true })
+      .click();
+    await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
     // No transition: the sheet runs no animations.
     const running = await page.evaluate(
       () =>
@@ -166,9 +173,11 @@ test("Keep screen on holds the wake lock and is remembered", async ({
 
   await signIn(page);
   await page.goto("/settings");
-  const setting = page.getByRole("switch", { name: "Keep screen on" });
+  const setting = page.getByRole("switch", {
+    name: copy.settings.keepScreenOn,
+  });
   // The control itself: the middle of the host is the hint text.
-  const screenSwitch = switchControl(page, "Keep screen on").locator(
+  const screenSwitch = switchControl(page, copy.settings.keepScreenOn).locator(
     '[part~="control"]',
   );
   await expect(setting).not.toBeChecked();
@@ -198,9 +207,9 @@ test("Keep screen on is hidden without the Wake Lock API", async ({ page }) => {
   await signIn(page);
   await page.goto("/settings");
   await expect(
-    page.getByRole("heading", { name: "Connected apps" }),
+    page.getByRole("heading", { name: copy.settings.connectedApps }),
   ).toBeVisible();
   await expect(
-    page.getByRole("switch", { name: "Keep screen on" }),
+    page.getByRole("switch", { name: copy.settings.keepScreenOn }),
   ).toHaveCount(0);
 });

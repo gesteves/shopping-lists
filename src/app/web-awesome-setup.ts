@@ -4,6 +4,7 @@ import { setDefaultIconFamily } from "@web.awesome.me/webawesome-pro/dist/compon
 import { setIconPath } from "@web.awesome.me/webawesome-pro/dist/utilities/base-path.js";
 import { registerTranslation } from "@web.awesome.me/webawesome-pro/dist/utilities/localize.js";
 import en from "@web.awesome.me/webawesome-pro/dist/translations/en.js";
+import { copy } from "@/copy";
 
 // The icons are self-hosted: scripts/build-icons.mjs writes the Font Awesome
 // icons that src/app/icons.json lists to public/icons/<style>/<name>.svg.
@@ -15,6 +16,6 @@ setDefaultIconFamily("classic", "regular");
 // English type does not list these keys, but the component reads them.
 registerTranslation({
   ...en,
-  decrement: "Fewer",
-  increment: "More",
+  decrement: copy.stepper.decrement,
+  increment: copy.stepper.increment,
 } as typeof en);

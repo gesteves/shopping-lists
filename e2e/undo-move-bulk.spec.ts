@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
+import { copy } from "../src/copy";
 import { dialog, signIn, synced } from "./helpers";
 
 function index(page: Page) {
-  return page.getByRole("region", { name: "Lists" }).filter({ visible: true });
+  return page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true });
 }
 
 async function createList(page: Page, name: string) {
-  await index(page).getByLabel("New list name").fill(name);
-  await index(page).getByRole("button", { name: "Create" }).click();
+  await index(page).getByLabel(copy.lists.newName).fill(name);
+  await index(page).getByRole("button", { name: copy.lists.create }).click();
   await expect(index(page).getByRole("link", { name })).toBeVisible();
 }
 
@@ -20,8 +23,8 @@ async function openList(page: Page, name: string) {
 
 async function add(page: Page, ...names: string[]) {
   for (const name of names) {
-    await page.getByLabel("Item name").fill(name);
-    await page.getByLabel("Item name").press("Enter");
+    await page.getByLabel(copy.addBar.name).fill(name);
+    await page.getByLabel(copy.addBar.name).press("Enter");
   }
   for (const name of names) await expect(item(page, name)).toBeVisible();
 }
@@ -50,15 +53,15 @@ test("delete then undo brings the item back for both people", async ({
     await openList(b, name);
     await expect(item(b, "Lemons")).toBeVisible();
 
-    await a.getByRole("button", { name: "Edit Lemons" }).click();
-    await dialog(a, "Edit item")
-      .getByRole("button", { name: "Delete" })
+    await a.getByRole("button", { name: copy.item.edit("Lemons") }).click();
+    await dialog(a, copy.itemSheet.title)
+      .getByRole("button", { name: copy.common.delete })
       .click();
     await expect(item(a, "Lemons")).toHaveCount(0);
     await expect(item(b, "Lemons")).toHaveCount(0);
 
-    await toast(a, "Deleted “Lemons”.")
-      .getByRole("button", { name: "Undo" })
+    await toast(a, copy.itemSheet.deleted("Lemons"))
+      .getByRole("button", { name: copy.common.undo })
       .click();
     await expect(item(a, "Lemons")).toBeVisible();
     await expect(item(b, "Lemons")).toBeVisible();
@@ -73,15 +76,15 @@ test("delete a list, then undo", async ({ page }) => {
   const name = `Undo list ${randomUUID().slice(0, 8)}`;
   await createList(page, name);
   await index(page)
-    .getByRole("button", { name: `More for ${name}` })
+    .getByRole("button", { name: copy.lists.more(name) })
     .click();
-  await index(page).getByRole("menuitem", { name: "Delete" }).click();
-  await dialog(page, `Delete the “${name}” list?`)
-    .getByRole("button", { name: "Delete list" })
+  await index(page).getByRole("menuitem", { name: copy.common.delete }).click();
+  await dialog(page, copy.lists.deleteTitle(name))
+    .getByRole("button", { name: copy.lists.deleteConfirm })
     .click();
   await expect(index(page).getByRole("link", { name })).toHaveCount(0);
-  await toast(page, `Deleted the “${name}” list.`)
-    .getByRole("button", { name: "Undo" })
+  await toast(page, copy.lists.deleted(name))
+    .getByRole("button", { name: copy.common.undo })
     .click();
   await expect(index(page).getByRole("link", { name })).toBeVisible();
 });
@@ -95,13 +98,13 @@ test("move an item to a different list", async ({ page }) => {
   await openList(page, from);
   await add(page, "Tortillas");
 
-  await page.getByRole("button", { name: "Edit Tortillas" }).click();
-  const sheet = dialog(page, "Edit item");
-  await sheet.getByRole("combobox", { name: "Move to" }).click();
+  await page.getByRole("button", { name: copy.item.edit("Tortillas") }).click();
+  const sheet = dialog(page, copy.itemSheet.title);
+  await sheet.getByRole("combobox", { name: copy.itemSheet.moveTo }).click();
   await sheet.getByRole("option", { name: to }).click();
   await expect(item(page, "Tortillas")).toHaveCount(0);
   await expect(
-    toast(page, `Moved “Tortillas” to the “${to}” list.`),
+    toast(page, copy.itemSheet.moved("Tortillas", to)),
   ).toBeVisible();
   await synced(page);
 
@@ -123,8 +126,8 @@ test("uncheck all and clear checked items, and they sync", async ({ page }) => {
   await expect(item(page, "Beans")).toHaveAttribute("aria-checked", "true");
 
   // Uncheck all.
-  await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("menuitem", { name: "Uncheck all" }).click();
+  await page.getByRole("button", { name: copy.list.actions }).click();
+  await page.getByRole("menuitem", { name: copy.list.uncheckAll }).click();
   for (const n of ["Rice", "Beans", "Salsa"]) {
     await expect(item(page, n)).toHaveAttribute("aria-checked", "false");
   }
@@ -135,10 +138,10 @@ test("uncheck all and clear checked items, and they sync", async ({ page }) => {
   // Clear checked items, after a confirmation.
   await item(page, "Salsa").click();
   await expect(item(page, "Salsa")).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("menuitem", { name: "Clear checked items" }).click();
-  await dialog(page, `Clear 1 item checked off “${name}”?`)
-    .getByRole("button", { name: "Clear" })
+  await page.getByRole("button", { name: copy.list.actions }).click();
+  await page.getByRole("menuitem", { name: copy.list.clearChecked }).click();
+  await dialog(page, copy.list.clearTitle(1, name))
+    .getByRole("button", { name: copy.list.clearConfirm })
     .click();
   await expect(item(page, "Salsa")).toHaveCount(0);
   await expect(item(page, "Rice")).toBeVisible();
@@ -153,9 +156,9 @@ test("rename a list from its header", async ({ page }) => {
   const name = `Header ${randomUUID().slice(0, 8)}`;
   await createList(page, name);
   await openList(page, name);
-  await page.getByRole("button", { name: "List actions" }).click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
-  const input = page.getByLabel(`New name for “${name}”`);
+  await page.getByRole("button", { name: copy.list.actions }).click();
+  await page.getByRole("menuitem", { name: copy.common.rename }).click();
+  const input = page.getByLabel(copy.lists.renameLabel(name));
   await input.fill(`${name} 2`);
   await input.press("Enter");
   await expect(

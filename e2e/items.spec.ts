@@ -1,23 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { dialog, signIn, synced } from "./helpers";
+import { copy } from "../src/copy";
+import { anyCount, dialog, signIn, synced } from "./helpers";
 
 /** Make a list in the UI and open it. */
 async function openNewList(page: Page) {
   const name = `Items ${randomUUID().slice(0, 8)}`;
   const index = page
-    .getByRole("region", { name: "Lists" })
+    .getByRole("region", { name: copy.lists.heading })
     .filter({ visible: true });
-  await index.getByLabel("New list name").fill(name);
-  await index.getByRole("button", { name: "Create" }).click();
+  await index.getByLabel(copy.lists.newName).fill(name);
+  await index.getByRole("button", { name: copy.lists.create }).click();
   await index.getByRole("link", { name }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   return name;
 }
 
 async function add(page: Page, name: string) {
-  await page.getByLabel("Item name").fill(name);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByLabel(copy.addBar.name).fill(name);
+  await page
+    .getByRole("button", { name: copy.addBar.add, exact: true })
+    .click();
   await expect(item(page, name)).toBeVisible();
 }
 
@@ -28,7 +31,7 @@ function item(page: Page, name: string) {
 /** The item names, in the order on the screen. */
 async function order(page: Page) {
   return page
-    .getByRole("list", { name: "Items" })
+    .getByRole("list", { name: copy.list.items })
     .getByRole("checkbox")
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-name")));
 }
@@ -47,7 +50,7 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await expect(
     page
       .getByRole("main")
-      .getByText("3 to get", { exact: true })
+      .getByText(copy.list.remaining(3), { exact: true })
       .filter({ visible: true }),
   ).toBeVisible();
 
@@ -58,7 +61,7 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await expect(
     page
       .getByRole("main")
-      .getByText("2 to get", { exact: true })
+      .getByText(copy.list.remaining(2), { exact: true })
       .filter({ visible: true }),
   ).toBeVisible();
 
@@ -68,22 +71,26 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await expect.poll(() => order(page)).toEqual(["Bread", "Eggs", "Milk"]);
 
   // Edit the name, the quantity, and the notes.
-  await page.getByRole("button", { name: "Edit Milk" }).click();
-  const sheet = dialog(page, "Edit item");
-  await expect(sheet.getByText(/^Added by Ana · just now$/)).toBeVisible();
-  await sheet.getByLabel("Name").fill("Oat milk");
-  await sheet.getByRole("button", { name: "More" }).click();
-  await sheet.getByRole("button", { name: "More" }).click();
-  await sheet.getByLabel("Notes").fill("Barista edition");
-  await sheet.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+  const sheet = dialog(page, copy.itemSheet.title);
+  await expect(
+    sheet.getByText(copy.item.added("Ana", copy.time.justNow), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await sheet.getByLabel(copy.itemSheet.name).fill("Oat milk");
+  await sheet.getByRole("button", { name: copy.stepper.increment }).click();
+  await sheet.getByRole("button", { name: copy.stepper.increment }).click();
+  await sheet.getByLabel(copy.itemSheet.notes).fill("Barista edition");
+  await sheet.getByRole("button", { name: copy.common.save }).click();
   await expect(sheet).toBeHidden();
-  await expect(item(page, "Oat milk")).toContainText("×3");
+  await expect(item(page, "Oat milk")).toContainText(copy.item.quantity(3));
   await expect(item(page, "Oat milk")).toContainText("Barista edition");
   await expect.poll(() => order(page)).toEqual(["Oat milk", "Bread", "Eggs"]);
 
   // Delete from the sheet.
-  await page.getByRole("button", { name: "Edit Eggs" }).click();
-  await sheet.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: copy.item.edit("Eggs") }).click();
+  await sheet.getByRole("button", { name: copy.common.delete }).click();
   await expect(item(page, "Eggs")).toHaveCount(0);
 
   // The server has it all: a reload shows the same list.
@@ -106,13 +113,15 @@ test("every item action works offline and syncs when online", async ({
   await context.setOffline(true);
   await add(page, "Plums");
   await item(page, "Apples").click();
-  await page.getByRole("button", { name: "Edit Pears" }).click();
-  const sheet = dialog(page, "Edit item");
-  await sheet.getByLabel("Notes").fill("Ripe");
-  await sheet.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("button", { name: "Edit Plums" }).click();
-  await sheet.getByRole("button", { name: "Delete" }).click();
-  await expect(page.getByText(/changes to sync/)).toBeVisible();
+  await page.getByRole("button", { name: copy.item.edit("Pears") }).click();
+  const sheet = dialog(page, copy.itemSheet.title);
+  await sheet.getByLabel(copy.itemSheet.notes).fill("Ripe");
+  await sheet.getByRole("button", { name: copy.common.save }).click();
+  await page.getByRole("button", { name: copy.item.edit("Plums") }).click();
+  await sheet.getByRole("button", { name: copy.common.delete }).click();
+  await expect(
+    page.getByText(anyCount(copy.sync.offlineWithChanges)),
+  ).toBeVisible();
   await expect.poll(() => order(page)).toEqual(["Pears", "Apples"]);
 
   await context.setOffline(false);
@@ -128,8 +137,8 @@ test("fast entry keeps every item", async ({ page }) => {
   await openNewList(page);
   const names = ["Bananas", "Greek yogurt", "Sourdough", "Coffee beans"];
   for (const name of names) {
-    await page.getByLabel("Item name").fill(name);
-    await page.getByLabel("Item name").press("Enter");
+    await page.getByLabel(copy.addBar.name).fill(name);
+    await page.getByLabel(copy.addBar.name).press("Enter");
   }
   await expect
     .poll(async () => (await order(page)).sort())

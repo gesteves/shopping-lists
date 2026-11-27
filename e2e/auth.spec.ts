@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL, E2E_DATABASE_PATH } from "../playwright.config";
+import { copy } from "../src/copy";
 
 /** Sign in through the stub, as Google would. */
 function stubSignIn(page: Page, email: string, name = "Ana") {
@@ -35,15 +36,15 @@ test("an allowlisted account signs in and out", async ({ page }) => {
   await stubSignIn(page, E2E_ALLOWED_EMAIL);
   await expect(page).toHaveURL("/");
   await expect(
-    page.getByRole("img", { name: "Signed in as Ana" }),
+    page.getByRole("img", { name: copy.header.signedInAs("Ana") }),
   ).toBeVisible();
 
   // A signed-in user does not see the sign-in page.
   await page.goto("/sign-in");
   await expect(page).toHaveURL("/");
 
-  await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  await page.getByRole("button", { name: copy.settings.signOut }).click();
   await expect(page).toHaveURL("/sign-in");
   await page.goto("/");
   await expect(page).toHaveURL("/sign-in");
@@ -56,9 +57,7 @@ test("an account not in the allowlist is rejected", async ({
   await stubSignIn(page, email);
   await expect(page).toHaveURL("/sign-in?error=email_not_allowed");
   await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "This Google account can’t use Shopping Lists" }),
+    page.getByRole("alert").filter({ hasText: copy.signIn.emailNotAllowed }),
   ).toBeVisible();
   await page.goto("/");
   await expect(page).toHaveURL("/sign-in");

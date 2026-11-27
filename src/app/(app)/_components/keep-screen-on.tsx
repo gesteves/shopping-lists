@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { showToast } from "@/client/toasts";
+import { copy } from "@/copy";
 import {
   WakeLockController,
   readWakeLockSetting,
@@ -16,7 +17,7 @@ let shared: WakeLockController | undefined;
 /** One controller for the page, thus one lock. */
 function wakeLock(): WakeLockController {
   shared ??= new WakeLockController(() => {
-    showToast({ message: "The screen can’t stay on right now." });
+    showToast({ message: copy.settings.keepScreenOnFailed });
   });
   return shared;
 }
@@ -50,14 +51,14 @@ export function KeepScreenOnSetting() {
   return (
     <section aria-labelledby="screen" className="flex flex-col gap-3">
       <h2 id="screen" className="text-xl font-semibold">
-        Screen
+        {copy.settings.screen}
       </h2>
       <wa-switch
         checked={state.on}
         onChange={toggle}
-        hint="While the app is open, so you can see your list in the store. Only on this device."
+        hint={copy.settings.keepScreenOnHint}
       >
-        Keep screen on
+        {copy.settings.keepScreenOn}
       </wa-switch>
     </section>
   );

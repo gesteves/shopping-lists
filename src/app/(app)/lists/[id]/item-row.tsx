@@ -1,6 +1,7 @@
 "use client";
 
 import { mutate } from "@/client/sync";
+import { copy } from "@/copy";
 import type { ItemRecord } from "@/shared/sync";
 import { EditingBadge } from "../../_components/presence";
 
@@ -50,7 +51,8 @@ export function ItemRow({
                 appearance="filled"
                 className="shrink-0 tabular-nums"
               >
-                <span className="sr-only">quantity </span>×{item.quantity}
+                <span className="sr-only">{copy.item.quantityPrefix}</span>
+                {copy.item.quantity(item.quantity)}
               </wa-badge>
             )}
           </span>
@@ -68,7 +70,7 @@ export function ItemRow({
         onClick={() => onEdit(item)}
         className="me-2 self-center"
       >
-        <wa-icon name="pen" label={`Edit ${item.name}`}></wa-icon>
+        <wa-icon name="pen" label={copy.item.edit(item.name)}></wa-icon>
       </wa-button>
     </li>
   );

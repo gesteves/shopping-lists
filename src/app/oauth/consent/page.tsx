@@ -2,12 +2,15 @@ import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Suspense } from "react";
+import { copy } from "@/copy";
 import { getAuth } from "@/lib/auth";
-import { SCOPE_TEXT, displayHost, isLoopbackRedirect } from "@/lib/oauth";
+import { SCOPES, displayHost, isLoopbackRedirect } from "@/lib/oauth";
 import { requireUser } from "@/lib/session";
 import { ConsentButtons } from "./consent-buttons";
 
-export const metadata: Metadata = { title: "Connect an app – Shopping Lists" };
+export const metadata: Metadata = {
+  title: copy.app.pageTitle(copy.consent.title),
+};
 
 // The consent page of the OAuth server (#18). The authorize endpoint sends
 // the user here with a signed copy of the request. The client name is a
@@ -24,6 +27,14 @@ export default function ConsentPage({
       </Suspense>
     </main>
   );
+}
+
+/** What a scope lets an app do. An unknown scope shows as it is. */
+function scopeText(scope: string): string {
+  const key = (Object.keys(SCOPES) as (keyof typeof SCOPES)[]).find(
+    (k) => SCOPES[k] === scope,
+  );
+  return key ? copy.consent.scopes[key] : scope;
 }
 
 /** Only the signed parameters, as the provider signed them. */
@@ -46,12 +57,7 @@ async function Consent({
   const auth = getAuth();
   const { secret } = await auth.$context;
   if (!(await verifyOAuthQueryParams(query.toString(), secret))) {
-    return (
-      <Problem>
-        This request expired. Go back to the app that sent you here and connect
-        again.
-      </Problem>
-    );
+    return <Problem>{copy.consent.expired}</Problem>;
   }
 
   const clientId = query.get("client_id") ?? "";
@@ -63,15 +69,10 @@ async function Consent({
     })
     .catch(() => null);
   if (!client) {
-    return (
-      <Problem>
-        This app isn’t available. Go back to the app that sent you here and
-        connect again.
-      </Problem>
-    );
+    return <Problem>{copy.consent.unknownApp}</Problem>;
   }
 
-  const name = client.client_name?.trim() || "An app";
+  const name = client.client_name?.trim() || copy.consent.unnamedApp;
   const scopes = (query.get("scope") ?? "").split(" ").filter(Boolean);
   const clientHost = clientId.startsWith("https://")
     ? displayHost(clientId)
@@ -80,42 +81,38 @@ async function Consent({
   return (
     <>
       <h1 className="text-4xl leading-tight font-semibold tracking-tight text-balance">
-        Connect “{name}” to your lists?
+        {copy.consent.heading(name)}
       </h1>
       <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-ink-muted">
         {clientHost && (
           <>
-            <dt>App from</dt>
+            <dt>{copy.consent.appFrom}</dt>
             <dd className="font-medium break-all text-ink">{clientHost}</dd>
           </>
         )}
-        <dt>Sends you to</dt>
+        <dt>{copy.consent.sendsYouTo}</dt>
         <dd className="font-medium break-all text-ink">
           {displayHost(redirectUri)}
         </dd>
-        <dt>Account</dt>
+        <dt>{copy.consent.account}</dt>
         <dd className="font-medium break-all text-ink">{user.email}</dd>
       </dl>
       {isLoopbackRedirect(redirectUri) && (
         <wa-callout variant="warning" className="mt-6">
           <wa-icon slot="icon" name="triangle-exclamation"></wa-icon>
-          This app runs on a computer, not on a website. Connect it only if you
-          started it yourself.
+          {copy.consent.loopback}
         </wa-callout>
       )}
-      <h2 className="mt-8 font-semibold">It will be able to:</h2>
+      <h2 className="mt-8 font-semibold">{copy.consent.canDo}</h2>
       <ul className="mt-2 flex flex-col gap-2">
         {scopes.map((scope) => (
           <li key={scope} className="flex items-start gap-3">
             <wa-icon name="check" className="mt-1 text-accent"></wa-icon>
-            <span>{SCOPE_TEXT[scope] ?? scope}</span>
+            <span>{scopeText(scope)}</span>
           </li>
         ))}
       </ul>
-      <p className="mt-6 text-ink-muted">
-        Its changes show as “{user.name} (via Claude)”. You can disconnect it at
-        any time in Settings.
-      </p>
+      <p className="mt-6 text-ink-muted">{copy.consent.via(user.name)}</p>
       <ConsentButtons />
     </>
   );
@@ -125,7 +122,7 @@ function Problem({ children }: { children: React.ReactNode }) {
   return (
     <>
       <h1 className="text-4xl font-semibold tracking-tight">
-        Can’t connect the app
+        {copy.consent.problem}
       </h1>
       <p role="alert" className="mt-4 text-lg text-ink-muted">
         {children}

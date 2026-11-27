@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { copy } from "@/copy";
 import { ServiceWorker } from "../service-worker";
 import { SessionRefresh } from "../session-refresh";
 import { AppHeader, HeaderFrame } from "./_components/app-header";
@@ -24,7 +25,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </Suspense>
       <div className="flex flex-1 lg:grid lg:grid-cols-[22rem_1fr]">
         <aside
-          aria-label="All lists"
+          aria-label={copy.lists.sidebar}
           className="hidden border-r border-line px-4 py-6 lg:block"
         >
           <ListIndex headingLevel={2} />

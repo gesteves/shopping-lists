@@ -1,6 +1,7 @@
 "use client";
 
 import { usePresence, useUsers } from "@/client/hooks";
+import { copy } from "@/copy";
 
 /** The other people who match `filter`, one each, with their names. */
 function usePeople(
@@ -17,7 +18,7 @@ function usePeople(
   ];
   return ids.map((id) => ({
     id,
-    name: users?.get(id)?.name ?? "Someone",
+    name: users?.get(id)?.name ?? copy.people.someone,
     image: users?.get(id)?.image ?? null,
   }));
 }
@@ -33,8 +34,8 @@ export function ListViewers({ listId }: { listId: string }) {
           key={p.id}
           image={p.image ?? undefined}
           initials={p.name.slice(0, 1).toUpperCase()}
-          label={`${p.name} has this list open`}
-          title={`${p.name} has this list open`}
+          label={copy.presence.viewing(p.name)}
+          title={copy.presence.viewing(p.name)}
           className="ring-2 ring-surface"
           style={{ "--size": "1.5rem" }}
         ></wa-avatar>
@@ -55,7 +56,7 @@ export function EditingBadge({ itemId }: { itemId: string }) {
       attention="pulse"
       className="shrink-0 self-start"
     >
-      {people.map((p) => p.name).join(", ")} is editing…
+      {copy.item.editing(people.map((p) => p.name))}
     </wa-badge>
   );
 }

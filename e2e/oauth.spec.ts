@@ -3,6 +3,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { copy } from "../src/copy";
 import { dialog, mcpCall, signIn } from "./helpers";
 
 // Nothing listens on this port: page.route answers for it. (Not a port that
@@ -57,15 +58,17 @@ test("connect an app, then disconnect it in settings", async ({
   await page.goto(path);
   await expect(page).toHaveURL(/\/oauth\/consent\?/);
   await expect(
-    page.getByRole("heading", { name: `Connect “${name}” to your lists?` }),
+    page.getByRole("heading", { name: copy.consent.heading(name) }),
   ).toBeVisible();
   await expect(
     page.getByText("127.0.0.1:59999", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("This app runs on a computer")).toBeVisible();
-  await expect(page.getByText("See your lists and items")).toBeVisible();
+  await expect(page.getByText(copy.consent.loopback)).toBeVisible();
+  await expect(page.getByText(copy.consent.scopes.read)).toBeVisible();
 
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page
+    .getByRole("button", { name: copy.consent.connect, exact: true })
+    .click();
   await expect.poll(() => callbacks.length).toBe(1);
   const callback = callbacks[0];
   expect(callback.searchParams.get("state")).toBe("e2e-state");
@@ -93,12 +96,16 @@ test("connect an app, then disconnect it in settings", async ({
   await page.goto("/settings");
   const row = page.getByRole("listitem").filter({ hasText: name });
   await expect(row).toBeVisible();
-  await row.getByRole("button", { name: `Disconnect ${name}` }).click();
-  const confirm = dialog(page, `Disconnect ${name}?`);
-  await confirm.getByRole("button", { name: "Disconnect" }).click();
+  await row
+    .getByRole("button", { name: `${copy.settings.disconnect} ${name}` })
+    .click();
+  const confirm = dialog(page, copy.settings.disconnectTitle(name));
+  await confirm.getByRole("button", { name: copy.settings.disconnect }).click();
   // The toast, not its copy in the screen reader live region.
   await expect(
-    page.locator("wa-toast-item").filter({ hasText: `Disconnected ${name}.` }),
+    page
+      .locator("wa-toast-item")
+      .filter({ hasText: copy.settings.disconnected(name) }),
   ).toBeVisible();
   await expect(row).toHaveCount(0);
 
@@ -132,7 +139,7 @@ test("the consent page passes the contrast scan in light and dark", async ({
       const { clientId } = await registerClient(request);
       await page.goto(authorizePath(clientId, baseURL!).path);
       await expect(
-        page.getByRole("button", { name: "Connect", exact: true }),
+        page.getByRole("button", { name: copy.consent.connect, exact: true }),
       ).toBeVisible();
       const scan = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])

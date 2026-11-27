@@ -4,6 +4,7 @@ import { Serwist } from "@serwist/window";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { showToast } from "@/client/toasts";
+import { copy } from "@/copy";
 
 let serwist: Serwist | undefined;
 
@@ -31,11 +32,11 @@ export function ServiceWorker() {
     serwist.addEventListener("controlling", (event) => {
       if (event.isUpdate) {
         showToast({
-          message: "A new version of the app is ready.",
+          message: copy.newVersion.message,
           icon: "arrow-rotate-right",
           variant: "brand",
           duration: 0,
-          action: { label: "Reload", run: () => location.reload() },
+          action: { label: copy.common.reload, run: () => location.reload() },
         });
       }
       // The first page load came before the worker: save it now.

@@ -1,16 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
+import { copy } from "../src/copy";
 import { dialog, signIn, synced } from "./helpers";
 
 function index(page: Page) {
-  return page.getByRole("region", { name: "Lists" }).filter({ visible: true });
+  return page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true });
 }
 
 async function newList(page: Page, prefix: string) {
   const name = `${prefix} ${randomUUID().slice(0, 8)}`;
-  await index(page).getByLabel("New list name").fill(name);
-  await index(page).getByRole("button", { name: "Create" }).click();
+  await index(page).getByLabel(copy.lists.newName).fill(name);
+  await index(page).getByRole("button", { name: copy.lists.create }).click();
   await expect(index(page).getByRole("link", { name })).toBeVisible();
   return name;
 }
@@ -25,8 +28,8 @@ function item(page: Page, name: string) {
 }
 
 async function add(page: Page, name: string) {
-  await page.getByRole("combobox", { name: "Item name" }).fill(name);
-  await page.getByRole("combobox", { name: "Item name" }).press("Enter");
+  await page.getByRole("combobox", { name: copy.addBar.name }).fill(name);
+  await page.getByRole("combobox", { name: copy.addBar.name }).press("Enter");
 }
 
 test("typing suggests past items from every list", async ({ page }) => {
@@ -41,9 +44,9 @@ test("typing suggests past items from every list", async ({ page }) => {
   await page.goto("/");
   const second = await newList(page, "Next");
   await open(page, second);
-  const box = page.getByRole("combobox", { name: "Item name" });
+  const box = page.getByRole("combobox", { name: copy.addBar.name });
   await box.fill(word.toLowerCase());
-  const options = page.getByRole("listbox", { name: "Suggestions" });
+  const options = page.getByRole("listbox", { name: copy.addBar.suggestions });
   await expect(
     options.getByRole("option", { name: `${word} purple` }),
   ).toBeVisible();
@@ -67,16 +70,18 @@ test("a name already on the list asks first", async ({ page }) => {
 
   // Unchecked: offer one more.
   await add(page, "butter");
-  const more = dialog(page, "“Butter” is already on the list.");
-  await more.getByRole("button", { name: "Add more" }).click();
-  await expect(item(page, "Butter")).toContainText("×2");
+  const more = dialog(page, copy.addBar.duplicateTitle("Butter"));
+  await more
+    .getByRole("button", { name: copy.addBar.duplicateConfirm })
+    .click();
+  await expect(item(page, "Butter")).toContainText(copy.item.quantity(2));
 
   // Checked: offer to uncheck it.
   await item(page, "Butter").click();
   await expect(item(page, "Butter")).toHaveAttribute("aria-checked", "true");
   await add(page, "Butter");
-  await dialog(page, "Already on the list. Uncheck “Butter”?")
-    .getByRole("button", { name: "Uncheck" })
+  await dialog(page, copy.addBar.checkedTitle("Butter"))
+    .getByRole("button", { name: copy.addBar.checkedConfirm })
     .click();
   await expect(item(page, "Butter")).toHaveAttribute("aria-checked", "false");
   await expect(page.getByRole("checkbox", { name: /^Butter/ })).toHaveCount(1);

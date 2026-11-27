@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { copy } from "@/copy";
 import { authClient } from "@/lib/auth-client";
 
 export function GoogleSignInButton() {
@@ -26,7 +27,7 @@ export function GoogleSignInButton() {
       className="mt-10 w-full"
     >
       <wa-icon slot="start" family="brands" name="google"></wa-icon>
-      {pending ? "Opening Google…" : "Sign in with Google"}
+      {pending ? copy.signIn.opening : copy.signIn.button}
     </wa-button>
   );
 }

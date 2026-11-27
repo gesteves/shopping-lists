@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useList, useReportPresence } from "@/client/hooks";
+import { copy } from "@/copy";
 import type { ItemRecord } from "@/shared/sync";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
@@ -33,23 +34,24 @@ export function ListView() {
         className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md pr-2 font-medium text-accent lg:hidden"
       >
         <wa-icon name="chevron-left"></wa-icon>
-        Lists
+        {copy.list.back}
       </Link>
       {view === undefined ? null : view === null ? (
-        <p className="mt-4 text-lg text-ink-muted">
-          This list doesn’t exist or was deleted.
-        </p>
+        <p className="mt-4 text-lg text-ink-muted">{copy.list.notFound}</p>
       ) : (
         <>
           <ListHeader view={view} />
           <p className="mt-1 text-ink-muted tabular-nums" aria-live="polite">
             {view.items.length === 0
-              ? "Nothing on this list yet. Add the first item below."
+              ? copy.list.empty
               : remaining === 0
-                ? "Everything is checked off."
-                : `${remaining} to get`}
+                ? copy.list.allChecked
+                : copy.list.remaining(remaining)}
           </p>
-          <ul aria-label="Items" className="mt-5 mb-4 flex flex-col gap-2">
+          <ul
+            aria-label={copy.list.items}
+            className="mt-5 mb-4 flex flex-col gap-2"
+          >
             {view.items.map((item) => (
               <ItemRow key={item.id} item={item} onEdit={setEditing} />
             ))}

@@ -2,6 +2,7 @@
 
 // Helpers for Web Awesome components in React (#51).
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { copy } from "@/copy";
 
 type Listeners = Record<string, (event: Event) => void>;
 
@@ -59,7 +60,7 @@ export function ConfirmDialog({
     <wa-dialog ref={ref} open={open} label={label} light-dismiss>
       <div className="text-ink-muted">{children}</div>
       <wa-button slot="footer" appearance="plain" onClick={onClose}>
-        Cancel
+        {copy.common.cancel}
       </wa-button>
       <wa-button
         slot="footer"

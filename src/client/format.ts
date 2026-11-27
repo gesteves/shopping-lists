@@ -1,4 +1,6 @@
-// Text for the UI: relative times and "who changed it" lines.
+// Text for the UI: relative times and "who changed it" lines. The words
+// are in the dictionary (src/copy).
+import { copy, locale } from "@/copy";
 import type { ItemRecord, UserRecord } from "@/shared/sync";
 
 const MINUTE = 60_000;
@@ -8,15 +10,15 @@ const DAY = 24 * HOUR;
 /** "just now", "5 min. ago", "yesterday", "3 days ago", or a date. */
 export function relativeTime(at: number, now: number = Date.now()): string {
   const diff = now - at;
-  if (diff < MINUTE) return "just now";
-  const rtf = new Intl.RelativeTimeFormat("en", {
+  if (diff < MINUTE) return copy.time.justNow;
+  const rtf = new Intl.RelativeTimeFormat(locale, {
     numeric: "auto",
     style: "short",
   });
   if (diff < HOUR) return rtf.format(-Math.floor(diff / MINUTE), "minute");
   if (diff < DAY) return rtf.format(-Math.floor(diff / HOUR), "hour");
   if (diff < 7 * DAY) return rtf.format(-Math.floor(diff / DAY), "day");
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat(locale, {
     month: "short",
     day: "numeric",
     year:
@@ -27,7 +29,7 @@ export function relativeTime(at: number, now: number = Date.now()): string {
 }
 
 function personName(users: Map<string, UserRecord>, id: string): string {
-  return users.get(id)?.name ?? "Someone";
+  return users.get(id)?.name ?? copy.people.someone;
 }
 
 /**
@@ -40,12 +42,18 @@ export function itemHistory(
   now: number = Date.now(),
 ): string[] {
   const lines = [
-    `Added by ${personName(users, item.createdBy)} · ${relativeTime(item.createdAt, now)}`,
+    copy.item.added(
+      personName(users, item.createdBy),
+      relativeTime(item.createdAt, now),
+    ),
   ];
   if (item.updatedAt !== item.createdAt || item.updatedVia === "mcp") {
-    const via = item.updatedVia === "mcp" ? " (via Claude)" : "";
+    const name = personName(users, item.updatedBy);
     lines.push(
-      `Updated by ${personName(users, item.updatedBy)}${via} · ${relativeTime(item.updatedAt, now)}`,
+      copy.item.updated(
+        item.updatedVia === "mcp" ? copy.people.viaClaude(name) : name,
+        relativeTime(item.updatedAt, now),
+      ),
     );
   }
   return lines;

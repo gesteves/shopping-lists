@@ -5,12 +5,9 @@ import { useState } from "react";
 import type { ListView } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
+import { copy } from "@/copy";
 import { DeleteDialog, RenameForm } from "../../_components/list-index";
 import { ConfirmDialog, useWaEvents } from "../../_components/wa";
-
-function count(n: number) {
-  return `${n} ${n === 1 ? "item" : "items"}`;
-}
 
 /**
  * The list name, and a menu: rename, uncheck all, clear checked items, and
@@ -28,9 +25,9 @@ export function ListHeader({ view }: { view: ListView }) {
   async function uncheckAll() {
     await mutate({ type: "uncheckAll", args: { listId: list.id } });
     showToast({
-      message: `Unchecked ${count(checked.length)}.`,
+      message: copy.list.unchecked(checked.length),
       action: {
-        label: "Undo",
+        label: copy.common.undo,
         run: async () => {
           for (const itemId of checked) {
             await mutate({ type: "check", args: { itemId } });
@@ -44,9 +41,9 @@ export function ListHeader({ view }: { view: ListView }) {
     setClearing(false);
     await mutate({ type: "clearChecked", args: { listId: list.id } });
     showToast({
-      message: `Cleared ${count(checked.length)}.`,
+      message: copy.list.cleared(checked.length),
       action: {
-        label: "Undo",
+        label: copy.common.undo,
         run: async () => {
           for (const itemId of checked) {
             await mutate({ type: "restoreItem", args: { itemId } });
@@ -83,38 +80,38 @@ export function ListHeader({ view }: { view: ListView }) {
         </h1>
         <wa-dropdown ref={menu} placement="bottom-end">
           <wa-button slot="trigger" appearance="plain" size="l">
-            <wa-icon name="ellipsis" label="List actions"></wa-icon>
+            <wa-icon name="ellipsis" label={copy.list.actions}></wa-icon>
           </wa-button>
           <wa-dropdown-item value="rename">
             <wa-icon slot="icon" name="pen"></wa-icon>
-            Rename
+            {copy.common.rename}
           </wa-dropdown-item>
           <wa-dropdown-item value="uncheck-all" disabled={checked.length === 0}>
             <wa-icon slot="icon" name="rotate-left"></wa-icon>
-            Uncheck all
+            {copy.list.uncheckAll}
           </wa-dropdown-item>
           <wa-dropdown-item
             value="clear-checked"
             disabled={checked.length === 0}
           >
             <wa-icon slot="icon" name="broom"></wa-icon>
-            Clear checked items
+            {copy.list.clearChecked}
           </wa-dropdown-item>
           <wa-divider></wa-divider>
           <wa-dropdown-item value="delete" variant="danger">
             <wa-icon slot="icon" name="trash-can"></wa-icon>
-            Delete list
+            {copy.list.deleteList}
           </wa-dropdown-item>
         </wa-dropdown>
       </div>
       <ConfirmDialog
         open={clearing}
-        label={`Clear ${count(checked.length)} checked off “${list.name}”?`}
-        confirmLabel="Clear"
+        label={copy.list.clearTitle(checked.length, list.name)}
+        confirmLabel={copy.list.clearConfirm}
         onConfirm={clearChecked}
         onClose={() => setClearing(false)}
       >
-        They go from the list for both of you.
+        {copy.list.clearBody}
       </ConfirmDialog>
       <DeleteDialog
         open={deleting}

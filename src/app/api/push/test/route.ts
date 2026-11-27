@@ -1,3 +1,4 @@
+import { copy } from "@/copy";
 import { requireApiUser } from "@/lib/session";
 import { getVapidConfig, sendToUser } from "@/server/push";
 
@@ -9,8 +10,8 @@ export async function POST() {
     return Response.json({ error: "push_not_configured" }, { status: 503 });
   }
   const result = await sendToUser(user.id, {
-    title: "Shopping Lists",
-    body: "Notifications work on this device.",
+    title: copy.push.title,
+    body: copy.push.testBody,
     url: "/settings",
     tag: "test",
   });
