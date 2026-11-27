@@ -53,11 +53,13 @@ export function dialog(page: Page, name: string | RegExp) {
 
 /**
  * The visible <wa-switch> of a switch, for a click. The role "switch" is a
- * hidden input in its shadow root: check its state, but click this.
+ * hidden input in its shadow root: check its state, but click this. Next.js
+ * keeps the last page hidden in the DOM, thus find only a visible one.
  */
 export function switchControl(page: Page, name: string) {
   return page
     .locator("wa-switch")
+    .filter({ visible: true })
     .filter({ has: page.getByRole("switch", { name }) });
 }
 

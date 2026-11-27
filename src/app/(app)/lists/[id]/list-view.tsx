@@ -10,6 +10,7 @@ import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
 import { ItemSheet } from "./item-sheet";
 import { ListHeader } from "./list-menu";
+import { ListSwitches } from "./list-switches";
 
 /** One list: its items (unchecked first), the add bar, and the item sheet. */
 export function ListView() {
@@ -41,6 +42,7 @@ export function ListView() {
       ) : (
         <>
           <ListHeader view={view} />
+          <ListSwitches listId={view.list.id} />
           <p className="mt-1 text-ink-muted tabular-nums" aria-live="polite">
             {view.items.length === 0
               ? copy.list.empty
