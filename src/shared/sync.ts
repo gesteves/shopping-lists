@@ -71,6 +71,8 @@ export interface ListRecord {
   updatedAt: number;
   updatedVia: Via;
   deletedAt: number | null;
+  /** A one-line summary of the unchecked items, from Claude, or null. */
+  summary: string | null;
   seq: number;
 }
 

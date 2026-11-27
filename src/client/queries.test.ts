@@ -2,7 +2,13 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
 import { ClientDb } from "./db";
-import { readList, readListSummaries, readLists } from "./queries";
+import {
+  listLine,
+  readList,
+  readListSummaries,
+  readLists,
+  type ListSummary,
+} from "./queries";
 
 let db: ClientDb;
 let n = 0;
@@ -20,8 +26,20 @@ const base = {
   seq: 1,
 };
 
-function list(id: string, name: string, deletedAt: number | null = null) {
-  return { ...base, id, name, updatedAt: 1, deletedAt } satisfies ListRecord;
+function list(
+  id: string,
+  name: string,
+  deletedAt: number | null = null,
+  summary: string | null = null,
+) {
+  return {
+    ...base,
+    id,
+    name,
+    updatedAt: 1,
+    deletedAt,
+    summary,
+  } satisfies ListRecord;
 }
 
 function item(
@@ -99,5 +117,51 @@ describe("readListSummaries", () => {
       ["Costco", 0],
       ["Target", 2],
     ]);
+  });
+});
+
+describe("readListSummaries names", () => {
+  it("gives the names of a short list in list order, and none for a long list", async () => {
+    await db.lists.put(list("l", "Target"));
+    await db.items.bulkPut([item("a", 1), item("b", 3), item("c", 2, true)]);
+    expect((await readListSummaries(db))[0].names).toEqual(["b", "a"]);
+
+    await db.items.bulkPut([item("d", 4), item("e", 5)]);
+    expect((await readListSummaries(db))[0].names).toEqual([]);
+  });
+});
+
+describe("listLine", () => {
+  const summary = (patch: Partial<ListSummary>): ListSummary => ({
+    ...list("l", "Target"),
+    remaining: 0,
+    names: [],
+    ...patch,
+  });
+
+  it("says that there is nothing to get", () => {
+    expect(listLine(summary({ summary: "Old summary" }))).toBe(
+      "Nothing to get",
+    );
+  });
+
+  it("gives the names of a short list", () => {
+    expect(
+      listLine(
+        summary({
+          remaining: 3,
+          names: ["Milk", "Eggs", "Bread"],
+          summary: "x",
+        }),
+      ),
+    ).toBe("Milk, Eggs, and Bread");
+    expect(listLine(summary({ remaining: 1, names: ["Milk"] }))).toBe("Milk");
+  });
+
+  it("gives the summary of a long list, or the count", () => {
+    expect(
+      listLine(summary({ remaining: 5, summary: "Produce and milk" })),
+    ).toBe("Produce and milk");
+    expect(listLine(summary({ remaining: 5 }))).toBe("5 items");
   });
 });

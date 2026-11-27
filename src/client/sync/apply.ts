@@ -66,6 +66,7 @@ export function applyLocal(
         updatedAt: time,
         updatedVia: "app",
         deletedAt: null,
+        summary: null,
         seq: 0,
       });
       break;

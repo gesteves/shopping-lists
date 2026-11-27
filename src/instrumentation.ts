@@ -11,6 +11,12 @@ export async function register() {
   const { createSummarizer } = await import("@/server/notify/summarize");
   // Claude writes the text for more than one change (#17).
   startNotifier({ summarize: createSummarizer() });
+  // Claude writes a summary of the unchecked items of each list. There is
+  // no worker without ANTHROPIC_API_KEY: the lists page shows the count.
+  const { createListSummarizer } = await import("@/server/summary/summarize");
+  const { startSummaryWorker } = await import("@/server/summary/worker");
+  const summarizeList = createListSummarizer();
+  if (summarizeList) startSummaryWorker({ summarize: summarizeList });
   // Delete old tombstones each day (#20).
   const { startPurger } = await import("@/server/purge");
   startPurger();

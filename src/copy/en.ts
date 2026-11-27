@@ -27,6 +27,8 @@ export function article(name: string): "a" | "an" {
   return /^[aeiou]/.test(s) ? "an" : "a";
 }
 
+const andList = new Intl.ListFormat("en", { type: "conjunction" });
+
 const items = (n: number) =>
   plural(n, { one: `${n} item`, other: `${n} items` });
 
@@ -117,6 +119,9 @@ export const en = {
     pickOne: "Select a list, or make a new one.",
     /** The unchecked items of a list. */
     remaining: (n: number) => items(n),
+    nothingToGet: "Nothing to get",
+    /** The unchecked items of a short list, for example "Milk and Eggs". */
+    names: (names: string[]) => andList.format(names),
     more: (name: string) => `More for ${name}`,
     newName: "New list name",
     newPlaceholder: "New list",

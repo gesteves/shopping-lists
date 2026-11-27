@@ -99,6 +99,39 @@ export function applyOps(
   return { results, seq };
 }
 
+/**
+ * Write the summary of a list (src/server/summary/). This is the one write
+ * that does not go through applyOps: the summary comes from the items, not
+ * from a person. It gets a seq and a poke, so the clients pull it, but no
+ * clocks, no attribution, and no activity row. It writes nothing to a
+ * deleted or missing list. It returns true if it wrote the summary.
+ */
+export function setListSummary(
+  listId: string,
+  summary: string,
+  key: string,
+  options: Pick<ApplyOptions, "db"> = {},
+): boolean {
+  const db = options.db ?? getDb();
+  const seq = db.transaction((tx) => {
+    const row = tx
+      .select({ deletedAt: lists.deletedAt })
+      .from(lists)
+      .where(eq(lists.id, listId))
+      .get();
+    if (!row || row.deletedAt) return null;
+    const seq = bumpSeq(tx);
+    tx.update(lists)
+      .set({ summary, summaryKey: key, seq })
+      .where(eq(lists.id, listId))
+      .run();
+    return seq;
+  });
+  if (seq === null) return false;
+  bus.emit("poke", { seq });
+  return true;
+}
+
 function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
   const done = ctx.tx
     .select({ result: processedOps.result })
@@ -189,14 +222,17 @@ function opTime(op: Op): Date {
   return new Date(parse(op.hlc).wall);
 }
 
-function nextSeq(ctx: Ctx): number {
-  const row = ctx.tx.get<{ value: number }>(
+function bumpSeq(tx: Tx): number {
+  return tx.get<{ value: number }>(
     sql`INSERT INTO server_seq (id, value) VALUES (1, 1)
         ON CONFLICT (id) DO UPDATE SET value = value + 1
         RETURNING value`,
-  );
-  ctx.lastSeq = row.value;
-  return row.value;
+  ).value;
+}
+
+function nextSeq(ctx: Ctx): number {
+  ctx.lastSeq = bumpSeq(ctx.tx);
+  return ctx.lastSeq;
 }
 
 /** The fields that a write sets on each changed row. */

@@ -1,4 +1,6 @@
 // Reads of the local view. The hooks in ./hooks.ts use them.
+import { copy } from "@/copy";
+import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
 import type { ClientDb } from "./db";
 
@@ -45,20 +47,45 @@ export async function readList(
 export interface ListSummary extends ListRecord {
   /** Items that are not checked and not deleted. */
   remaining: number;
+  /**
+   * The names of the unchecked items, in list order, when there are fewer
+   * than SUMMARY_MIN_ITEMS. Else empty.
+   */
+  names: string[];
 }
 
-/** The lists that are not deleted, by name, each with its unchecked count. */
+/**
+ * The lists that are not deleted, by name, each with its unchecked count
+ * and, for a short list, the names.
+ */
 export async function readListSummaries(db: ClientDb): Promise<ListSummary[]> {
   const [lists, items] = await Promise.all([
     readLists(db),
     db.items.filter((i) => i.deletedAt === null && !i.checked).toArray(),
   ]);
-  const counts = new Map<string, number>();
+  const byList = new Map<string, ItemRecord[]>();
   for (const item of items) {
-    counts.set(item.listId, (counts.get(item.listId) ?? 0) + 1);
+    byList.set(item.listId, [...(byList.get(item.listId) ?? []), item]);
   }
-  return lists.map((list) => ({
-    ...list,
-    remaining: counts.get(list.id) ?? 0,
-  }));
+  return lists.map((list) => {
+    const unchecked = byList.get(list.id) ?? [];
+    return {
+      ...list,
+      remaining: unchecked.length,
+      names:
+        unchecked.length < SUMMARY_MIN_ITEMS
+          ? sortItems(unchecked).map((i) => i.name)
+          : [],
+    };
+  });
+}
+
+/**
+ * The line under a list name on the lists page: "Nothing to get", the
+ * names of a short list, the summary from Claude, or the count.
+ */
+export function listLine(list: ListSummary): string {
+  if (list.remaining === 0) return copy.lists.nothingToGet;
+  if (list.remaining < SUMMARY_MIN_ITEMS) return copy.lists.names(list.names);
+  return list.summary ?? copy.lists.remaining(list.remaining);
 }

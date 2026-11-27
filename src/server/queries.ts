@@ -21,6 +21,7 @@ export function toListRecord(row: ListRow): ListRecord {
     updatedAt: row.updatedAt.getTime(),
     updatedVia: row.updatedVia,
     deletedAt: ms(row.deletedAt),
+    summary: row.summary,
     seq: row.seq,
   };
 }

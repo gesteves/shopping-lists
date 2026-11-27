@@ -103,6 +103,7 @@ describe("push then pull", () => {
         updatedAt: NOW - 1000,
         updatedVia: "app",
         deletedAt: null,
+        summary: null,
         seq: 1,
       },
     ]);

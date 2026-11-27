@@ -32,6 +32,7 @@ function list(patch: Partial<ListRecord> = {}): ListRecord {
     updatedAt: T - 100,
     updatedVia: "app",
     deletedAt: null,
+    summary: null,
     seq: 1,
     ...patch,
   };
