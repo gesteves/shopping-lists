@@ -90,7 +90,7 @@ export function NotificationSettings() {
         ) : support === "ok" ? (
           <div className="flex flex-col items-start gap-2">
             <p className="text-ink-muted">{copy.settings.pushOffer}</p>
-            <wa-button variant="brand" size="l" onClick={enable} loading={busy}>
+            <wa-button variant="brand" onClick={enable} loading={busy}>
               <wa-icon slot="start" name="bell"></wa-icon>
               {copy.settings.enablePush}
             </wa-button>
