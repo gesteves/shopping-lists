@@ -17,7 +17,7 @@ export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
         Sign in to see the lists you share.
       </p>
       <Suspense>
-        <RedirectIfSignedIn />
+        <RedirectIfSignedIn searchParams={searchParams} />
         <SignInError searchParams={searchParams} />
       </Suspense>
       <GoogleSignInButton />
@@ -25,8 +25,13 @@ export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
   );
 }
 
-async function RedirectIfSignedIn() {
-  if (await getCurrentUser()) redirect("/");
+async function RedirectIfSignedIn({
+  searchParams,
+}: Pick<PageProps<"/sign-in">, "searchParams">) {
+  // An OAuth request (#18) can ask for a new sign-in (prompt=login). Then
+  // the page has the signed query, and must not go to the app.
+  const { sig } = await searchParams;
+  if (!sig && (await getCurrentUser())) redirect("/");
   return null;
 }
 

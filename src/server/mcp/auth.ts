@@ -1,0 +1,153 @@
+// Access tokens for the MCP endpoint (#18). See "Authorization" in
+// docs/PLAN.md.
+//
+// requireMcpAuth (@better-auth/mcp) checks the JWT: signature, `iss`, `aud`
+// (the canonical /mcp URI), `exp`, `azp`, and the scopes. It gives 401 with
+// `WWW-Authenticate: Bearer resource_metadata="…"`, and 403
+// `insufficient_scope`. A JWT stays valid until it expires, thus this guard
+// also checks the database at each request:
+//   - the token type is "at+jwt" (an OAuth access token, not another JWT);
+//   - the user exists and is still in ALLOWED_EMAILS;
+//   - the grant (the consent of the user for the client) exists and the
+//     client is not disabled. "Connected apps" in settings deletes the grant,
+//     thus a revoke stops the access at once.
+import "server-only";
+import { createResourceServerChallenge } from "@better-auth/oauth-provider";
+import { requireMcpAuth } from "@better-auth/mcp";
+import { APIError } from "better-auth/api";
+import { createInsufficientScopeError } from "better-auth/oauth2";
+import { and, eq } from "drizzle-orm";
+import { decodeProtectedHeader, type JWTPayload } from "jose";
+import type { Db } from "@/db/client";
+import { oauthClients, oauthConsents, users } from "@/db/schema";
+import { isAllowedEmail } from "@/lib/allowlist";
+import type { Auth } from "@/lib/auth";
+import { SCOPES, appOrigin, mcpResource } from "@/lib/oauth";
+
+type Env = Record<string, string | undefined>;
+
+export interface McpCaller {
+  userId: string;
+  /** The OAuth client ID: a random ID (DCR) or a URL (CIMD). */
+  clientId: string;
+  scopes: ReadonlySet<string>;
+}
+
+export type McpHandler = (
+  request: Request,
+  caller: McpCaller,
+) => Promise<Response>;
+
+/** The scopes that a 401 tells a client to ask for. Not offline_access. */
+const CHALLENGE_SCOPES = [SCOPES.read, SCOPES.write];
+
+/**
+ * Throws the 403 `insufficient_scope` error if the caller does not have all
+ * the scopes. The guard makes the challenge response from it.
+ */
+export function requireScopes(caller: McpCaller, scopes: readonly string[]) {
+  const missing = scopes.filter((s) => !caller.scopes.has(s));
+  if (missing.length > 0) throw createInsufficientScopeError(missing);
+}
+
+function scopesOf(claims: JWTPayload): Set<string> {
+  return new Set(
+    typeof claims.scope === "string" ? claims.scope.split(" ") : [],
+  );
+}
+
+/** Wraps an MCP route handler with the token checks. */
+export function withMcpAuth(
+  deps: { auth: () => Auth; db: () => Db; env?: Env },
+  handler: McpHandler,
+): (request: Request) => Promise<Response> {
+  const env = deps.env ?? process.env;
+  let guarded: ((request: Request) => Promise<Response>) | undefined;
+
+  return (request) => {
+    guarded ??= requireMcpAuth(
+      deps.auth(),
+      async (req, claims) => {
+        const resource = mcpResource(env);
+        const reject = (description: string) =>
+          unauthorized(req, resource, description);
+
+        if (tokenType(req) !== "at+jwt") return reject("not an access token");
+        const userId = claims.sub;
+        const clientId = typeof claims.azp === "string" ? claims.azp : "";
+        if (!userId || !clientId) return reject("no subject or client");
+
+        const db = deps.db();
+        const user = db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get();
+        if (!user || !isAllowedEmail(user.email, env.ALLOWED_EMAILS)) {
+          return reject("the user cannot use this app");
+        }
+        const grant = db
+          .select({ disabled: oauthClients.disabled })
+          .from(oauthConsents)
+          .innerJoin(
+            oauthClients,
+            eq(oauthClients.clientId, oauthConsents.clientId),
+          )
+          .where(
+            and(
+              eq(oauthConsents.userId, userId),
+              eq(oauthConsents.clientId, clientId),
+            ),
+          )
+          .get();
+        if (!grant || grant.disabled) return reject("access was revoked");
+
+        return handler(req, { userId, clientId, scopes: scopesOf(claims) });
+      },
+      {
+        resource: mcpResource(env),
+        issuer: appOrigin(env),
+        challengeScopes: CHALLENGE_SCOPES,
+      },
+    );
+    return guarded(request);
+  };
+}
+
+function tokenType(request: Request): string | undefined {
+  const token = request.headers
+    .get("authorization")
+    ?.replace(/^(Bearer|DPoP)\s+/i, "");
+  if (!token) return undefined;
+  try {
+    return decodeProtectedHeader(token).typ;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A 401 with the same Bearer challenge as the library gives. */
+function unauthorized(
+  request: Request,
+  resource: string,
+  description: string,
+): Response {
+  const error = new APIError("UNAUTHORIZED", {
+    error: "invalid_token",
+    error_description: description,
+  });
+  const challenge = createResourceServerChallenge(error, resource, {
+    request,
+    challengeScopes: CHALLENGE_SCOPES,
+  });
+  const headers = new Headers(challenge?.headers);
+  headers.set("Content-Type", "application/json");
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: description },
+      id: null,
+    }),
+    { status: 401, headers },
+  );
+}
