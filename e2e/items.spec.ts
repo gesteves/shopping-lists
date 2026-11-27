@@ -120,6 +120,21 @@ test("every item action works offline and syncs when online", async ({
   await expect(item(page, "Pears")).toContainText("Ripe");
 });
 
+test("the lists page shows the names of a short list", async ({ page }) => {
+  await signIn(page);
+  const name = await openNewList(page);
+  await add(page, "Milk");
+  await add(page, "Eggs");
+  await page.goto("/");
+  const row = page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true })
+    .getByRole("listitem")
+    .filter({ hasText: name });
+  // The last updated first, as on the list page.
+  await expect(row).toContainText(copy.lists.names(["Eggs", "Milk"]));
+});
+
 test("fast entry keeps every item", async ({ page }) => {
   await signIn(page);
   await openNewList(page);

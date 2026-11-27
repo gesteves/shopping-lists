@@ -21,7 +21,7 @@ test("create, rename, and delete a list, and keep them after a reload", async ({
   await lists(page).getByLabel(copy.lists.newName).fill(name);
   await lists(page).getByRole("button", { name: copy.lists.create }).click();
   const row = lists(page).getByRole("listitem").filter({ hasText: name });
-  await expect(row).toContainText(copy.lists.remaining(0));
+  await expect(row).toContainText(copy.lists.nothingToGet);
   await synced(page);
   await page.reload();
   await expect(lists(page).getByRole("link", { name })).toBeVisible();

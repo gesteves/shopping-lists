@@ -75,7 +75,7 @@ Schema in `src/db/schema.ts`.
 | Table | Columns / purpose |
 |---|---|
 | `users` | id, email, name (Google given name), avatar_url |
-| `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, clocks (JSON), seq |
+| `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, clocks (JSON), summary and summary_key (see List summaries), seq |
 | `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, created_by/at, updated_by/at, updated_via, deleted_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at. It makes pushes idempotent: a retry gets the stored result. |
 | `activity` | id, op_id, actor_id, via, type (the op type), list_id, item_id, snapshot (names at that moment), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
@@ -99,7 +99,7 @@ Indexes: `seq` on `lists` and `items`, `(list_id, name_key)` and `name_key` on `
 4. writes `activity` rows;
 5. emits `poke` on the in-process bus.
 
-Because of this, realtime updates, notifications and attribution behave the same whether a change comes from the app or from Claude.
+Because of this, realtime updates, notifications and attribution behave the same whether a change comes from the app or from Claude. The one exception is `setListSummary` (List summaries): the server makes the summary from the items, thus it has no actor.
 
 **`applyOps` results** (#5): each op gets `applied { changed }`, `merged { into, changed }`, `rejected { reason }`, or `duplicate { original }`. The reasons are `list_not_found`, `list_deleted`, `list_exists`, `item_not_found`, `item_exists`, and `clock_ahead` (the op HLC is more than 5 minutes after the server clock). `processed_ops` keeps the first result, also for a rejection, so a retry gets the same answer. An op that writes only clocks is `applied { changed: false }`: it gets no seq, no activity row and no poke. Each changed row gets its own seq, so a page of a pull never splits one seq. `updated_at` is the op time (the HLC wall time), not the server time. `activity.at` is the server time. An unexpected error rolls back the whole call.
 
@@ -199,6 +199,20 @@ Code in `src/server/notify/`.
 - API: `GET/POST /api/push/subscriptions`, `PATCH/DELETE /api/push/subscriptions/<id>`, `POST /api/push/test`, `GET/PUT /api/push/mutes`. The endpoint is unique: a browser that subscribes again replaces its row.
 - `src/server/push.ts`: `sendToUser(userId, payload)` sends to the enabled devices with a 24 h TTL, deletes a subscription on 404 or 410, and sets `last_success_at`. Keys come from `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. The subject is `VAPID_SUBJECT`, or the app origin, so no email is needed. Without keys, nothing is sent.
 - The service worker shows the payload (`PushPayload`: title, body, url, tag). A tap focuses a window of the app on that URL, or opens one. Only same-origin URLs are used.
+
+## List summaries
+Code in `src/server/summary/`. The lists page shows one line under each list name, so you can see at a glance what to get:
+- No unchecked items: "Nothing to get".
+- 1 to 3 unchecked items: their names, in list order ("Eggs, Milk, and Bread"). The client makes this line at once, with no API call.
+- 4 or more: the summary from Claude in `lists.summary`, for example "Milk, eggs, produce, and snacks for the party". If there is no summary yet, the count ("5 items").
+
+The list page shows no count.
+
+**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 4 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows the old summary.
+
+**Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
+
+**Claude** (`summarize.ts`): the same request as the notification summary (`claude-opus-5-5`, `effort: "low"`, structured output `{ summary }`, server-side refusal fallbacks, 10 s timeout, 1 retry). The input is the list name and at most 200 items, with names and quantities only. The prompt asks for at most 60 characters; the server cuts at 90. Any error or refusal gives no summary. `npm run try:summaries` prints two sample lists.
 
 ## MCP
 Targets spec **2026-07-28**. Code in `src/app/mcp/route.ts` and `src/server/mcp/*`. References: [spec](https://modelcontextprotocol.io/specification/2026-07-28), [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog), [deprecated](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). Re-read them at the start of #18 and #19.

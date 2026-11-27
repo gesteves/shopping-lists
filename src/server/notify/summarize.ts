@@ -13,7 +13,7 @@ export const MODEL = "claude-opus-5-5";
 /** The prompt asks for 120 characters at most. The server cuts at this. */
 export const MAX_BODY = 160;
 /** A refused request goes again on the model that Anthropic recommends. */
-const FALLBACK_BETA = "server-side-fallback-2026-07-01";
+export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 const Summary = z.object({ body: z.string() });
 
@@ -46,17 +46,22 @@ export function summaryInput(events: ActivityEvent[], actorName: string) {
   };
 }
 
-/** One line, at most MAX_BODY characters, cut at a word if it is longer. */
-export function cleanBody(text: string): string {
+/** One line, at most `max` characters, cut at a word if it is longer. */
+export function cleanLine(text: string, max: number): string {
   let line = text.replace(/\s+/g, " ").trim();
   // Remove quotes only if one pair wraps the whole line: names in the line
   // have their own curly quotes.
   const wrapped = /^"([^"]*)"$/.exec(line) ?? /^“([^“”]*)”$/.exec(line);
   if (wrapped) line = wrapped[1].trim();
-  if (line.length <= MAX_BODY) return line;
-  const cut = line.slice(0, MAX_BODY - 1);
+  if (line.length <= max) return line;
+  const cut = line.slice(0, max - 1);
   const space = cut.lastIndexOf(" ");
-  return `${(space > MAX_BODY / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/** One line, at most MAX_BODY characters, cut at a word if it is longer. */
+export function cleanBody(text: string): string {
+  return cleanLine(text, MAX_BODY);
 }
 
 export interface SummarizerOptions {

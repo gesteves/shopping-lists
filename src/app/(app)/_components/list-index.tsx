@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useListSummaries } from "@/client/hooks";
-import type { ListSummary } from "@/client/queries";
+import { listLine, type ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
@@ -80,7 +80,9 @@ function ListRow({ list }: { list: ListSummary }) {
             {list.name}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
-            {copy.lists.remaining(list.remaining)}
+            <span className="line-clamp-2 min-w-0 break-words">
+              {listLine(list)}
+            </span>
             <ListViewers listId={list.id} />
           </span>
         </Link>

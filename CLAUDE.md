@@ -30,7 +30,7 @@ Use npm. Node 24 or later.
 - `npm run test:e2e`: build, start, and run the Playwright tests (`e2e/`). Run `npx playwright install chromium webkit` one time first.
 - `npm run db:generate`: make a migration in `drizzle/` from `src/db/schema.ts`.
 - `npm run db:migrate`: apply the migrations to `DATABASE_PATH` (default `./data/dev.db`).
-- `npm run try:summaries`: print the Claude notification summary for three sample bursts. It needs `ANTHROPIC_API_KEY` and makes three small API calls.
+- `npm run try:summaries`: print the Claude notification summary for three sample bursts, and the list summary for two sample lists. It needs `ANTHROPIC_API_KEY` and makes five small API calls.
 
 Copy `.env.example` to `.env.local` and add the values.
 
@@ -75,7 +75,7 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 
 ## Rules
 
-- All writes go through `applyOps` in `src/server/ops.ts`. This applies to the app, sync, and MCP.
+- All writes go through `applyOps` in `src/server/ops.ts`. This applies to the app, sync, and MCP. The one exception is `setListSummary` (same file): the summary worker (`src/server/summary/`) writes the list summary with it.
 - `src/proxy.ts` only looks for the session cookie. Each page must call `requireUser()`, and each API route must call `requireApiUser()` (`src/lib/session.ts`). Call them in a `<Suspense>` boundary.
 - `/mcp` does not use the session: `withMcpAuth` (`src/server/mcp/auth.ts`) checks the token. Accept no other tokens. To add a tool, add it to `TOOLS` in `src/server/mcp/tools.ts` with its scope, annotations, and input and output schemas, and add it to the contract tests.
 - The OAuth server for MCP clients is Better Auth (`mcp()`, `cimd()`, `jwt()` in `src/lib/auth.ts`). Its tables are in `src/db/schema.ts`. If a Better Auth update changes the plugin schema, compare it with the output of `npx auth generate`.

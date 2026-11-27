@@ -350,6 +350,13 @@ export const lists = sqliteTable(
       .$type<ListClocks>()
       .notNull()
       .default({}),
+    /**
+     * A one-line summary of the unchecked items, from Claude. Only the
+     * summary worker (src/server/summary/) writes it. Null if there is none.
+     */
+    summary: text("summary"),
+    /** summaryKey() of the items that `summary` tells about. */
+    summaryKey: text("summary_key"),
     seq: integer("seq").notNull(),
   },
   (t) => [index("lists_seq_idx").on(t.seq)],

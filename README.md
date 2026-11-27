@@ -9,6 +9,7 @@ Only the Google accounts on an allowlist can sign in.
 **Lists and items**
 
 - Make, rename, and delete lists.
+- The lists page shows what is left to get on each list: the item names for a short list, and a one-line summary from Claude for a longer list.
 - Add items with a quantity and notes. The add bar suggests items that you added before, and it does not add the same item two times.
 - Tap an item to check it off. Check all, uncheck all, or delete the checked items from the list menu.
 - Move an item to a different list.
@@ -59,7 +60,7 @@ One Next.js server on one Fly.io machine, with SQLite on a volume. The browser k
 - Node 24 or later, and npm.
 - Tokens for the Web Awesome Pro and Font Awesome Pro npm registries. The UI uses Pro packages, so `npm install` fails without them.
 - A Google OAuth client (Google Cloud Console → APIs & Services → Credentials → OAuth client ID, type "Web application"). Add this redirect URI: `<your app URL>/api/auth/callback/google`, for example `http://localhost:3000/api/auth/callback/google`.
-- Optional: an Anthropic API key for the notification summaries. Without one, the app uses a fixed sentence ("Sam made 3 changes to the “Costco” list").
+- Optional: an Anthropic API key for the notification and list summaries. Without one, a notification uses a fixed sentence ("Sam made 3 changes to the “Costco” list"), and the lists page shows the item count.
 
 ### Install
 
@@ -86,7 +87,7 @@ Fill in `.env.local`:
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From the Google OAuth client. |
 | `ALLOWED_EMAILS` | The Google emails that can sign in, separated by commas. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Make them with `npx web-push generate-vapid-keys`. Without them, the app sends no notifications. |
-| `ANTHROPIC_API_KEY` | Optional. For the notification summaries. |
+| `ANTHROPIC_API_KEY` | Optional. For the notification and list summaries. |
 | `DATABASE_PATH` | Optional. The default is `./data/dev.db`. |
 
 The Litestream and R2 values are only for production.

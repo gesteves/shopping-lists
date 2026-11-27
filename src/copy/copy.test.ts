@@ -53,6 +53,7 @@ describe("the dictionary", () => {
     expect(copy.lists.remaining(0)).toBe("0 items");
     expect(copy.lists.remaining(1)).toBe("1 item");
     expect(copy.lists.remaining(3)).toBe("3 items");
+    expect(copy.lists.names(["Milk", "Eggs"])).toBe("Milk and Eggs");
     expect(copy.list.deletedChecked(1)).toBe("Deleted 1 item.");
     expect(copy.list.deletedChecked(3)).toBe("Deleted 3 items.");
     expect(copy.list.checkedAll(2)).toBe("Checked 2 items.");

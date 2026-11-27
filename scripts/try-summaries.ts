@@ -1,7 +1,12 @@
-// Prints the Claude summary for three sample bursts (#17, manual check).
-// Needs ANTHROPIC_API_KEY. Each run makes three small API calls.
+// Prints the Claude summary for three sample bursts (#17) and two sample
+// lists, for a manual check. Needs ANTHROPIC_API_KEY. Each run makes five
+// small API calls.
 //   ANTHROPIC_API_KEY=… npm run try:summaries
 import { createSummarizer } from "../src/server/notify/summarize";
+import {
+  createListSummarizer,
+  type SummaryItem,
+} from "../src/server/summary/summarize";
 import type { ActivityEvent } from "../src/server/notify/types";
 
 let id = 0;
@@ -52,10 +57,42 @@ const bursts: { name: string; events: ActivityEvent[] }[] = [
   },
 ];
 
+const one = (name: string, quantity = 1): SummaryItem => ({ name, quantity });
+const lists: { name: string; items: SummaryItem[] }[] = [
+  {
+    name: "Whole Foods",
+    items: [
+      one("Milk"),
+      one("Eggs", 12),
+      one("Spinach"),
+      one("Lemons", 3),
+      one("Olive oil"),
+      one("Sourdough"),
+      one("Greek yogurt", 2),
+    ],
+  },
+  {
+    name: "Target",
+    items: [
+      one("Paper towels"),
+      one("Dish soap"),
+      one("Birthday card"),
+      one("AA batteries"),
+    ],
+  },
+];
+
 async function main() {
   const summarize = createSummarizer();
   for (const burst of bursts) {
     console.log(`${burst.name}:\n  ${await summarize(burst.events, "Sam")}`);
+  }
+  const summarizeList = createListSummarizer();
+  if (!summarizeList) return;
+  for (const list of lists) {
+    console.log(
+      `List “${list.name}”:\n  ${await summarizeList(list.name, list.items)}`,
+    );
   }
 }
 
