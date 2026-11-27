@@ -1,6 +1,10 @@
 # Litestream replicates the SQLite database to Cloudflare R2.
 # Litestream reads these from the environment (Fly secrets):
 #   LITESTREAM_ACCESS_KEY_ID, LITESTREAM_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT
+# The metrics, for the replication check of /api/health. Give the host:
+# without it, Litestream listens on all interfaces. Do not open this port in
+# fly.toml.
+addr: "127.0.0.1:9090"
 dbs:
   - path: ${DATABASE_PATH}
     replica:

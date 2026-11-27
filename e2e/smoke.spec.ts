@@ -33,9 +33,11 @@ test(
   "the health check needs no session",
   { tag: "@once" },
   async ({ request }) => {
-    const res = await request.get("/api/health");
-    expect(res.status()).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    for (const path of ["/api/health", "/api/health/live"]) {
+      const res = await request.get(path);
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+    }
   },
 );
 
@@ -51,6 +53,33 @@ test(
       const res = await request.get(path, { maxRedirects: 0 });
       expect(res.status(), path).toBe(200);
       expect(res.headers()["content-type"], path).toBe("image/png");
+    }
+  },
+);
+
+test(
+  "each response has the security headers",
+  { tag: "@once" },
+  async ({ request }) => {
+    for (const path of [
+      "/sign-in",
+      "/api/health",
+      "/oauth/consent",
+      "/sw.js",
+    ]) {
+      const res = await request.get(path, { maxRedirects: 0 });
+      const headers = res.headers();
+      expect(headers["x-frame-options"], path).toBe("DENY");
+      expect(headers["content-security-policy"], path).toBe(
+        "frame-ancestors 'none'",
+      );
+      expect(headers["x-content-type-options"], path).toBe("nosniff");
+      expect(headers["referrer-policy"], path).toBe(
+        "strict-origin-when-cross-origin",
+      );
+      expect(headers["strict-transport-security"], path).toContain("max-age=");
+      expect(headers["permissions-policy"], path).toContain("camera=()");
+      expect(headers["x-powered-by"], path).toBeUndefined();
     }
   },
 );

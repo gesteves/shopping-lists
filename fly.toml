@@ -32,12 +32,25 @@ kill_timeout = 30
     soft_limit = 200
     hard_limit = 250
 
+  # A failed service check stops the traffic to the machine, and there is one
+  # machine. Thus this check is only the database (src/server/health.ts).
   [[http_service.checks]]
     interval = "15s"
     timeout = "5s"
     grace_period = "30s"
     method = "GET"
-    path = "/api/health"
+    path = "/api/health/live"
+
+# The replication to R2 too (#102). A top-level check does not stop the
+# traffic: it shows the problem in the Fly dashboard and in `fly checks list`.
+[checks.replication]
+  type = "http"
+  port = 3000
+  method = "get"
+  path = "/api/health"
+  interval = "60s"
+  timeout = "5s"
+  grace_period = "60s"
 
 [[vm]]
   cpu_kind = "shared"

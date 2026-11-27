@@ -93,6 +93,18 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      # A change to src/db/schema.ts needs a migration (npm run db:generate).
+      # drizzle-kit writes nothing when the schema and drizzle/ agree. It needs
+      # no database. The timeout stops a rename prompt that waits for input.
+      - name: Check that the migrations match the schema
+        run: |
+          timeout 120 npx drizzle-kit generate
+          if [ -n "$(git status --porcelain -- drizzle/)" ]; then
+            git status --porcelain -- drizzle/
+            echo "::error::src/db/schema.ts has changes with no migration. Run npm run db:generate and commit drizzle/."
+            exit 1
+          fi
+
       - name: Unit tests
         run: npm test
 
@@ -230,7 +242,10 @@ jobs:
 
       # This step runs in the job that has the deploy token. Thus it is pinned
       # to a SHA: code at a tag or a branch can change.
+      # A fixed flyctl version: a new release must not change the deploy.
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        with:
+          version: 0.5.19
 
       # The app name is a secret, because the repository is public. There is
       # one volume, thus one machine: --ha=false. The server applies the
