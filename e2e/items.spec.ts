@@ -47,23 +47,11 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await add(page, "Bread");
   // The last updated first.
   await expect.poll(() => order(page)).toEqual(["Bread", "Eggs", "Milk"]);
-  await expect(
-    page
-      .getByRole("main")
-      .getByText(copy.list.remaining(3), { exact: true })
-      .filter({ visible: true }),
-  ).toBeVisible();
 
   // Check: the item goes below the unchecked items.
   await item(page, "Bread").click();
   await expect(item(page, "Bread")).toHaveAttribute("aria-checked", "true");
   await expect.poll(() => order(page)).toEqual(["Eggs", "Milk", "Bread"]);
-  await expect(
-    page
-      .getByRole("main")
-      .getByText(copy.list.remaining(2), { exact: true })
-      .filter({ visible: true }),
-  ).toBeVisible();
 
   // Uncheck: it goes back to the top.
   await item(page, "Bread").click();

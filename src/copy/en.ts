@@ -115,7 +115,8 @@ export const en = {
     sidebar: "All lists",
     empty: "No lists yet. Make one for each store you go to.",
     pickOne: "Select a list, or make a new one.",
-    remaining: (n: number) => (n === 0 ? "Nothing to get" : `${n} to get`),
+    /** The unchecked items of a list. */
+    remaining: (n: number) => items(n),
     more: (name: string) => `More for ${name}`,
     newName: "New list name",
     newPlaceholder: "New list",
@@ -135,7 +136,6 @@ export const en = {
     notFound: "This list doesn’t exist or was deleted.",
     empty: "Nothing on this list yet. Add the first item below.",
     allChecked: "Everything is checked off.",
-    remaining: (n: number) => `${n} to get`,
     items: "Items",
     actions: "List actions",
     checkAll: "Check all",

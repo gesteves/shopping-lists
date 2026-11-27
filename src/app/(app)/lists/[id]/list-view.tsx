@@ -46,7 +46,7 @@ export function ListView() {
               ? copy.list.empty
               : remaining === 0
                 ? copy.list.allChecked
-                : copy.list.remaining(remaining)}
+                : null}
           </p>
           <ul
             aria-label={copy.list.items}
