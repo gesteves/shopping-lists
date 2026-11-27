@@ -10,7 +10,7 @@ import { prompts } from "@/prompts";
 import { renderFallback, who } from "./templates";
 import type { ActivityEvent } from "./types";
 
-export const MODEL = "claude-opus-5-5";
+export const MODEL = "claude-sonnet-5-5";
 /**
  * A longer answer gives the fallback. The server does not cut the text: the
  * device cuts it when necessary (Apple guidelines). It is more than
