@@ -80,6 +80,7 @@ describe("push then pull", () => {
           { opId: add.opId, status: "applied", changed: true },
         ],
         seq: 2,
+        now: NOW,
       },
     });
 
@@ -298,6 +299,47 @@ describe("reset", () => {
     // A client that saw the delete does not need a reset.
     expect((await pull("?since=4")).reset).toBe(false);
     expect((await pull("?since=0")).reset).toBe(false);
+  });
+
+  it("completes a reset that needs more than one page", async () => {
+    const old = NOW - 40 * 24 * 60 * 60 * 1000;
+    const adds = Array.from({ length: 6 }, (_, n) =>
+      op(
+        "addItem",
+        { itemId: itemId(n + 1), listId: LIST, name: `I${n}` },
+        old,
+      ),
+    );
+    await push([
+      op("createList", { listId: LIST, name: "Target" }, old),
+      ...adds,
+      op("deleteItem", { itemId: itemId(6) }, old + 1),
+      op("deleteItem", { itemId: itemId(1) }, old + 2),
+    ]);
+    const { purgedSeq } = purgeTombstones(30, { db, now: () => NOW });
+    expect(purgedSeq).toBe(9);
+
+    // The client saw seq 3. It pulls two rows for each page.
+    const first = await pull("?since=3&limit=2&seen=0");
+    expect(first).toMatchObject({ reset: true, purgedSeq: 9, hasMore: true });
+
+    // Each next page sends the purgedSeq of the first page as `seen`.
+    const ids = [...first.lists, ...first.items].map((r) => r.id);
+    let cursor = first.cursor;
+    for (let n = 0; n < 10; n++) {
+      const page = await pull(`?since=${cursor}&limit=2&seen=9`);
+      expect(page.reset).toBe(false);
+      ids.push(...[...page.lists, ...page.items].map((r) => r.id));
+      cursor = page.cursor;
+      if (!page.hasMore) break;
+    }
+    expect(ids).toEqual([LIST, itemId(2), itemId(3), itemId(4), itemId(5)]);
+    expect(cursor).toBe(9);
+
+    // Without `seen`, the second page resets again, as before.
+    expect((await pull(`?since=${first.cursor}&limit=2`)).reset).toBe(true);
+    // A client with an old cursor still gets a reset, with an old `seen`.
+    expect((await pull("?since=3&seen=4")).reset).toBe(true);
   });
 
   it("starts again from 0 when the cursor is after the last seq", async () => {

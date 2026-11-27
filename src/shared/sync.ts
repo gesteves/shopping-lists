@@ -52,11 +52,21 @@ export interface PushResponse {
   results: OpResult[];
   /** The last seq of the push, or null if no row changed. */
   seq: number | null;
+  /**
+   * The server time in ms. The client uses it to stamp again an op with a
+   * `clock_ahead` rejection.
+   */
+  now: number;
 }
 
-/** GET /api/sync/pull query: `since` is the cursor of the client. */
+/**
+ * GET /api/sync/pull query: `since` is the cursor of the client. `seen` is
+ * the last `purgedSeq` that the client got. A client that got it after its
+ * last reset needs no new reset.
+ */
 export const pullQuerySchema = z.strictObject({
   since: z.coerce.number().int().min(0).default(0),
+  seen: z.coerce.number().int().min(0).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_PULL_LIMIT).default(PULL_LIMIT),
 });
 
@@ -119,4 +129,9 @@ export interface PullResponse {
   cursor: number;
   /** True if there are more rows. Pull again now with the new cursor. */
   hasMore: boolean;
+  /**
+   * The largest seq that the server purged. The client keeps it, and sends
+   * it as `seen` with each pull.
+   */
+  purgedSeq: number;
 }

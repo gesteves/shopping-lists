@@ -2,13 +2,13 @@
 // push and pull handlers, on a temporary SQLite database.
 import "fake-indexeddb/auto";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { items as serverItems, lists as serverLists } from "@/db/schema";
 import { applyOps } from "@/server/ops";
 import { handlePull, handlePush } from "@/server/sync";
-import { HlcClock } from "@/shared/hlc";
-import { opSchema } from "@/shared/ops";
+import { HlcClock, MAX_DRIFT_MS, parse } from "@/shared/hlc";
+import { opSchema, type Op } from "@/shared/ops";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { ClientDb, getMeta } from "../db";
 import { readList } from "../queries";
@@ -31,7 +31,21 @@ let db: ClientDb;
 let dbCount = 0;
 
 /** The fake network. */
-const net = { online: true, authorized: true, pushes: 0, pulls: 0 };
+const net = {
+  online: true,
+  authorized: true,
+  pushes: 0,
+  pulls: 0,
+  /** The pull gives 500. */
+  failPull: false,
+  /** A push with more ops gets 413. */
+  maxOps: Infinity,
+  /** A push with this opId gets 400, as an op that the server refuses. */
+  poison: null as string | null,
+};
+
+/** The real time. Some tests move Date.now of the device. */
+const realNow = Date.now.bind(Date);
 
 const fakeFetch: typeof fetch = async (input, init) => {
   if (!net.online) throw new TypeError("Failed to fetch");
@@ -46,14 +60,22 @@ const fakeFetch: typeof fetch = async (input, init) => {
   });
   if (url.pathname === "/api/sync/push") {
     net.pushes++;
+    const { ops } = JSON.parse(String(init?.body)) as { ops: Op[] };
+    if (ops.length > net.maxOps) {
+      return Response.json({ error: "too_large" }, { status: 413 });
+    }
+    if (ops.some((op) => op.opId === net.poison)) {
+      return Response.json({ error: "invalid_request" }, { status: 400 });
+    }
     return handlePush(
       request,
       { id: SAM.id },
-      { db: serverDb, clock: serverClock },
+      { db: serverDb, clock: serverClock, now: realNow },
     );
   }
   if (url.pathname === "/api/sync/pull") {
     net.pulls++;
+    if (net.failPull) return new Response(null, { status: 500 });
     return handlePull(request, { db: serverDb });
   }
   return new Response(null, { status: 404 });
@@ -105,13 +127,22 @@ function serverWrite(request: OpRequest) {
 
 beforeEach(async () => {
   serverDb = createTestDb();
-  serverClock = new HlcClock("server");
-  Object.assign(net, { online: true, authorized: true, pushes: 0, pulls: 0 });
+  serverClock = new HlcClock("server", undefined, realNow);
+  Object.assign(net, {
+    online: true,
+    authorized: true,
+    pushes: 0,
+    pulls: 0,
+    failPull: false,
+    maxOps: Infinity,
+    poison: null,
+  });
   db = new ClientDb(`test-${++dbCount}`);
   await resetForUser(db, SAM.id);
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   serverDb.$client.close();
   db.close();
 });
@@ -388,10 +419,165 @@ describe("sync", () => {
       hlc: null,
       cursor: 0,
       hasMore: false,
+      purgedSeq: 0,
     });
     await rebuildView(db);
     expect(await db.lists.count()).toBe(0);
     expect(await getMeta(db, "cursor")).toBe(0);
+  });
+
+  it("keeps the purgedSeq and sends it as seen", async () => {
+    await seed();
+    const urls: string[] = [];
+    const engine = new SyncEngine({
+      db,
+      timers: manualTimers(),
+      fetch: (input, init) => {
+        urls.push(String(input));
+        return fakeFetch(input, init);
+      },
+    });
+    await engine.sync();
+    expect(await getMeta(db, "purgedSeq")).toBe(0);
+    expect(urls.at(-1)).toBe("/api/sync/pull?since=2&seen=0");
+  });
+
+  it("ends a hung request after the timeout, and tries again", async () => {
+    await seed();
+    const timers = manualTimers();
+    const engine = new SyncEngine({
+      db,
+      timers,
+      timeoutMs: 20,
+      fetch: (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal!.reason),
+          );
+        }),
+    });
+    await engine.sync();
+    expect(engine.getStatus().state).toBe("error");
+    expect([...timers.pending].map((t) => t.ms)).toEqual([1000]);
+  });
+
+  it("makes the batch smaller after a 413", async () => {
+    await mutateLocal(db, {
+      type: "createList",
+      args: { listId: LIST, name: "Target" },
+    });
+    for (let n = 0; n < 120; n++) {
+      await mutateLocal(db, {
+        type: "addItem",
+        args: { itemId: crypto.randomUUID(), listId: LIST, name: `Item ${n}` },
+      });
+    }
+    net.maxOps = 40;
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(engine.getStatus().state).toBe("idle");
+    expect(rejected).toEqual([]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(serverDb.select().from(serverItems).all()).toHaveLength(120);
+  });
+
+  it("finds an op that the server refuses with 400, and drops only it", async () => {
+    await mutateLocal(db, {
+      type: "createList",
+      args: { listId: LIST, name: "Target" },
+    });
+    const ops: Op[] = [];
+    for (let n = 0; n < 9; n++) {
+      ops.push(
+        await mutateLocal(db, {
+          type: "addItem",
+          args: {
+            itemId: crypto.randomUUID(),
+            listId: LIST,
+            name: `Item ${n}`,
+          },
+        }),
+      );
+    }
+    net.poison = ops[6].opId;
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(engine.getStatus().state).toBe("idle");
+    expect(rejected).toEqual([{ op: ops[6], reason: "invalid" }]);
+    expect(await db.outbox.count()).toBe(0);
+    const names = serverDb
+      .select()
+      .from(serverItems)
+      .all()
+      .map((i) => i.name);
+    expect(names).toHaveLength(8);
+    expect(names).not.toContain("Item 6");
+  });
+
+  it("rebuilds the view after a push, also when the pull fails", async () => {
+    await seed();
+    serverWrite({ type: "deleteList", args: { listId: LIST } });
+    await mutateLocal(db, {
+      type: "addItem",
+      args: { itemId: ITEM_2, listId: LIST, name: "Eggs" },
+    });
+    net.failPull = true;
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(engine.getStatus().state).toBe("error");
+    expect(rejected.map((r) => r.reason)).toEqual(["list_deleted"]);
+    expect(await db.outbox.count()).toBe(0);
+    // No ghost row of the refused add.
+    expect(await db.items.get(ITEM_2)).toBeUndefined();
+  });
+});
+
+describe("a device clock that is too far ahead", () => {
+  const AHEAD = MAX_DRIFT_MS + 10 * 60_000;
+
+  it("stamps the op again with the server time, and keeps the edit", async () => {
+    await seed();
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + AHEAD);
+    await mutateLocal(db, { type: "check", args: { itemId: ITEM } });
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(rejected).toEqual([]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(
+      serverDb.select().from(serverItems).where(eq(serverItems.id, ITEM)).get()
+        ?.checked,
+    ).toBe(true);
+    expect(net.pushes).toBe(2);
+  });
+
+  it("drops the op if the server refuses it again", async () => {
+    await seed();
+    // The server clock is far behind, thus the new stamp is also refused.
+    serverClock = new HlcClock("server", undefined, () => realNow() - AHEAD);
+    await mutateLocal(db, { type: "check", args: { itemId: ITEM } });
+    const { engine, rejected } = makeEngine();
+    await engine.sync();
+
+    expect(rejected.map((r) => r.reason)).toEqual(["clock_ahead"]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(net.pushes).toBe(2);
+  });
+
+  it("starts the clock again from now when the stored HLC is too far ahead", async () => {
+    await seed();
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + AHEAD);
+    await mutateLocal(db, { type: "check", args: { itemId: ITEM } });
+    vi.restoreAllMocks();
+
+    const op = await mutateLocal(db, {
+      type: "uncheck",
+      args: { itemId: ITEM },
+    });
+    expect(parse(op.hlc).wall).toBeLessThanOrEqual(realNow());
   });
 });
 

@@ -62,7 +62,10 @@ export async function handlePush(
   const parsed = pushRequestSchema.safeParse(body);
   if (!parsed.success) return badRequest(parsed.error);
 
-  const result: PushResponse = applyOps(actor, "app", parsed.data.ops, options);
+  const result: PushResponse = {
+    ...applyOps(actor, "app", parsed.data.ops, options),
+    now: (options.now ?? Date.now)(),
+  };
   return json(result);
 }
 
@@ -71,7 +74,9 @@ export async function handlePush(
  *
  * If the cursor is before the last purge, or after the last seq (the server
  * database is older than the client), the response has `reset: true` and
- * starts again from seq 0.
+ * starts again from seq 0. A client that sends `seen` at or after the last
+ * purge got that purge in an earlier page: it gets no reset. Thus a reset
+ * that needs more than one page completes.
  */
 export function handlePull(
   request: Request,
@@ -83,13 +88,17 @@ export function handlePull(
     Object.fromEntries(url.searchParams),
   );
   if (!parsed.success) return badRequest(parsed.error);
-  const { since, limit } = parsed.data;
+  const { since, seen, limit } = parsed.data;
 
   // better-sqlite3 is synchronous, thus no write can come between the reads.
   // The transaction makes this explicit.
   const body = db.transaction((tx): PullResponse => {
     const state = readSeqState(tx);
-    const reset = since > state.seq || (since > 0 && since < state.purgedSeq);
+    const purged =
+      since > 0 &&
+      since < state.purgedSeq &&
+      (seen === undefined || seen < state.purgedSeq);
+    const reset = since > state.seq || purged;
     const from = reset ? 0 : since;
     const changes = readChanges(from, limit, tx);
     return {
@@ -103,6 +112,7 @@ export function handlePull(
         ? (changes.lastSeq ?? from)
         : Math.max(changes.lastSeq ?? from, state.seq),
       hasMore: changes.hasMore,
+      purgedSeq: state.purgedSeq,
     };
   });
   return json(body);

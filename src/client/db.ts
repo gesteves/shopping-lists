@@ -16,6 +16,8 @@ export interface OutboxEntry {
   seq?: number;
   opId: string;
   op: Op;
+  /** True after the engine stamped the op again for `clock_ahead`. */
+  restamped?: boolean;
 }
 
 /** Values in the meta table. */
@@ -26,6 +28,8 @@ export interface MetaValues {
   hlc: string;
   /** The `since` of the next pull. */
   cursor: number;
+  /** The `purgedSeq` of the last pull. The next pull sends it as `seen`. */
+  purgedSeq: number;
   /** The signed-in user. Local ops use it for createdBy and updatedBy. */
   userId: string;
 }

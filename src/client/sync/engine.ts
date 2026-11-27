@@ -9,8 +9,8 @@ import {
   type PushResponse,
   type RejectReason,
 } from "@/shared/sync";
-import { getMeta, type ClientDb } from "../db";
-import { ensureClientId, rebuildView, savePullPage } from "./local";
+import { getMeta, type ClientDb, type OutboxEntry } from "../db";
+import { ensureClientId, rebuildView, restampOps, savePullPage } from "./local";
 
 export type SyncState =
   | "idle"
@@ -58,6 +58,8 @@ export interface SyncEngineOptions {
   maxBackoffMs?: number;
   timers?: Timers;
   isOnline?: () => boolean;
+  /** A request that takes longer fails as a network error. */
+  timeoutMs?: number;
 }
 
 class UnauthorizedError extends Error {}
@@ -78,6 +80,11 @@ const MAX_PAGES = 1000;
 /** Most pushes in one run. New writes go in the next run. */
 const MAX_PUSHES = 50;
 
+/** Set to true when a step changes the local data. */
+interface RunState {
+  dirty: boolean;
+}
+
 export class SyncEngine {
   /** "rejected" (RejectedDetail) and "merged" (MergedDetail) events. The UI
    * shows a toast. */
@@ -91,6 +98,7 @@ export class SyncEngine {
   readonly #maxBackoffMs: number;
   readonly #timers: Timers;
   readonly #isOnline: () => boolean;
+  readonly #timeoutMs: number;
 
   #status: SyncStatus = { state: "idle", lastSyncAt: null };
   #listeners = new Set<() => void>();
@@ -110,6 +118,7 @@ export class SyncEngine {
     this.#isOnline =
       options.isOnline ??
       (() => typeof navigator === "undefined" || navigator.onLine !== false);
+    this.#timeoutMs = options.timeoutMs ?? 30_000;
   }
 
   // Status, for useSyncExternalStore. The object changes at each update.
@@ -211,10 +220,15 @@ export class SyncEngine {
     this.#setStatus({ state: "syncing" });
     try {
       await withLock(async () => {
-        const pushed = await this.#push();
-        const pulled = await this.#pull();
-        // No change on either side: the view is already right.
-        if (pushed || pulled) await rebuildView(this.#db);
+        const run: RunState = { dirty: false };
+        try {
+          await this.#push(run);
+          await this.#pull(run);
+        } finally {
+          // Also after an error: an op that left the outbox must leave the
+          // view. No change on either side: the view is already right.
+          if (run.dirty) await rebuildView(this.#db);
+        }
       });
       this.#failures = 0;
       this.#setStatus({ state: "idle", lastSyncAt: Date.now() });
@@ -235,29 +249,55 @@ export class SyncEngine {
     }
   }
 
-  async #request(path: string, init?: RequestInit): Promise<Response> {
+  /**
+   * A request, and its body as JSON. A timeout (`timeoutMs`) is a network
+   * error: the run fails and the engine tries again with backoff. The
+   * timeout also covers the body, thus a hung stream does not keep the lock.
+   */
+  async #request<T>(
+    path: string,
+    init?: RequestInit,
+  ): Promise<{ status: number; body: T | null }> {
     const res = await this.#fetch(`${this.#baseUrl}${path}`, {
       credentials: "same-origin",
       cache: "no-store",
+      signal: AbortSignal.timeout(this.#timeoutMs),
       ...init,
     });
     if (res.status === 401) throw new UnauthorizedError();
-    return res;
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => undefined);
+      return { status: res.status, body: null };
+    }
+    return { status: res.status, body: (await res.json()) as T };
   }
 
-  /** Push the outbox. True if any op left the outbox. */
-  async #push(): Promise<boolean> {
+  /** Drop outbox entries, and send a "rejected" event for each. */
+  async #drop(
+    run: RunState,
+    entries: OutboxEntry[],
+    reason: RejectedDetail["reason"],
+  ) {
+    await this.#db.outbox.bulkDelete(entries.map((e) => e.seq!));
+    run.dirty = true;
+    for (const e of entries) this.#reject(e.op, reason);
+  }
+
+  /**
+   * Push the outbox. A 413, or a 400 with no op that fails the local
+   * schema, makes the next batch half as large. A batch of one op that gets
+   * such an error drops the op as "invalid". Thus one bad op does not stop
+   * the ops after it.
+   */
+  async #push(run: RunState): Promise<void> {
     const db = this.#db;
     const clientId = await ensureClientId(db);
-    let changed = false;
+    let size = MAX_PUSH_OPS;
     for (let round = 0; round < MAX_PUSHES; round++) {
-      const entries = await db.outbox
-        .orderBy("seq")
-        .limit(MAX_PUSH_OPS)
-        .toArray();
-      if (entries.length === 0) return changed;
+      const entries = await db.outbox.orderBy("seq").limit(size).toArray();
+      if (entries.length === 0) return;
 
-      const res = await this.#request("/api/sync/push", {
+      const res = await this.#request<PushResponse>("/api/sync/push", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId, ops: entries.map((e) => e.op) }),
@@ -270,20 +310,39 @@ export class SyncEngine {
           (e) =>
             e.op.clientId !== clientId || !opSchema.safeParse(e.op).success,
         );
-        if (bad.length === 0) throw new HttpError(400);
-        await db.outbox.bulkDelete(bad.map((e) => e.seq!));
-        changed = true;
-        for (const e of bad) this.#reject(e.op, "invalid");
+        if (bad.length > 0) {
+          await this.#drop(run, bad, "invalid");
+          continue;
+        }
+      }
+      if (res.status === 400 || res.status === 413) {
+        if (entries.length === 1) {
+          await this.#drop(run, entries, "invalid");
+          size = MAX_PUSH_OPS;
+        } else {
+          size = Math.ceil(entries.length / 2);
+        }
         continue;
       }
-      if (!res.ok) throw new HttpError(res.status);
+      if (!res.body) throw new HttpError(res.status);
 
-      const body = (await res.json()) as PushResponse;
-      await db.outbox.bulkDelete(entries.map((e) => e.seq!));
-      changed = true;
+      const body = res.body;
+      const restamp: number[] = [];
+      const done: number[] = [];
       entries.forEach((entry, i) => {
         const result = body.results[i];
         const final = result?.status === "duplicate" ? result.original : result;
+        // The device clock is too far ahead. Stamp the op again one time
+        // with the server time, and do not lose the edit.
+        if (
+          final?.status === "rejected" &&
+          final.reason === "clock_ahead" &&
+          !entry.restamped
+        ) {
+          restamp.push(entry.seq!);
+          return;
+        }
+        done.push(entry.seq!);
         if (final?.status === "rejected") this.#reject(entry.op, final.reason);
         // Only a new result: a duplicate was shown the first time.
         if (result?.status === "merged") {
@@ -298,22 +357,31 @@ export class SyncEngine {
           );
         }
       });
+      await db.outbox.bulkDelete(done);
+      if (restamp.length > 0) {
+        await restampOps(db, restamp, body.now ?? Date.now());
+      }
+      run.dirty = true;
     }
-    return changed;
   }
 
-  /** Pull every page. True if any row came, or the server sent a reset. */
-  async #pull(): Promise<boolean> {
+  /** Pull every page. */
+  async #pull(run: RunState): Promise<void> {
     let cursor = (await getMeta(this.#db, "cursor")) ?? 0;
-    let changed = false;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const res = await this.#request(`/api/sync/pull?since=${cursor}`);
-      if (!res.ok) throw new HttpError(res.status);
-      const body = (await res.json()) as PullResponse;
+      // `seen` changes at each page: a reset page sends the new purgedSeq.
+      const seen = await getMeta(this.#db, "purgedSeq");
+      const query = new URLSearchParams({ since: String(cursor) });
+      if (seen !== undefined) query.set("seen", String(seen));
+      const res = await this.#request<PullResponse>(`/api/sync/pull?${query}`);
+      if (!res.body) throw new HttpError(res.status);
+      const body = res.body;
       await savePullPage(this.#db, body);
-      changed ||= body.reset || body.lists.length > 0 || body.items.length > 0;
+      if (body.reset || body.lists.length > 0 || body.items.length > 0) {
+        run.dirty = true;
+      }
       cursor = body.cursor;
-      if (!body.hasMore) return changed;
+      if (!body.hasMore) return;
     }
     throw new Error("Too many pull pages");
   }
