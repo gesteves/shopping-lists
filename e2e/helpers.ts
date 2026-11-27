@@ -1,3 +1,4 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
@@ -274,4 +275,41 @@ export async function scan(page: Page, screen: string) {
     ),
     screen,
   ).toEqual([]);
+}
+
+// The OAuth client of an MCP app (#18).
+
+// Nothing listens on this port: page.route answers for it. (Not a port that
+// browsers block, such as 9.)
+export const OAUTH_REDIRECT = "http://127.0.0.1:59999/callback";
+
+/** Registers a client as an MCP client does: no cookies. */
+export async function registerClient(request: APIRequestContext) {
+  const name = `Test Claude ${randomUUID().slice(0, 8)}`;
+  const res = await request.post("/api/auth/oauth2/register", {
+    data: {
+      client_name: name,
+      redirect_uris: [OAUTH_REDIRECT],
+      token_endpoint_auth_method: "none",
+      application_type: "native",
+    },
+  });
+  expect(res.status()).toBe(201);
+  const { client_id } = (await res.json()) as { client_id: string };
+  return { name, clientId: client_id };
+}
+
+export function authorizePath(clientId: string, baseURL: string) {
+  const verifier = randomBytes(32).toString("base64url");
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: OAUTH_REDIRECT,
+    scope: "lists:read lists:write offline_access",
+    state: "e2e-state",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+    resource: `${baseURL}/mcp`,
+  });
+  return { path: `/api/auth/oauth2/authorize?${params}`, verifier };
 }

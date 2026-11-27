@@ -1,45 +1,16 @@
 // The OAuth flow of an MCP client in a browser (#18): sign-in, the consent
 // page, the redirect with the code, and "Connected apps" in settings.
-import { createHash, randomBytes, randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { copy } from "../src/copy";
-import { dialog, mcpCall, signIn } from "./helpers";
-
-// Nothing listens on this port: page.route answers for it. (Not a port that
-// browsers block, such as 9.)
-const REDIRECT = "http://127.0.0.1:59999/callback";
-
-/** Registers a client as an MCP client does: no cookies. */
-async function registerClient(request: APIRequestContext) {
-  const name = `Test Claude ${randomUUID().slice(0, 8)}`;
-  const res = await request.post("/api/auth/oauth2/register", {
-    data: {
-      client_name: name,
-      redirect_uris: [REDIRECT],
-      token_endpoint_auth_method: "none",
-      application_type: "native",
-    },
-  });
-  expect(res.status()).toBe(201);
-  const { client_id } = (await res.json()) as { client_id: string };
-  return { name, clientId: client_id };
-}
-
-function authorizePath(clientId: string, baseURL: string) {
-  const verifier = randomBytes(32).toString("base64url");
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: REDIRECT,
-    scope: "lists:read lists:write offline_access",
-    state: "e2e-state",
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-    code_challenge_method: "S256",
-    resource: `${baseURL}/mcp`,
-  });
-  return { path: `/api/auth/oauth2/authorize?${params}`, verifier };
-}
+import {
+  authorizePath,
+  dialog,
+  mcpCall,
+  OAUTH_REDIRECT,
+  registerClient,
+  signIn,
+} from "./helpers";
 
 test("connect an app, then disconnect it in settings", async ({
   page,
@@ -85,7 +56,7 @@ test("connect an app, then disconnect it in settings", async ({
     form: {
       grant_type: "authorization_code",
       code: code!,
-      redirect_uri: REDIRECT,
+      redirect_uri: OAUTH_REDIRECT,
       code_verifier: verifier,
       client_id: clientId,
       resource: `${baseURL}/mcp`,
