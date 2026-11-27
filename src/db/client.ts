@@ -16,6 +16,9 @@ export function openDatabase(path: string = databasePath()) {
   const sqlite = new Database(path);
   // WAL is necessary for Litestream (#3).
   sqlite.pragma("journal_mode = WAL");
+  // Litestream recommends NORMAL with WAL: a commit does not wait for an
+  // fsync. A power loss can lose the last commits, but not damage the file.
+  sqlite.pragma("synchronous = NORMAL");
   sqlite.pragma("busy_timeout = 5000");
   sqlite.pragma("foreign_keys = ON");
   return drizzle(sqlite, { schema });

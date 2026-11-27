@@ -1,5 +1,6 @@
 // The rules of the page caches (#117). A separate file, so that the tests
 // can use it outside the worker.
+import type { SerwistPlugin } from "serwist";
 
 /** The HTML of the app pages. */
 export const PAGE_CACHE = "pages";
@@ -40,6 +41,36 @@ export async function isGoodPage(response: Response): Promise<boolean> {
   }
   const body = await response.clone().text();
   return !body.includes(STREAMED_REDIRECT);
+}
+
+/**
+ * The plugin of the page caches: it keeps only a good page (#117), and only
+ * if the caches were not cleared after its fetch started (#119). The
+ * default plugin of NetworkFirst keeps status 0 too, thus a 307 to /sign-in
+ * replaced the cached page. And a fetch that started before the sign-out
+ * cleared the caches (for example the list shell of a CACHE_URLS message)
+ * put a page of the user back. clear() starts a new generation: a fetch of
+ * an older generation is not cached.
+ */
+export function pageCachePlugin(): {
+  plugin: SerwistPlugin;
+  clear(): void;
+} {
+  let generation = 0;
+  return {
+    clear() {
+      generation++;
+    },
+    plugin: {
+      handlerWillStart: async ({ state }) => {
+        if (state) state.generation = generation;
+      },
+      cacheWillUpdate: async ({ response, state }) =>
+        state?.generation === generation && (await isGoodPage(response))
+          ? response
+          : null,
+    },
+  };
 }
 
 /** The time for all the fetches of `refreshPages`. */

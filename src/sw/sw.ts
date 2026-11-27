@@ -11,13 +11,13 @@ import type {
 } from "serwist";
 import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { copy } from "../copy";
-import { LIST_SHELL_PATH } from "../shared/offline";
+import { CLEAR_PAGES_MESSAGE, LIST_SHELL_PATH } from "../shared/offline";
 import { openUrl, targetUrl } from "./open-url";
 import {
   DROP_AT_UPDATE,
   isAppPage,
-  isGoodPage,
   PAGE_CACHE,
+  pageCachePlugin,
   refreshPages,
   RSC_CACHE,
 } from "./page-cache";
@@ -48,21 +48,15 @@ self.addEventListener("fetch", (event) => {
 const PAGE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const NETWORK_TIMEOUT_SECONDS = 3;
 
-/**
- * Keep only a good page (#117). The default plugin of NetworkFirst keeps
- * status 0 too, thus a 307 to /sign-in replaced the cached page.
- */
-const goodPagesOnly: SerwistPlugin = {
-  cacheWillUpdate: async ({ response }) =>
-    (await isGoodPage(response)) ? response : null,
-};
+/** Keep only a good page, and none from before a clear (page-cache.ts). */
+const pagePlugin = pageCachePlugin();
 
 function pageCache(cacheName: string, plugins: SerwistPlugin[] = []) {
   return new NetworkFirst({
     cacheName,
     networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [
-      goodPagesOnly,
+      pagePlugin.plugin,
       new ExpirationPlugin({
         maxEntries: 200,
         maxAgeSeconds: PAGE_MAX_AGE_SECONDS,
@@ -177,6 +171,21 @@ self.addEventListener("activate", (event) => {
       }
     })(),
   );
+});
+
+// Sign-out (#119, src/client/sign-out.ts): delete the runtime caches here.
+// A fetch that started before this message does not put its page back.
+// The precache has only the build files and the offline page: it stays.
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== CLEAR_PAGES_MESSAGE) return;
+  pagePlugin.clear();
+  const done = (async () => {
+    for (const name of await caches.keys()) {
+      if (!name.includes("precache")) await caches.delete(name);
+    }
+  })();
+  event.waitUntil(done);
+  void done.finally(() => event.ports[0]?.postMessage(true));
 });
 
 // Push (#15). The payload is a PushPayload (src/shared/push.ts).

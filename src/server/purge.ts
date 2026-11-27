@@ -2,16 +2,40 @@
 // docs/PLAN.md: a client with an older cursor gets all rows again.
 //
 // This is a write-path exception (CLAUDE.md): it deletes rows directly, not
-// through applyOps.
+// through applyOps. It also makes the live items of an old deleted list
+// tombstones, with no actor.
 import "server-only";
-import { and, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
 import { activity, items, lists, processedOps } from "@/db/schema";
+import type { HlcClock } from "@/shared/hlc";
 import { DAY_MS } from "@/shared/expiry";
-import { expireCheckedItems } from "./ops";
+import { bus } from "./bus";
+import { getServerClock } from "./clock";
+import { expireCheckedItems, tombstoneItems } from "./ops";
 
-/** Delete tombstones and old bookkeeping rows after this many days. */
+/** Delete tombstones and old sent activity rows after this many days. */
 export const PURGE_AFTER_DAYS = 30;
+/**
+ * Keep processed_ops rows this many days (#119). A retry of an op that the
+ * server applied gets "duplicate" for this time. The client keeps an op in
+ * its outbox until the server answers, also for a long time offline. After
+ * the purge of its row, a retry is applied again: an old addItem can make
+ * an item again that someone deleted. The rows are small.
+ */
+export const KEEP_OPS_DAYS = 180;
 export const PURGE_EVERY_MS = 24 * 60 * 60 * 1000;
 /** The first purge after boot. Not at once: the boot must stay fast. */
 export const FIRST_PURGE_MS = 5 * 60 * 1000;
@@ -21,41 +45,91 @@ export interface PurgeResult {
   items: number;
   processedOps: number;
   activity: number;
+  /** The live items of old deleted lists that became tombstones. */
+  tombstoned: number;
   /** The new value of server_seq.purged_seq. */
   purgedSeq: number;
 }
 
 /**
  * Delete the rows of lists and items that the server marked as deleted more
- * than `olderThanDays` ago (`tombstoned_at`, server time). The items of a
- * purged list go too. Also delete old processed_ops rows and old sent
- * activity rows. startPurger() runs it on a schedule.
+ * than `olderThanDays` ago (`tombstoned_at`, server time). Also delete
+ * processed_ops rows older than `keepOpsDays`, and old sent activity rows.
+ * startPurger() runs it on a schedule.
  *
  * `deleted_at` is the op time (the client clock), thus a delete that came
  * late would go at once. The server time keeps it for the full time (#101).
+ *
+ * The items of a deleted list can change (PLAN, conflict rules), thus they
+ * can have a recent seq. An old deleted list goes only when each of its
+ * items is an old tombstone too (#119). Its live items become tombstones
+ * (tombstoneItems, a new seq, a poke), and a later run deletes them and the
+ * list. Thus purged_seq never goes to a recent seq, and the clients do not
+ * reset for each purge.
  *
  * It sets server_seq.purged_seq to the largest seq that it deleted. A pull
  * with an older cursor can miss a delete, thus #6 must send all rows again.
  */
 export function purgeTombstones(
   olderThanDays: number,
-  options: { db?: Db; now?: () => number } = {},
+  options: {
+    db?: Db;
+    clock?: HlcClock;
+    now?: () => number;
+    keepOpsDays?: number;
+  } = {},
 ): PurgeResult {
   const db = options.db ?? getDb();
-  const cutoff = new Date((options.now ?? Date.now)() - olderThanDays * DAY_MS);
+  const clock = options.clock ?? getServerClock();
+  const now = new Date((options.now ?? Date.now)());
+  const cutoff = new Date(now.getTime() - olderThanDays * DAY_MS);
+  const opsCutoff = new Date(
+    now.getTime() - (options.keepOpsDays ?? KEEP_OPS_DAYS) * DAY_MS,
+  );
 
-  return db.transaction((tx) => {
+  const result = db.transaction((tx) => {
     const oldList = and(
       isNotNull(lists.deletedAt),
       lt(lists.tombstonedAt, cutoff),
     );
-    const purgedListIds = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(oldList);
-    const oldItem = or(
-      and(isNotNull(items.deletedAt), lt(items.tombstonedAt, cutoff)),
-      inArray(items.listId, purgedListIds),
+    const oldItem = and(
+      isNotNull(items.deletedAt),
+      lt(items.tombstonedAt, cutoff),
+    );
+
+    // The live items of old deleted lists become tombstones.
+    const live = tx
+      .select({ id: items.id, clocks: items.clocks })
+      .from(items)
+      .where(
+        and(
+          isNull(items.deletedAt),
+          inArray(
+            items.listId,
+            tx.select({ id: lists.id }).from(lists).where(oldList),
+          ),
+        ),
+      )
+      .all();
+    const seq = tombstoneItems(tx, live, clock, now);
+
+    // A list goes only with no item that is not an old tombstone. The
+    // foreign key deletes the items of a deleted list.
+    const keep = or(
+      isNull(items.deletedAt),
+      isNull(items.tombstonedAt),
+      gte(items.tombstonedAt, cutoff),
+    );
+    const purgedList = and(
+      oldList,
+      not(
+        exists(
+          tx
+            .select({ one: sql`1` })
+            .from(items)
+            .where(and(eq(items.listId, lists.id), keep)),
+        ),
+      ),
     );
 
     const maxOf = (rows: { seq: number | null } | undefined) => rows?.seq ?? 0;
@@ -71,16 +145,16 @@ export function purgeTombstones(
         tx
           .select({ seq: sql<number | null>`max(${lists.seq})` })
           .from(lists)
-          .where(oldList)
+          .where(purgedList)
           .get(),
       ),
     );
 
     const itemCount = tx.delete(items).where(oldItem).run().changes;
-    const listCount = tx.delete(lists).where(oldList).run().changes;
+    const listCount = tx.delete(lists).where(purgedList).run().changes;
     const opCount = tx
       .delete(processedOps)
-      .where(lt(processedOps.processedAt, cutoff))
+      .where(lt(processedOps.processedAt, opsCutoff))
       .run().changes;
     const activityCount = tx
       .delete(activity)
@@ -94,13 +168,19 @@ export function purgeTombstones(
     );
 
     return {
-      lists: listCount,
-      items: itemCount,
-      processedOps: opCount,
-      activity: activityCount,
-      purgedSeq: row.purged_seq,
+      seq,
+      result: {
+        lists: listCount,
+        items: itemCount,
+        processedOps: opCount,
+        activity: activityCount,
+        tombstoned: live.length,
+        purgedSeq: row.purged_seq,
+      },
     };
   });
+  if (result.seq !== null) bus.emit("poke", { seq: result.seq });
+  return result.result;
 }
 
 /** Runs one purge. Logs the result, and never throws. */

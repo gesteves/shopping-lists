@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isAppPage,
   isGoodPage,
+  pageCachePlugin,
   refreshPages,
   type CacheLike,
   type FetchLike,
@@ -144,5 +145,35 @@ describe("refreshPages", () => {
     await refreshPages(cache, fetchPage, 50);
 
     expect([...entries.keys()]).toEqual([`${ORIGIN}/`]);
+  });
+});
+
+describe("pageCachePlugin", () => {
+  const event = {} as ExtendableEvent;
+  const request = new Request(`${ORIGIN}/lists/shell`);
+
+  /** One fetch of the strategy: its own plugin state. */
+  function start(plugin: ReturnType<typeof pageCachePlugin>["plugin"]) {
+    const state = {};
+    void plugin.handlerWillStart?.({ request, event, state });
+    return (response: Response) =>
+      plugin.cacheWillUpdate?.({ request, response, event, state });
+  }
+
+  it("keeps a good page, and not a redirect", async () => {
+    const { plugin } = pageCachePlugin();
+    const good = page("<html>");
+    expect(await start(plugin)(good)).toBe(good);
+    expect(await start(plugin)(opaqueRedirect())).toBeNull();
+  });
+
+  it("does not keep a page whose fetch started before a clear (#119)", async () => {
+    const { plugin, clear } = pageCachePlugin();
+    const before = start(plugin);
+    clear();
+    const after = start(plugin);
+    expect(await before(page("<html>"))).toBeNull();
+    const good = page("<html>");
+    expect(await after(good)).toBe(good);
   });
 });

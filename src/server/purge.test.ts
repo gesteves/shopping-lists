@@ -5,7 +5,7 @@ import { items, lists } from "@/db/schema";
 import { HlcClock, serialize } from "@/shared/hlc";
 import { opSchema, type Op } from "@/shared/ops";
 import { SAM, createTestDb } from "@/test/db";
-import { activity } from "@/db/schema";
+import { activity, processedOps } from "@/db/schema";
 import { bus } from "./bus";
 import { applyOps, expireCheckedItems } from "./ops";
 import {
@@ -14,6 +14,7 @@ import {
   runExpiry,
   type PurgeResult,
   FIRST_PURGE_MS,
+  KEEP_OPS_DAYS,
   PURGE_AFTER_DAYS,
   PURGE_EVERY_MS,
   runPurge,
@@ -25,6 +26,7 @@ const RESULT: PurgeResult = {
   items: 2,
   processedOps: 3,
   activity: 4,
+  tombstoned: 0,
   purgedSeq: 5,
 };
 
@@ -110,10 +112,19 @@ describe("purgeTombstones", () => {
 
   /** Apply ops when the server clock is `serverNow`. */
   function apply(serverNow: number, ...ops: Op[]) {
-    applyOps(SAM, "app", ops, {
+    return applyOps(SAM, "app", ops, {
       db,
       clock: new HlcClock("server", undefined, () => serverNow),
       now: () => serverNow,
+    });
+  }
+
+  /** Purge when the server clock is `at`. */
+  function purge(at = NOW) {
+    return purgeTombstones(30, {
+      db,
+      clock: new HlcClock("server", undefined, () => at),
+      now: () => at,
     });
   }
 
@@ -122,12 +133,13 @@ describe("purgeTombstones", () => {
   const getList = (id: string) =>
     db.select().from(lists).where(eq(lists.id, id)).get();
 
-  it("deletes old tombstones and the items of old deleted lists", () => {
+  it("deletes old tombstones, and old deleted lists with their old tombstones", () => {
     const old = NOW - 40 * DAY;
     apply(
       old,
       op("createList", { listId: LIST, name: "Old" }, old),
       op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
+      op("deleteItem", { itemId: ITEM }, old + 1),
       op("deleteList", { listId: LIST }, old + 1),
       op("createList", { listId: LIST_2, name: "Current" }, old),
       op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "Eggs" }, old),
@@ -137,9 +149,9 @@ describe("purgeTombstones", () => {
     apply(NOW - DAY, op("deleteItem", { itemId: ITEM_3 }, NOW - DAY));
     const purgedItemSeq = getItem(ITEM_2)?.seq;
 
-    const result = purgeTombstones(30, { db, now: () => NOW });
+    const result = purge();
 
-    expect(result).toMatchObject({ lists: 1, items: 2 });
+    expect(result).toMatchObject({ lists: 1, items: 2, tombstoned: 0 });
     expect(result.purgedSeq).toBe(purgedItemSeq);
     expect(getList(LIST)).toBeUndefined();
     expect(getItem(ITEM)).toBeUndefined();
@@ -148,9 +160,102 @@ describe("purgeTombstones", () => {
     expect(getList(LIST_2)).toBeDefined();
 
     // A second run keeps the purged seq.
-    expect(purgeTombstones(30, { db, now: () => NOW }).purgedSeq).toBe(
-      purgedItemSeq,
+    expect(purge().purgedSeq).toBe(purgedItemSeq);
+  });
+
+  it("makes the live items of an old deleted list tombstones, and deletes them later", () => {
+    const old = NOW - 40 * DAY;
+    apply(
+      old,
+      op("createList", { listId: LIST, name: "Old" }, old),
+      op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
+      op("addItem", { itemId: ITEM_2, listId: LIST, name: "Eggs" }, old),
+      op("deleteList", { listId: LIST }, old + 1),
     );
+    // An edit of an item in the deleted list gives it a recent seq.
+    apply(
+      NOW - DAY,
+      op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }, NOW - DAY),
+    );
+    const listSeq = getList(LIST)!.seq;
+    const editSeq = getItem(ITEM)!.seq;
+    expect(editSeq).toBeGreaterThan(listSeq);
+
+    const pokes: number[] = [];
+    const onPoke = ({ seq }: { seq: number }) => pokes.push(seq);
+    bus.on("poke", onPoke);
+    let result: PurgeResult;
+    try {
+      result = purge();
+    } finally {
+      bus.off("poke", onPoke);
+    }
+
+    // purged_seq does not go to the seq of the edit: no client resets.
+    expect(result).toMatchObject({ lists: 0, items: 0, tombstoned: 2 });
+    expect(result.purgedSeq).toBeLessThan(editSeq);
+    expect(getList(LIST)?.deletedAt).not.toBeNull();
+    const milk = getItem(ITEM)!;
+    const eggs = getItem(ITEM_2)!;
+    for (const row of [milk, eggs]) {
+      expect(row.deletedAt?.getTime()).toBe(NOW);
+      expect(row.tombstonedAt?.getTime()).toBe(NOW);
+      // The server HLC at the time of the purge.
+      expect(row.clocks.deleted).toMatch(
+        new RegExp(`^${String(NOW).padStart(15, "0")}-[0-9a-f]{4}-server$`),
+      );
+    }
+    expect(milk.seq).toBeGreaterThan(editSeq);
+    expect(eggs.seq).toBeGreaterThan(editSeq);
+    expect(pokes).toEqual([Math.max(milk.seq, eggs.seq)]);
+    // A second run changes nothing.
+    expect(purge()).toMatchObject({ lists: 0, items: 0, tombstoned: 0 });
+
+    // 30 days later, the list and its items go.
+    const later = purge(NOW + 31 * DAY);
+    expect(later).toMatchObject({ lists: 1, items: 2, tombstoned: 0 });
+    expect(later.purgedSeq).toBe(Math.max(milk.seq, eggs.seq));
+    expect(getList(LIST)).toBeUndefined();
+  });
+
+  it("keeps an old deleted list while one of its tombstones is recent", () => {
+    const old = NOW - 40 * DAY;
+    apply(
+      old,
+      op("createList", { listId: LIST, name: "Old" }, old),
+      op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
+      op("deleteList", { listId: LIST }, old + 1),
+    );
+    apply(NOW - DAY, op("deleteItem", { itemId: ITEM }, NOW - DAY));
+    const result = purge();
+    expect(result).toMatchObject({ lists: 0, items: 0, tombstoned: 0 });
+    expect(result.purgedSeq).toBe(0);
+    expect(getItem(ITEM)?.deletedAt).not.toBeNull();
+  });
+
+  it("keeps processed_ops for 180 days, thus an old retry is a duplicate", () => {
+    expect(KEEP_OPS_DAYS).toBe(180);
+    const old = NOW - 31 * DAY;
+    const add = op(
+      "addItem",
+      { itemId: ITEM, listId: LIST, name: "Milk" },
+      old,
+    );
+    apply(old, op("createList", { listId: LIST, name: "Target" }, old), add);
+    apply(old + 1, op("deleteItem", { itemId: ITEM }, old + 1));
+    // 31 days later, the purge deletes the item, and keeps the ops.
+    expect(purge()).toMatchObject({ items: 1, processedOps: 0 });
+    expect(getItem(ITEM)).toBeUndefined();
+
+    // The response of the add was lost. The device sends it again.
+    const retry = apply(NOW, add);
+    expect(retry.results[0]).toMatchObject({ status: "duplicate" });
+    expect(getItem(ITEM)).toBeUndefined();
+
+    // After 180 days, the rows go.
+    const rows = db.select().from(processedOps).all().length;
+    expect(purge(old + 179 * DAY).processedOps).toBe(0);
+    expect(purge(old + 181 * DAY).processedOps).toBe(rows);
   });
 
   it("keeps a late delete for 30 days from the time the server wrote it", () => {
@@ -189,11 +294,12 @@ describe("purgeTombstones", () => {
   });
 
   it("works on a database with no writes", () => {
-    expect(purgeTombstones(30, { db, now: () => NOW })).toEqual({
+    expect(purge()).toEqual({
       lists: 0,
       items: 0,
       processedOps: 0,
       activity: 0,
+      tombstoned: 0,
       purgedSeq: 0,
     });
   });

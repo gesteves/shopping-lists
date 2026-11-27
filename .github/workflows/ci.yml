@@ -265,7 +265,9 @@ jobs:
           FONTAWESOME_NPM_AUTH_TOKEN: ${{ secrets.FONTAWESOME_NPM_AUTH_TOKEN }}
 
       # Through Cloudflare, as a user gets to the app. If this fails, the deploy
-      # fails.
+      # fails. The first replication sample after a boot is always ok, thus
+      # this shows only that the server and the metrics answer (#119). The
+      # Fly check `replication` finds a later problem.
       - name: Check production health
         env:
           PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
