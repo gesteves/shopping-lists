@@ -147,3 +147,40 @@ test("fast entry keeps every item", async ({ page }) => {
     .poll(async () => (await order(page)).sort())
     .toEqual([...names].sort());
 });
+
+test("the quantity badge is centered on the last line of the name", async ({
+  page,
+}) => {
+  await signIn(page);
+  await openNewList(page);
+  const short = "Coffee";
+  const long =
+    "Extra large family size box of whole grain breakfast cereal with dried strawberries, almonds, and honey clusters";
+  await add(page, short);
+  await add(page, long);
+  for (const name of [short, long]) {
+    await page.getByRole("button", { name: copy.item.edit(name) }).click();
+    const sheet = dialog(page, copy.itemSheet.title);
+    await sheet.getByRole("button", { name: copy.stepper.increment }).click();
+    await sheet.getByRole("button", { name: copy.common.save }).click();
+    await expect(sheet).toBeHidden();
+    await expect(item(page, name)).toContainText(copy.item.quantity(2));
+  }
+
+  for (const name of [short, long]) {
+    const { lines, offset } = await item(page, name)
+      .locator("wa-badge")
+      .evaluate((badge) => {
+        const rects =
+          badge.parentElement!.previousElementSibling!.getClientRects();
+        const line = rects[rects.length - 1];
+        const box = badge.getBoundingClientRect();
+        return {
+          lines: rects.length,
+          offset: box.top + box.height / 2 - (line.top + line.height / 2),
+        };
+      });
+    if (name === long) expect(lines).toBeGreaterThan(1);
+    expect(Math.abs(offset), name).toBeLessThanOrEqual(2);
+  }
+});
