@@ -73,6 +73,11 @@ export interface ListRecord {
   deletedAt: number | null;
   /** A one-line summary of the unchecked items, from Claude, or null. */
   summary: string | null;
+  /**
+   * The summaryKey() of the items that `summary` tells about, or null. A
+   * null summary with a key: the summary failed for those items (#91).
+   */
+  summaryKey: string | null;
   seq: number;
 }
 
@@ -113,6 +118,8 @@ export interface PullResponse {
   items: ItemRecord[];
   /** All users, for the names and avatars. */
   users: UserRecord[];
+  /** True if the server makes list summaries (#91). */
+  summaries: boolean;
   /** The largest field clock in this page, or null. Give it to the HLC clock. */
   hlc: string | null;
   /** The `since` of the next pull. */

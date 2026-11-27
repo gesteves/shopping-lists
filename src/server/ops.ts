@@ -108,7 +108,7 @@ export function applyOps(
  */
 export function setListSummary(
   listId: string,
-  summary: string,
+  summary: string | null,
   key: string,
   options: Pick<ApplyOptions, "db"> = {},
 ): boolean {

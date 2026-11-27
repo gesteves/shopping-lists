@@ -7,14 +7,8 @@ import { opSchema, type OpInput } from "@/shared/ops";
 import { SAM, createTestDb } from "@/test/db";
 import { bus } from "../bus";
 import { applyOps, setListSummary } from "../ops";
-import type { SummaryItem } from "./summarize";
-import {
-  MAX_WAIT_MS,
-  QUIET_MS,
-  RETRY_MS,
-  SummaryWorker,
-  summaryKey,
-} from "./worker";
+import { summaryKey, type SummaryItem } from "@/shared/summary";
+import { MAX_WAIT_MS, QUIET_MS, RETRY_MS, SummaryWorker } from "./worker";
 
 const LIST = "11111111-1111-4111-8111-111111111111";
 const NODE = "6f6f6f6f-0000-4000-8000-000000000000";
@@ -136,7 +130,16 @@ describe("SummaryWorker", () => {
     now += QUIET_MS;
     await w.tick();
     expect(calls).toHaveLength(1);
+    // The failure is saved for these items: the page shows the count.
     expect(list().summary).toBeNull();
+    expect(list().summaryKey).toBe(
+      summaryKey(
+        ["Milk", "Eggs", "Bread", "Kale"].map((name) => ({
+          name,
+          quantity: 1,
+        })),
+      ),
+    );
 
     answer = "Milk and more";
     now += RETRY_MS - 1;
@@ -144,6 +147,20 @@ describe("SummaryWorker", () => {
     expect(calls).toHaveLength(1);
     now += 1;
     await w.tick();
+    expect(calls).toHaveLength(2);
+    expect(list().summary).toBe("Milk and more");
+  });
+
+  it("tries a failed summary again at once after a restart", async () => {
+    answer = null;
+    const w = worker();
+    await seed(w);
+    now += QUIET_MS;
+    await w.tick();
+    expect(calls).toHaveLength(1);
+
+    answer = "Milk and more";
+    await worker().tick();
     expect(calls).toHaveLength(2);
     expect(list().summary).toBe("Milk and more");
   });

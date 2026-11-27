@@ -120,6 +120,8 @@ export const en = {
     /** The unchecked items of a list. */
     remaining: (n: number) => items(n),
     nothingToGet: "Nothing to get",
+    /** The label of the sparkles while Claude writes the summary (#91). */
+    summaryPending: "Summary on the way",
     /** The unchecked items of a short list, for example "Milk and Eggs". */
     names: (names: string[]) => andList.format(names),
     more: (name: string) => `More for ${name}`,

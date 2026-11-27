@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prompts } from "@/prompts";
+import type { SummaryItem } from "@/shared/summary";
 import { FALLBACK_BETA, MODEL, cleanLine } from "../notify/summarize";
 
 /** The server cuts at this. It is more than `prompts.listSummary.length`. */
@@ -16,10 +17,7 @@ export const MAX_ITEMS = 200;
 
 const Summary = z.object({ summary: z.string() });
 
-export interface SummaryItem {
-  name: string;
-  quantity: number;
-}
+export type { SummaryItem } from "@/shared/summary";
 
 /** The model input: names and quantities only, never IDs. */
 export function summaryInput(listName: string, items: SummaryItem[]) {

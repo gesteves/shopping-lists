@@ -9,7 +9,7 @@ Only the Google accounts on an allowlist can sign in.
 **Lists and items**
 
 - Make, rename, and delete lists.
-- The lists page shows what is left to get on each list: the item name for one item, and a one-line summary from Claude for more.
+- The lists page shows what is left to get on each list: the item name for one item, and a one-line summary from Claude for more. Sparkles show while Claude writes a new summary.
 - Add items with a quantity and notes. The add bar suggests items that you added before, and it does not add the same item two times.
 - Tap an item to check it off. Check all, uncheck all, or delete the checked items from the list menu.
 - Move an item to a different list.

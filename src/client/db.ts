@@ -28,6 +28,8 @@ export interface MetaValues {
   cursor: number;
   /** The signed-in user. Local ops use it for createdBy and updatedBy. */
   userId: string;
+  /** True if the server makes list summaries (#91), from the last pull. */
+  summaries: boolean;
 }
 
 export interface MetaEntry<K extends keyof MetaValues = keyof MetaValues> {

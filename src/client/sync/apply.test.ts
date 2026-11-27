@@ -33,6 +33,7 @@ function list(patch: Partial<ListRecord> = {}): ListRecord {
     updatedVia: "app",
     deletedAt: null,
     summary: null,
+    summaryKey: null,
     seq: 1,
     ...patch,
   };

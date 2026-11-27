@@ -133,6 +133,45 @@ test("the lists page shows the name of one item", async ({ page }) => {
   await expect(row).toContainText(copy.lists.names(["Milk"]));
 });
 
+test("the lists page shows sparkles while a summary is on the way", async ({
+  page,
+  context,
+}) => {
+  // The test server makes no summaries. Say that it does.
+  await page.route("**/api/sync/pull*", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), summaries: true },
+    });
+  });
+  await signIn(page);
+  const name = await openNewList(page);
+  await add(page, "Milk");
+  await add(page, "Eggs");
+  await synced(page);
+  await page.goto("/");
+  const row = page
+    .getByRole("region", { name: copy.lists.heading })
+    .filter({ visible: true })
+    .getByRole("listitem")
+    .filter({ hasText: name });
+  await expect(
+    row.getByRole("img", { name: copy.lists.summaryPending }),
+  ).toBeVisible();
+  // The row has a delete dialog with the count: look in the link only.
+  const link = row.getByRole("link");
+  await expect(link).not.toContainText(copy.lists.remaining(2));
+
+  // Offline, no summary can arrive: the count shows.
+  await context.setOffline(true);
+  await expect(link).toContainText(copy.lists.remaining(2));
+  await expect(
+    row.getByRole("img", { name: copy.lists.summaryPending }),
+  ).toHaveCount(0);
+  await context.setOffline(false);
+});
+
 test("fast entry keeps every item", async ({ page }) => {
   await signIn(page);
   await openNewList(page);

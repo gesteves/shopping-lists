@@ -90,6 +90,8 @@ describe("push then pull", () => {
       cursor: 2,
       hasMore: false,
       hlc: add.hlc,
+      // No summary worker runs in the tests.
+      summaries: false,
     });
     expect(page.users).toHaveLength(2);
     expect(page.users).toContainEqual({ id: SAM.id, name: "Sam", image: null });
@@ -104,6 +106,7 @@ describe("push then pull", () => {
         updatedVia: "app",
         deletedAt: null,
         summary: null,
+        summaryKey: null,
         seq: 1,
       },
     ]);

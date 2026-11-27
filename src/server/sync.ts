@@ -12,6 +12,7 @@ import {
 } from "@/shared/sync";
 import { applyOps, type Actor, type ApplyOptions } from "./ops";
 import { readChanges, readSeqState, readUsers } from "./queries";
+import { summaryWorkerRunning } from "./summary/worker";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -97,6 +98,7 @@ export function handlePull(
       lists: changes.lists,
       items: changes.items,
       users: readUsers(tx),
+      summaries: summaryWorkerRunning(),
       hlc: changes.hlc,
       // After the last page, the cursor is the last seq of the server.
       cursor: changes.hasMore

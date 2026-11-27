@@ -203,13 +203,17 @@ Code in `src/server/notify/`.
 Code in `src/server/summary/`. The lists page shows one line under each list name, so you can see at a glance what to get:
 - No unchecked items: "Nothing to get".
 - 1 unchecked item: its name, as the user wrote it. The client makes this line at once, with no API call.
-- 2 or more: the summary from Claude in `lists.summary`, for example "Milk and eggs" or "Milk, eggs, produce, and snacks for the party". Claude also corrects the capitals. If there is no summary yet, the count ("3 items").
+- 2 or more: the summary from Claude in `lists.summary`, for example "Milk and eggs" or "Milk, eggs, produce, and snacks for the party". Claude also corrects the capitals.
+- While a new summary is on the way: the `sparkles` icon with the `fade` animation (#91), also when the list has an old summary (owner's choice). Then the new summary, or the count ("3 items") if it failed.
+- The count also shows when the server makes no summaries (no `ANTHROPIC_API_KEY`), and offline or after a sync error, because then no summary can arrive soon.
+
+**Pending on the client (#91):** `summaryKey()` is in `src/shared/summary.ts`: cyrb53, a fast hash that is the same on the server and in the browser, of the names and quantities in any order. Each list record syncs `summaryKey`, the key of the items that `summary` tells about. The client makes the key of its unchecked items. If the keys are not the same, the summary is pending. A null summary with the current key means that the summary failed. The pull response has `summaries`: true if the summary worker runs. The client keeps it in `meta`, and shows no sparkles without it. (#91 changed the hash from SHA-256, thus each list got a new summary one time after the deploy.)
 
 The list page shows no count.
 
-**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 2 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows the old summary.
+**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 2 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it saves a null summary with the key, thus the page stops the sparkles and shows the count. It tries the same items again after 10 minutes, or at once after a restart.
 
-**Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
+**Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` (null after a failure) and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
 
 **Claude** (`summarize.ts`): the same request as the notification summary (`claude-opus-5-5`, `effort: "low"`, structured output `{ summary }`, server-side refusal fallbacks, 10 s timeout, 1 retry). The input is the list name and at most 200 items, with names and quantities only. The prompt (`prompts.listSummary`) asks for at most 60 characters; the server cuts at 90. Any error or refusal gives no summary. `npm run try:summaries` prints two sample lists.
 

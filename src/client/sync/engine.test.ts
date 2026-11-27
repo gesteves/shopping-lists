@@ -388,6 +388,7 @@ describe("sync", () => {
       hlc: null,
       cursor: 0,
       hasMore: false,
+      summaries: false,
     });
     await rebuildView(db);
     expect(await db.lists.count()).toBe(0);

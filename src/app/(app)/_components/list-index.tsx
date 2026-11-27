@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { useListSummaries } from "@/client/hooks";
+import { useListSummaries, useSyncStatus } from "@/client/hooks";
 import { listLine, type ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
@@ -80,9 +80,7 @@ function ListRow({ list }: { list: ListSummary }) {
             {list.name}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
-            <span className="line-clamp-2 min-w-0 break-words">
-              {listLine(list)}
-            </span>
+            <ListLine list={list} />
             <ListViewers listId={list.id} />
           </span>
         </Link>
@@ -240,5 +238,26 @@ function CreateListForm() {
         {copy.lists.create}
       </wa-button>
     </form>
+  );
+}
+
+/**
+ * The line under a list name. While Claude writes a new summary, fading
+ * sparkles (#91). Offline or after a sync error, the summary cannot arrive
+ * soon, thus the count shows.
+ */
+function ListLine({ list }: { list: ListSummary }) {
+  const { state } = useSyncStatus();
+  if (list.pending && (state === "idle" || state === "syncing")) {
+    return (
+      <wa-icon
+        name="sparkles"
+        animation="fade"
+        label={copy.lists.summaryPending}
+      ></wa-icon>
+    );
+  }
+  return (
+    <span className="line-clamp-2 min-w-0 break-words">{listLine(list)}</span>
   );
 }

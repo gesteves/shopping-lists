@@ -2,11 +2,10 @@
 // items of a list change, it waits for a quiet time, then asks Claude for a
 // new summary of the list. See "List summaries" in docs/PLAN.md.
 import "server-only";
-import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
 import { items, lists } from "@/db/schema";
-import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
+import { SUMMARY_MIN_ITEMS, summaryKey } from "@/shared/summary";
 import { setListSummary } from "../ops";
 import type { ListSummarizer, SummaryItem } from "./summarize";
 
@@ -17,17 +16,6 @@ export const QUIET_MS = 60_000;
 export const MAX_WAIT_MS = 3 * 60_000;
 /** After a failure, wait this long before a new try for the same items. */
 export const RETRY_MS = 10 * 60_000;
-
-/**
- * The same items, in any order, give the same key. The notes are not in the
- * summary, thus not in the key.
- */
-export function summaryKey(summaryItems: SummaryItem[]): string {
-  const parts = summaryItems
-    .map((i) => JSON.stringify([i.name, i.quantity]))
-    .sort();
-  return createHash("sha256").update(parts.join("\n")).digest("base64url");
-}
 
 export interface SummaryWorkerOptions {
   db?: Db;
@@ -65,9 +53,11 @@ export class SummaryWorker {
       for (const list of this.#ready()) {
         const summary = await this.#summarize(list.name, list.items);
         this.#pending.delete(list.id);
+        // A failure saves no summary for the key, thus the page stops the
+        // sparkles and shows the count (#91).
+        setListSummary(list.id, summary, list.key, { db: this.#db });
         if (summary) {
           this.#failed.delete(list.id);
-          setListSummary(list.id, summary, list.key, { db: this.#db });
         } else {
           this.#failed.set(list.id, {
             key: list.key,
@@ -85,7 +75,12 @@ export class SummaryWorker {
     const db = this.#db;
     const now = this.#now();
     const live = db
-      .select({ id: lists.id, name: lists.name, key: lists.summaryKey })
+      .select({
+        id: lists.id,
+        name: lists.name,
+        key: lists.summaryKey,
+        summary: lists.summary,
+      })
       .from(lists)
       .where(isNull(lists.deletedAt))
       .all();
@@ -123,15 +118,15 @@ export class SummaryWorker {
       // A list with one item shows its name. Its old summary stays for later.
       const key =
         listItems.length < SUMMARY_MIN_ITEMS ? null : summaryKey(listItems);
-      if (key === null || key === list.key) {
+      if (key === null || (key === list.key && list.summary !== null)) {
         this.#pending.delete(list.id);
         continue;
       }
-      const failed = this.#failed.get(list.id);
-      if (failed?.key === key) {
+      if (key === list.key) {
         // The same items failed before: try again after RETRY_MS, with no
-        // new quiet time.
-        if (now >= failed.until) {
+        // new quiet time. After a restart, try at once.
+        const failed = this.#failed.get(list.id);
+        if (failed?.key !== key || now >= failed.until) {
           ready.push({ id: list.id, name: list.name, key, items: listItems });
         }
         continue;
@@ -157,6 +152,14 @@ export class SummaryWorker {
   }
 }
 
+const KEY = Symbol.for("shopping-lists.summary-worker");
+type Store = typeof globalThis & { [KEY]?: SummaryWorker };
+
+/** True if the summary worker runs in this process. */
+export function summaryWorkerRunning(): boolean {
+  return (globalThis as Store)[KEY] !== undefined;
+}
+
 /**
  * Start the summary worker in this process, one time. The server calls it
  * at boot (src/instrumentation.ts), only with ANTHROPIC_API_KEY.
@@ -164,8 +167,7 @@ export class SummaryWorker {
 export function startSummaryWorker(
   options: SummaryWorkerOptions,
 ): SummaryWorker {
-  const KEY = Symbol.for("shopping-lists.summary-worker");
-  const store = globalThis as typeof globalThis & { [KEY]?: SummaryWorker };
+  const store = globalThis as Store;
   if (store[KEY]) return store[KEY];
   const worker = new SummaryWorker(options);
   setInterval(() => void worker.tick(), TICK_MS).unref();

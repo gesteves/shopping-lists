@@ -1,8 +1,8 @@
 // Reads of the local view. The hooks in ./hooks.ts use them.
 import { copy } from "@/copy";
-import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
+import { SUMMARY_MIN_ITEMS, summaryKey } from "@/shared/summary";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
-import type { ClientDb } from "./db";
+import { getMeta, type ClientDb } from "./db";
 
 /** The lists that are not deleted, by name. */
 export async function readLists(db: ClientDb): Promise<ListRecord[]> {
@@ -52,16 +52,24 @@ export interface ListSummary extends ListRecord {
    * than SUMMARY_MIN_ITEMS (thus one name). Else empty.
    */
   names: string[];
+  /** True if `summary` tells about the unchecked items now. */
+  current: boolean;
+  /**
+   * True if the server makes a new summary for the unchecked items (#91):
+   * the server makes summaries, and the summary is not current.
+   */
+  pending: boolean;
 }
 
 /**
  * The lists that are not deleted, by name, each with its unchecked count
- * and, for a short list, the names.
+ * and, for a short list, the names. Also the state of the summary.
  */
 export async function readListSummaries(db: ClientDb): Promise<ListSummary[]> {
-  const [lists, items] = await Promise.all([
+  const [lists, items, summaries] = await Promise.all([
     readLists(db),
     db.items.filter((i) => i.deletedAt === null && !i.checked).toArray(),
+    getMeta(db, "summaries"),
   ]);
   const byList = new Map<string, ItemRecord[]>();
   for (const item of items) {
@@ -69,23 +77,26 @@ export async function readListSummaries(db: ClientDb): Promise<ListSummary[]> {
   }
   return lists.map((list) => {
     const unchecked = byList.get(list.id) ?? [];
+    const short = unchecked.length < SUMMARY_MIN_ITEMS;
+    const current = !short && summaryKey(unchecked) === list.summaryKey;
     return {
       ...list,
       remaining: unchecked.length,
-      names:
-        unchecked.length < SUMMARY_MIN_ITEMS
-          ? sortItems(unchecked).map((i) => i.name)
-          : [],
+      names: short ? sortItems(unchecked).map((i) => i.name) : [],
+      current,
+      pending: summaries === true && !short && !current,
     };
   });
 }
 
 /**
- * The line under a list name on the lists page: "Nothing to get", the
- * names of a short list, the summary from Claude, or the count.
+ * The text under a list name on the lists page: "Nothing to get", the
+ * names of a short list, the current summary from Claude, or the count.
+ * The page shows sparkles in place of it while a summary is pending.
  */
 export function listLine(list: ListSummary): string {
   if (list.remaining === 0) return copy.lists.nothingToGet;
   if (list.remaining < SUMMARY_MIN_ITEMS) return copy.lists.names(list.names);
-  return list.summary ?? copy.lists.remaining(list.remaining);
+  if (list.current && list.summary) return list.summary;
+  return copy.lists.remaining(list.remaining);
 }

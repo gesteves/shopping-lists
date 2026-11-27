@@ -154,6 +154,7 @@ export async function savePullPage(
         await setMeta(db, "hlc", clock.last);
       }
       await setMeta(db, "cursor", page.cursor);
+      await setMeta(db, "summaries", page.summaries);
     },
   );
 }

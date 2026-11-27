@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { summaryKey } from "@/shared/summary";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
 import { ClientDb } from "./db";
 import {
@@ -39,6 +40,7 @@ function list(
     updatedAt: 1,
     deletedAt,
     summary,
+    summaryKey: null,
   } satisfies ListRecord;
 }
 
@@ -131,11 +133,49 @@ describe("readListSummaries names", () => {
   });
 });
 
+describe("readListSummaries summary state", () => {
+  const keyOf = (...names: string[]) =>
+    summaryKey(names.map((name) => ({ name, quantity: 1 })));
+
+  it("is pending when the items are not the items of the summary", async () => {
+    await db.meta.put({ key: "summaries", value: true });
+    await db.lists.put({ ...list("l", "Target"), summaryKey: keyOf("a") });
+    await db.items.bulkPut([item("a", 1), item("b", 2)]);
+    expect((await readListSummaries(db))[0]).toMatchObject({
+      current: false,
+      pending: true,
+    });
+
+    await db.lists.update("l", { summaryKey: keyOf("b", "a") });
+    expect((await readListSummaries(db))[0]).toMatchObject({
+      current: true,
+      pending: false,
+    });
+  });
+
+  it("is never pending when the server makes no summaries", async () => {
+    await db.lists.put(list("l", "Target"));
+    await db.items.bulkPut([item("a", 1), item("b", 2)]);
+    expect((await readListSummaries(db))[0].pending).toBe(false);
+    await db.meta.put({ key: "summaries", value: false });
+    expect((await readListSummaries(db))[0].pending).toBe(false);
+  });
+
+  it("is not pending for one item", async () => {
+    await db.meta.put({ key: "summaries", value: true });
+    await db.lists.put(list("l", "Target"));
+    await db.items.put(item("a", 1));
+    expect((await readListSummaries(db))[0].pending).toBe(false);
+  });
+});
+
 describe("listLine", () => {
   const summary = (patch: Partial<ListSummary>): ListSummary => ({
     ...list("l", "Target"),
     remaining: 0,
     names: [],
+    current: false,
+    pending: false,
     ...patch,
   });
 
@@ -151,13 +191,18 @@ describe("listLine", () => {
     ).toBe("Milk");
   });
 
-  it("gives the summary of two or more items, or the count", () => {
+  it("gives the current summary of two or more items, or the count", () => {
     expect(
-      listLine(summary({ remaining: 5, summary: "Produce and milk" })),
+      listLine(
+        summary({ remaining: 5, summary: "Produce and milk", current: true }),
+      ),
     ).toBe("Produce and milk");
     expect(listLine(summary({ remaining: 5 }))).toBe("5 items");
+    // A failed summary: current, but null.
+    expect(listLine(summary({ remaining: 5, current: true }))).toBe("5 items");
+    // An old summary is not shown.
     expect(listLine(summary({ remaining: 2, summary: "Milk and eggs" }))).toBe(
-      "Milk and eggs",
+      "2 items",
     );
   });
 });
