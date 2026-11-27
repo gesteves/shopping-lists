@@ -12,19 +12,11 @@ import {
 import type { Db } from "@/db/client";
 import type { Auth } from "@/lib/auth";
 import { appOrigin, mcpResource } from "@/lib/oauth";
+import { prompts } from "@/prompts";
 import { withMcpAuth } from "./auth";
 import { TOOLS, ToolError, type ToolContext, type ToolDef } from "./tools";
 
 export const SERVER_INFO = { name: "shopping-lists", version: "1.0.0" };
-
-export const INSTRUCTIONS = `Shared shopping lists for two people. Each list has items; each item has a name, a quantity (default 1), optional notes (such as a brand or a size), and a checked state.
-
-- Refer to a list by its list_id or its name, and to an item by its item_id or its name on that list. Names are case-insensitive. Call list_lists or get_list when you are not sure.
-- Items are sorted with unchecked items first, then the most recently changed first.
-- Adding an item whose name is already on the list does not add a second one. If it was checked off, it becomes unchecked again ("buy it again"). To change its quantity or notes, use update_item.
-- The other person sees each change at once, and gets a notification. Changes are shown as "<user> (via Claude)".
-- delete_list, delete_items, and clear_checked remove things for both people. Ask the user to confirm before you call them.
-- Write tools accept an optional idempotency_key. When you retry a call after an error or a timeout, send the same key: the retry then changes nothing.`;
 
 /** AuthInfo.extra: the token owner, from src/server/mcp/auth.ts. */
 export interface McpAuthExtra {
@@ -40,7 +32,7 @@ function userIdOf(authInfo: AuthInfo | undefined): string {
 /** A server for one request and one caller. */
 export function buildMcpServer(ctx: ToolContext): McpServer {
   const server = new McpServer(SERVER_INFO, {
-    instructions: INSTRUCTIONS,
+    instructions: prompts.mcpInstructions,
     cacheHints: {
       // The tool list changes only with a deploy.
       "tools/list": { ttlMs: 60 * 60_000, cacheScope: "private" },

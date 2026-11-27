@@ -83,6 +83,7 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 - Use the `cf` CLI for Cloudflare. Run each change with `--dry-run` first.
 - The MCP server follows spec 2026-07-28. Read the spec again before MCP work.
 - For Claude API code, load the `claude-api` skill first.
+- Prompts: put all the prompts for Claude in `src/prompts/index.ts` (import `prompts` from `@/prompts`). This includes system prompts and the MCP server instructions. The MCP tool descriptions stay in `TOOLS`.
 - For UI work, use the `frontend-design` skill.
 - UI copy: put all text that the app shows in the dictionary (`src/copy/en.ts`, import `copy` from `@/copy`). This includes labels, `aria-label`, sr-only text, toasts, and push text. Text with values is a function; use `plural` for counts. The e2e tests find text through `copy` too. List and item names are data. ESLint refuses JSX text and literal text props.
 - Every UI change must work in light and dark. Dark mode follows the system setting with no JavaScript: never set `.wa-dark`, `.wa-invert`, or the color scheme with JavaScript.
