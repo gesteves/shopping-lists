@@ -343,6 +343,8 @@ export const en = {
     unnamedApp: "An app",
     heading: (app: string) => `Connect ${q(app)} to your lists?`,
     appFrom: "App from",
+    /** For an app that registered itself (DCR), with no address to check. */
+    unverified: "Not verified",
     sendsYouTo: "Sends you to",
     account: "Account",
     loopback:

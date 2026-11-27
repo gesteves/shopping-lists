@@ -88,7 +88,9 @@ Better Auth uses `users`, `sessions`, `accounts`, and `verifications`. The OAuth
 
 Indexes: `seq` on `lists` and `items`, `(list_id, name_key)` and `name_key` on `items`. There is no unique index on `(list_id, name_key)`: a hard constraint can make a push fail on each retry (for example, a move or a restore into a list that has the same name). `applyOps` does the dedupe.
 
-**Allowlist:** the `ALLOWED_EMAILS` environment variable. Better Auth's `user.validateUserInfo` rejects any other email before a user row is created. It checks again at each Google sign-in. `getCurrentUser` also treats a session for an email that is no longer in the list as signed out.
+**Allowlist:** the `ALLOWED_EMAILS` environment variable. Better Auth's `user.validateUserInfo` rejects any other email before a user row is created. It checks again at each Google sign-in. `getCurrentUser` also treats a session for an email that is no longer in the list as signed out. A `hooks.before` rule (`src/lib/auth.ts`, #116) refuses such a session (403) on each `/api/auth/*` path, for example the approval of an OAuth client. Only the sign-in flow, `get-session`, and `sign-out` accept it.
+
+**Disabled endpoints** (#116): `DISABLED_PATHS` in `src/lib/auth.ts` turns off each Better Auth endpoint that the app does not use: they give 404. For example `/update-user` (the name and the avatar come only from Google), the email and password endpoints, the account and session lists, the client and consent management endpoints (`/oauth2/create-client`, `/oauth2/get-clients`, `/oauth2/update-consent`, …), and the OpenID Connect endpoints. The server code can still call them through `auth.api`.
 
 **Sessions:** long and rolling (~180 days), because re-authenticating inside an iOS PWA is awkward. Server Components cannot set cookies, so they read the session with `disableRefresh`. `<SessionRefresh>` calls `/api/auth/get-session` when the app opens or comes to the front, and that call extends the session and the cookie.
 
@@ -167,12 +169,12 @@ Because of this, realtime updates, notifications and attribution behave the same
 - **`GET /api/events`:** an SSE stream.
   - A comment heartbeat every 20s keeps it under Cloudflare's 100s idle timeout.
   - Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`.
-  - Events: `poke {seq}` and `presence {userId, listId, editingItemId}`.
+  - Events: `poke {seq}` and `presence { entries: [{ userId, clientId, listId, editingItemId }] }`.
   - A stream closes after 15 minutes (#100). The browser connects again, and the route checks the session and the allowlist again. Thus a user who is removed from `ALLOWED_EMAILS` loses the stream within 15 minutes.
   - `Cache-Control: no-transform` also stops the gzip layer of Next.js, which can hold events in its buffer. The stream starts with `retry: 3000` and a comment, so it opens at once. Next.js aborts `request.signal` when the client goes, and the stream then removes its bus listener (#11).
   - Client (`src/client/realtime.ts`): one `EventSource`, open only while the page is visible. Each `poke`, and each (re)connection, starts a sync. After an HTTP error (for example, 401), the browser stops, and the client tries again after 5 s, doubled each time, up to 60 s. `startSync()` starts it.
 - **`POST /api/presence`:** a heartbeat every 15s, and whenever your current view or editing target changes. The server keeps a 30s-TTL map in memory and broadcasts changes. Presence is hidden while offline.
-  - Built in #12. Body: `{ clientId, listId, editingItemId }` (`src/shared/presence.ts`); both null means the device left. The store (`src/server/presence.ts`) keys each entry by user and device, sweeps every 5 s, and broadcasts the full snapshot as the `presence` SSE event on each change. A new stream gets the snapshot first.
+  - Built in #12. Body: `{ clientId, listId, editingItemId }` (`src/shared/presence.ts`); both null means the device left. The store (`src/server/presence.ts`) keys each entry by user and device, sweeps every 5 s, and broadcasts the full snapshot as the `presence` SSE event on each change. A new stream gets the snapshot first. It keeps at most 10 devices for each person (#116): a new device over the limit removes the device of that person with the oldest heartbeat.
   - Client (`src/client/presence.ts`): `useReportPresence()` in the list view sends changes at once, a heartbeat every 15 s while a list is open, and a clear on unmount, on hide, and on `pagehide`. Safari sends no clear for a full page load: the TTL removes it. The other people's presence is cleared whenever the stream is closed, so it is hidden offline.
   - UI: avatar dots on list rows (`ListViewers`) and "Name is editing…" on item rows (`EditingBadge`), in `src/app/(app)/_components/presence.tsx`.
 
@@ -209,7 +211,7 @@ Code in `src/server/notify/`.
   - The list-page Notifications switch shows **this device** (#98): it is on only if this browser has a subscription with a device row that is on (`pushStatus()` is `on`) and the list is not muted. It is hidden while loading and where push cannot work here (no server keys, iPhone or iPad Safari outside the Home Screen app, notifications blocked, an unsupported browser); "Keep screen on" still shows. On, from Off, turns on push on this device in one tap (the permission prompt, the subscription, or a device that is off), then unmutes the list. Off mutes the list on all devices, and a toast tells so. `GET /api/push/subscriptions` also gives the VAPID public key, because the list page is a client shell.
   - A switch that fails (a device, Remove, a list mute) goes back, and a toast tells why (#104).
 - API: `GET/POST /api/push/subscriptions`, `PATCH/DELETE /api/push/subscriptions/<id>`, `POST /api/push/test`, `GET/PUT /api/push/mutes`. The endpoint is unique: a browser that subscribes again replaces its row. An endpoint of a different user does not move to the caller: 409 (#100). The endpoint must be on a known push service (`PUSH_SERVICE_HOSTS` in `src/shared/push.ts`: FCM, Mozilla, Apple, Windows), because the server sends requests to it. The e2e tests use a loopback endpoint, which the server accepts only with the auth stub.
-- JSON routes (#100): `readJson(request, schema, { maxBytes })` (`src/server/json.ts`) requires `application/json` (415), limits the size (413, 16 KB by default, 1 MB for a sync push), and parses with a `z.strictObject` schema (400 for unknown keys). The push, presence, and sync routes use it. `POST /api/push/test` takes `{}`.
+- JSON routes (#100): `readJson(request, schema, { maxBytes })` (`src/server/json.ts`) requires `application/json` (415), limits the size (413, 16 KB by default, 1 MB for a sync push; it stops reading at the limit, also for a chunked body with no `content-length`), and parses with a `z.strictObject` schema (400 for unknown keys). The push, presence, and sync routes use it. `POST /api/push/test` takes `{}`.
 - `src/server/push.ts`: `sendToUser(userId, payload)` sends to the enabled devices with a 24 h TTL and a 10 s timeout (#100: a push service that does not answer must not stop the notifier), deletes a subscription on 404 or 410, and sets `last_success_at`. Keys come from `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. The subject is `VAPID_SUBJECT`, or the app origin, so no email is needed. Without keys, nothing is sent.
 - The service worker shows the payload (`PushPayload`: title, body, url, tag). A tap focuses a window of the app on that URL, or opens one. Only same-origin URLs are used.
 
@@ -262,14 +264,14 @@ Streamable HTTP at `/mcp`, stateless.
 
 - An unknown version gets 400 with `UnsupportedProtocolVersion` (-32022), including `data.supported`.
 - A request without the required `_meta` fields gets 400 with -32602. An unknown method gets 404 with -32601.
-- Validate `Origin` first: 403 if it's present and not the app host, `claude.ai` or `claude.com`. Then the token (401/403), then the protocol checks.
+- Validate `Origin` first: 403 if it is present and its hostname is not the app hostname, `claude.ai`, or `claude.com`. The check compares only the hostname, not the scheme or the port (`originValidationResponse` of the SDK). Then the token (401/403), then the protocol checks.
 - Return JSON responses. Only stream SSE if something needs it, and then send `X-Accel-Buffering: no` and keep-alives. Closing the stream counts as cancellation.
 - Not used: sampling, roots and logging (all deprecated); `subscriptions/listen` and the tasks extension (not needed); elicitation (Duet's own approval step covers destructive actions).
 
 ### Implementation
 **Decided in #19:** the official SDK, `@modelcontextprotocol/server` v2. It serves 2026-07-28 statelessly and does the protocol checks above: `server/discover`, the header and version errors, `resultType`, and the cache hints.
 - `createMcpHandler` builds a new `McpServer` for each request, for the caller of that request. With its default `legacy: "stateless"`, a 2025-era client that sends `initialize` gets the same tools from the same factory, with no session.
-- `src/server/mcp/server.ts` has the factory and the route: the Origin check, then `withMcpAuth` (`src/server/mcp/auth.ts`, #18), then the SDK handler with the caller as `AuthInfo`.
+- `src/server/mcp/server.ts` has the factory and the route: the Origin check, then `withMcpAuth` (`src/server/mcp/auth.ts`, #18), then the SDK handler with the caller as `AuthInfo`. The handler accepts a body of at most 1 MiB (`MAX_MCP_BODY_BYTES`, #116; the SDK default is 4 MiB), else 413.
 - `src/server/mcp/tools.ts` has the tools: one list (`TOOLS`) with the schemas, the annotations, the scope, and the code of each tool.
 
 ### Authorization
@@ -291,7 +293,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 **Client registration:**
 - Client ID Metadata Documents first. The plugin fetches the https `client_id` URL, checks that `client_id` matches exactly, uses its `redirect_uris`, and caches it. SSRF guard: https only, a public host (DNS resolved one time, the connection pinned to the checked address), no redirects, a 5-second timeout, a 5 KB limit, and fetch rate limits.
 - DCR as a fallback. Anyone can register (5 a minute for each IP), but a client gets nothing until an allowlisted user approves it. A hook refuses a registration without `application_type` (the provider would use "web").
-- Users cannot read or change clients or resources through the API (`clientPrivileges`, `resourcePrivileges`).
+- Clients come only from CIMD and DCR. `/oauth2/create-client` and the other client endpoints are in `DISABLED_PATHS` (#116). `clientPrivileges` allows only "create", because a DCR request with a session cookie checks it. `resourcePrivileges` allows nothing.
 
 **Tokens:**
 - `iss` (RFC 9207) goes in every authorization response, errors included.
@@ -299,9 +301,9 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 - Google tokens never reach the MCP endpoint.
 - Access tokens are JWTs (`typ: at+jwt`) for 15 minutes.
 - Refresh tokens last 90 days from the last refresh and are issued only with `offline_access`, so Duet keeps working in the background. Each refresh rotates the token. A retry in 30 seconds gets the same answer (the `mcp()` default, for lost responses); a later reuse is a replay and revokes all the refresh tokens of the grant.
-- `/mcp` (`src/server/mcp/auth.ts`) checks the signature, `iss`, `aud`, `exp`, `azp`, `typ` and the scopes. A JWT stays valid until it expires, thus it also checks the database at each request: the user is still in `ALLOWED_EMAILS`, and the grant (consent) of the user for the client exists. A revoke deletes the grant, thus it stops a token at once.
+- `/mcp` (`src/server/mcp/auth.ts`) checks the signature, `iss`, `aud`, `exp`, `azp`, `typ` and the scopes. A JWT stays valid until it expires, thus it also checks the database at each request: the user is still in `ALLOWED_EMAILS`, and the grant (consent) of the user for the client exists. A revoke deletes the grant, thus it stops a token at once. The token `iat` must be at or after the time of the last consent (#116): thus a token from before a disconnect does not work again when the user connects the same client again. The caller gets only the scopes that are in the token and in the consent.
 
-**Consent:** Google sign-in (allowlist), then `/oauth/consent`. The client name is the client's own claim, thus the page also shows the hosts the user can check: the client ID host (CIMD) and the redirect host, with a warning for a localhost redirect. The token belongs to that user, and its ops are recorded with `via: "mcp"`.
+**Consent:** Google sign-in (allowlist), then `/oauth/consent`. The client name is the client's own claim, thus the page also shows the hosts the user can check: the client ID host (CIMD) and the redirect host, with a warning for a localhost redirect. A DCR client has no client ID host: "App from" shows a "Not verified" badge (#116). The token belongs to that user, and its ops are recorded with `via: "mcp"`.
 
 **Connected apps:** Settings lists the approved clients. "Disconnect" deletes the grant, revokes the refresh tokens, and deletes the opaque access tokens (`src/server/connected-apps.ts`). Settings also shows the connector URL (`mcpResource()`, `<origin>/mcp`) with a `<wa-copy-button>` (#73). Its tooltip is off, because the tooltip replaces the accessible name of the button; a toast tells the result.
 
@@ -309,7 +311,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 - `tools/list` returns tools in a fixed order, with `ttlMs` and `cacheScope: "private"`.
 - Every tool has `title`, `description`, `inputSchema` and `outputSchema`. Results return matching `structuredContent`, plus the same JSON in a text block.
 - Business errors (unknown list, deleted item) return `isError: true`, with a message that helps the model recover: an unknown list names the lists. Arguments that fail the input schema also return `isError: true` (the SDK, per the spec), not -32602.
-- Each tool takes a list (`list`, `to_list`) as a `list_id` or a case-insensitive name, and an item (`item`, `items`) as an `item_id` or a case-insensitive name on that list. Two lists or items with the same name are an error that gives their IDs. If any item is unknown, the tool changes nothing.
+- Each tool takes a list (`list`, `to_list`) as a `list_id` or a case-insensitive name, and an item (`item`, `items`) as an `item_id` or a case-insensitive name on that list. Two lists or items with the same name are an error that gives their IDs. If any item is unknown, the tool changes nothing. A list reference has at most 100 characters and an item reference at most 200 (the name limits, #116): a longer one is a schema error, and the error text does not quote it.
 - Write tools accept an optional `idempotency_key`. The op IDs (and the IDs of new lists and items) come from a hash of the user, the tool, the key, a hash of the arguments (canonical JSON, #101), and the position. Thus a retry with the same key and arguments gets "duplicate" results and changes nothing, and the same key with different arguments makes the change.
 - An unexpected error gives a general `isError` text to the client; the detail goes to the server log (#101).
 - Every write calls `applyOps` with `via: "mcp"`. Reads use `src/server/queries.ts`.

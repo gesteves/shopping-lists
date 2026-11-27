@@ -19,7 +19,7 @@ import type { PushPayload } from "@/shared/push";
 import { bus } from "../bus";
 import { Notifier, QUIET_MS } from "../notify/worker";
 import { prompts } from "@/prompts";
-import { UNEXPECTED_ERROR, createMcpRoute } from "./server";
+import { MAX_MCP_BODY_BYTES, UNEXPECTED_ERROR, createMcpRoute } from "./server";
 import { TOOLS } from "./tools";
 
 const MODERN = "2026-07-28";
@@ -221,6 +221,14 @@ describe("transport", () => {
       },
     );
     expect(good.status).toBe(200);
+  });
+
+  it("gives 413 to a body over the limit", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_list",
+      arguments: { list: "x".repeat(MAX_MCP_BODY_BYTES) },
+    });
+    expect(res.status).toBe(413);
   });
 
   it("needs a token before anything else", async () => {
@@ -694,6 +702,18 @@ describe("tools", () => {
       expect(res.isError).toBe(true);
       expect(errorText(res)).toContain("was deleted");
     });
+
+    it.each([
+      ["get_list", { list: "L".repeat(101) }],
+      ["check_items", { list: "Whole Foods", items: ["I".repeat(201)] }],
+    ])(
+      "refuses a long reference in %s, and does not quote it",
+      async (name, args) => {
+        const res = await client.callTool({ name, arguments: args });
+        expect(res.isError).toBe(true);
+        expect(errorText(res)).not.toMatch(/LLLLL|IIIII/);
+      },
+    );
 
     it("returns schema errors as tool errors", async () => {
       const res = await client.callTool({

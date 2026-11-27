@@ -12,6 +12,13 @@ import { bus } from "./bus";
 /** How often the store removes expired entries. */
 const SWEEP_MS = 5_000;
 
+/**
+ * The most devices for each person. A new device over the limit removes the
+ * device of that person with the oldest heartbeat. Thus the memory has a
+ * limit, and a real new device still shows.
+ */
+export const MAX_DEVICES_PER_USER = 10;
+
 interface Entry extends PresenceEntry {
   expiresAt: number;
 }
@@ -39,6 +46,7 @@ export class PresenceStore {
       if (this.#entries.delete(key)) this.#broadcast();
       return;
     }
+    if (!before) this.#makeRoom(userId);
     this.#entries.set(key, {
       userId,
       clientId: input.clientId,
@@ -51,6 +59,16 @@ export class PresenceStore {
       before?.editingItemId !== input.editingItemId
     ) {
       this.#broadcast();
+    }
+  }
+
+  /** Remove the oldest devices of the user until one more can come in. */
+  #makeRoom(userId: string) {
+    const devices = [...this.#entries]
+      .filter(([, e]) => e.userId === userId)
+      .sort(([, a], [, b]) => a.expiresAt - b.expiresAt);
+    while (devices.length >= MAX_DEVICES_PER_USER) {
+      this.#entries.delete(devices.shift()![0]);
     }
   }
 

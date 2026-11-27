@@ -2,7 +2,7 @@
 // See "Authorization" and "Verification" in docs/PLAN.md.
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { oauthClients, users } from "@/db/schema";
+import { oauthClients, oauthConsents, users } from "@/db/schema";
 import { SCOPES } from "@/lib/oauth";
 import { listConnectedApps, revokeConnectedApp } from "../connected-apps";
 import {
@@ -553,6 +553,39 @@ describe("connected apps", () => {
       resource: RESOURCE,
     });
     expect(refresh.body.error).toBe("invalid_grant");
+  });
+
+  it("gives 401 to a token from before the last consent", async () => {
+    const clientId = await registerClient();
+    const old = await getTokens(clientId);
+    const user = h.db
+      .select()
+      .from(users)
+      .where(eq(users.email, "allowed@example.com"))
+      .get()!;
+    revokeConnectedApp(h.db, user.id, clientId);
+
+    // The user connects the same client again, a moment later.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 2_000 });
+    const fresh = await getTokens(clientId);
+    expect((await callMcp(fresh.access_token)).status).toBe(200);
+    const res = await callMcp(old.access_token);
+    expect(res.status).toBe(401);
+    expect(challenge(res)).toContain('error="invalid_token"');
+  });
+
+  it("gives only the scopes that are also in the consent", async () => {
+    const clientId = await registerClient();
+    const tokens = await getTokens(clientId);
+    expect((await callMcp(tokens.access_token)).status).toBe(200);
+    h.db
+      .update(oauthConsents)
+      .set({ scopes: JSON.stringify(["lists:write"]) })
+      .where(eq(oauthConsents.clientId, clientId))
+      .run();
+    const res = await callMcp(tokens.access_token);
+    expect(res.status).toBe(403);
+    expect(challenge(res)).toContain('error="insufficient_scope"');
   });
 
   it("does not revoke the app of another user", async () => {
