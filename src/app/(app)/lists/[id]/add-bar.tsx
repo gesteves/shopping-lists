@@ -190,7 +190,7 @@ export function AddBar({
               // Keep the focus in the field, so the keyboard stays open.
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => void add({ name: s.name, quantity, notes })}
-              className={`flex min-h-12 cursor-pointer items-center px-4 text-lg ${i === active ? "bg-accent-soft" : "hover:bg-accent-soft"}`}
+              className={`flex min-h-12 cursor-pointer items-center px-4 py-2 text-lg leading-snug wrap-anywhere ${i === active ? "bg-accent-soft" : "hover:bg-accent-soft"}`}
             >
               {s.name}
             </li>

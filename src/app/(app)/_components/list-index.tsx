@@ -76,13 +76,13 @@ function ListRow({ list }: { list: ListSummary }) {
         <Link
           href={href}
           aria-current={current ? "page" : undefined}
-          className="flex min-h-16 flex-1 flex-col justify-center self-stretch rounded-xl px-4 py-2"
+          className="flex min-h-16 min-w-0 flex-1 flex-col justify-center self-stretch rounded-xl px-4 py-2"
         >
-          <span className="text-xl leading-tight font-semibold text-balance break-words">
+          <span className="text-xl leading-tight font-semibold text-balance wrap-anywhere">
             {list.name}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
-            <span className="line-clamp-2 min-w-0 break-words">
+            <span className="line-clamp-2 min-w-0 wrap-anywhere">
               {listLine(list)}
             </span>
             <ListViewers listId={list.id} />

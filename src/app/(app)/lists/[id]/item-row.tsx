@@ -9,6 +9,7 @@ import { EditingBadge } from "../../_components/presence";
 /**
  * One item: a large target to check it, and a button for the sheet. An older
  * checked item (#112) has a badge with the days until its automatic delete.
+ * The name and the notes wrap, also a long word or URL (#129): no truncation.
  */
 export function ItemRow({
   item,
@@ -38,7 +39,7 @@ export function ItemRow({
         aria-checked={item.checked}
         data-name={item.name}
         onClick={toggle}
-        className="flex min-h-16 flex-1 items-center gap-4 rounded-xl px-4 py-3 text-left"
+        className="flex min-h-16 min-w-0 flex-1 items-center gap-4 rounded-xl px-4 py-3 text-left"
       >
         <span
           aria-hidden="true"
@@ -50,7 +51,7 @@ export function ItemRow({
           {/* Inline flow, not flex: the badge has no text baseline, thus flex
               baseline alignment puts it too low. The badge goes after the
               last line of the name, in a box that is one line high. */}
-          <span className={`text-lg leading-snug break-words ${quiet}`}>
+          <span className={`text-lg leading-snug wrap-anywhere ${quiet}`}>
             <span
               className={`font-medium ${item.checked ? "line-through decoration-2" : ""}`}
             >
@@ -71,7 +72,7 @@ export function ItemRow({
           </span>
           <EditingBadge itemId={item.id} />
           {item.notes && (
-            <span className="truncate text-sm text-ink-muted">
+            <span className="text-sm wrap-anywhere text-ink-muted">
               {item.notes}
             </span>
           )}

@@ -236,18 +236,17 @@ export async function removeFakeSubscription(page: Page, endpoint: string) {
 }
 
 /**
- * Run axe (WCAG 2.2 A and AA) on the page, after the Web Awesome components
- * are defined and their animations end. No serious or critical issues.
+ * Wait until the Web Awesome components are defined and their animations
+ * end. Before that, the colors and the sizes are not the real ones.
  */
-export async function scan(page: Page, screen: string) {
-  // Wait for the Web Awesome components: undefined tags are hidden.
+export async function settled(page: Page) {
+  // Undefined tags are hidden.
   await page.waitForFunction(() =>
     [...document.querySelectorAll("*")].every(
       (el) =>
         !el.localName.startsWith("wa-") || customElements.get(el.localName),
     ),
   );
-  // Colors in the middle of a fade-in are not the real colors.
   // Web Awesome animates in its shadow roots, which document.getAnimations()
   // does not include.
   await page.waitForFunction(() =>
@@ -260,6 +259,14 @@ export async function scan(page: Page, screen: string) {
       root.getAnimations().every((a) => a.playState !== "running"),
     ),
   );
+}
+
+/**
+ * Run axe (WCAG 2.2 A and AA) on the page, after the Web Awesome components
+ * are defined and their animations end. No serious or critical issues.
+ */
+export async function scan(page: Page, screen: string) {
+  await settled(page);
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();

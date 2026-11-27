@@ -113,8 +113,8 @@ export function NotificationSettings() {
                   key={device.id}
                   className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3"
                 >
-                  <span className="flex flex-1 flex-col gap-1">
-                    <span className="font-medium">
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="font-medium wrap-anywhere">
                       {label}
                       {device.endpoint === endpoint && (
                         <span className="ml-2 text-sm font-normal text-ink-muted">
@@ -200,7 +200,10 @@ function MutedLists() {
         {lists.map((list) => (
           <li key={list.id}>
             <div className="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-surface px-4">
-              <span aria-hidden="true" className="flex-1 font-medium">
+              <span
+                aria-hidden="true"
+                className="min-w-0 flex-1 font-medium wrap-anywhere"
+              >
                 {list.name}
               </span>
               <wa-switch
