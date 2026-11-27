@@ -64,25 +64,83 @@ describe("collapse", () => {
   });
 
   it("folds updates and moves into an add, with the last names", () => {
+    const add = ev("addItem", { itemName: "Milk" });
     const out = collapse([
-      ev("addItem", { itemName: "Milk" }),
-      ev("updateItem", { itemName: "Oat milk", oldName: "Milk" }),
+      add,
+      ev("updateItem", {
+        itemName: "Oat milk",
+        oldName: "Milk",
+        fields: ["name"],
+      }),
       ev(
         "moveItem",
         {
           itemName: "Oat milk",
           listName: "Target",
           fromListName: "Whole Foods",
+          unchecked: true,
         },
         { listId: "list-2" },
       ),
     ]);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      type: "addItem",
-      listId: "list-2",
-      snapshot: { itemName: "Oat milk", listName: "Target" },
-    });
+    // No oldName, fromListName, fields, or unchecked of the later events.
+    expect(out).toEqual([
+      {
+        ...add,
+        listId: "list-2",
+        snapshot: { itemName: "Oat milk", listName: "Target" },
+      },
+    ]);
+  });
+
+  it("keeps only the snapshot keys of each type", () => {
+    const L = { listId: "l", itemId: null };
+    const out = collapse([
+      ev("check", { itemName: "Tea", oldName: "x", count: 3 }, { itemId: "t" }),
+      ev("clearChecked", { count: 2, itemName: "x" }, L),
+      ev("deleteList", { listName: "Old", oldName: "x" }, L),
+    ]);
+    expect(out.map((e) => e.snapshot)).toEqual([
+      { listName: "Whole Foods", itemName: "Tea" },
+      { listName: "Whole Foods", count: 2 },
+      { listName: "Old" },
+    ]);
+  });
+
+  it("drops an item that is deleted at the start and at the end", () => {
+    expect(
+      collapse([
+        ev("restoreItem", { itemName: "Milk" }),
+        ev("updateItem", {
+          itemName: "Oat milk",
+          oldName: "Milk",
+          fields: ["name"],
+        }),
+        ev("check", { itemName: "Oat milk" }),
+        ev("deleteItem", { itemName: "Oat milk" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps a restore with the changes after it", () => {
+    const restore = ev("restoreItem", { itemName: "Milk" });
+    const check = ev("check", { itemName: "Milk" });
+    expect(collapse([restore, check])).toEqual([
+      { ...check, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
+      { ...restore, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
+    ]);
+  });
+
+  it("drops a list that is deleted at the start and at the end, with its items", () => {
+    const L = { listId: "l", itemId: null };
+    expect(
+      collapse([
+        ev("restoreList", { listName: "Party" }, L),
+        ev("renameList", { listName: "Taco night", oldName: "Party" }, L),
+        ev("addItem", { itemName: "Chips" }, { listId: "l", itemId: "c" }),
+        ev("deleteList", { listName: "Taco night" }, L),
+      ]),
+    ).toEqual([]);
   });
 
   it("keeps a check after an add only if the item ends checked", () => {
@@ -100,11 +158,9 @@ describe("collapse", () => {
       ev("updateItem", { itemName: "Milk 2%", oldName: "Milk" }),
       ev("updateItem", { itemName: "Milk 1%", oldName: "Milk 2%" }),
     ]);
-    expect(out).toHaveLength(1);
-    expect(out[0].snapshot).toMatchObject({
-      itemName: "Milk 1%",
-      oldName: "Milk",
-    });
+    expect(out.map((e) => e.snapshot)).toEqual([
+      { listName: "Whole Foods", itemName: "Milk 1%", oldName: "Milk" },
+    ]);
   });
 
   it("keeps the fields of all the updates", () => {
@@ -122,8 +178,9 @@ describe("collapse", () => {
       ev("moveItem", a, { listId: "b" }),
       ev("moveItem", b, { listId: "c" }),
     ]);
-    expect(out).toHaveLength(1);
-    expect(out[0].snapshot).toMatchObject({ fromListName: "A", listName: "C" });
+    expect(out.map((e) => e.snapshot)).toEqual([
+      { fromListName: "A", listName: "C" },
+    ]);
     expect(
       collapse([
         ev("moveItem", { listName: "B", fromListName: "A" }, { listId: "b" }),
@@ -159,11 +216,9 @@ describe("collapse", () => {
       ev("createList", { listName: "Costco" }, L),
       ev("renameList", { listName: "Sam's Club", oldName: "Costco" }, L),
     ]);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      type: "createList",
-      snapshot: { listName: "Sam's Club" },
-    });
+    expect(out.map((e) => [e.type, e.snapshot])).toEqual([
+      ["createList", { listName: "Sam's Club" }],
+    ]);
     expect(
       collapse([
         ev("renameList", { listName: "B", oldName: "A" }, L),

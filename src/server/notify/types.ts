@@ -14,3 +14,40 @@ export interface ActivityEvent {
   /** Server time in ms. */
   at: number;
 }
+
+type SnapshotKey = keyof ActivitySnapshot;
+
+/**
+ * The snapshot keys that each event type uses. Collapse and the model input
+ * keep only these keys, thus a key of a different event (for example the
+ * `fromListName` of a later move on an add) does not go to the text.
+ */
+export const SNAPSHOT_KEYS: Record<OpType, readonly SnapshotKey[]> = {
+  createList: ["listName"],
+  renameList: ["listName", "oldName"],
+  deleteList: ["listName"],
+  restoreList: ["listName"],
+  addItem: ["listName", "itemName"],
+  updateItem: ["listName", "itemName", "oldName", "fields", "unchecked"],
+  check: ["listName", "itemName"],
+  uncheck: ["listName", "itemName"],
+  deleteItem: ["listName", "itemName"],
+  restoreItem: ["listName", "itemName"],
+  moveItem: ["listName", "itemName", "fromListName", "unchecked"],
+  clearChecked: ["listName", "count"],
+  uncheckAll: ["listName", "count"],
+  checkAll: ["listName", "count"],
+};
+
+/** The snapshot with only the keys of the type, and no undefined values. */
+export function snapshotFor(
+  type: OpType,
+  snapshot: ActivitySnapshot,
+): ActivitySnapshot {
+  const out: Partial<ActivitySnapshot> = {};
+  for (const key of SNAPSHOT_KEYS[type]) {
+    if (snapshot[key] !== undefined)
+      (out as Record<SnapshotKey, unknown>)[key] = snapshot[key];
+  }
+  return { ...out, listName: snapshot.listName };
+}

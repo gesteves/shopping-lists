@@ -802,6 +802,7 @@ describe("notifications", () => {
       send: async (to, payload) => {
         sent.push({ userId: to, payload });
       },
+      canPush: () => true,
     });
     await notifier.tick();
     const sam = h.db.select().from(users).where(eq(users.email, SECOND)).get()!;

@@ -18,6 +18,11 @@ export interface SubscriptionInfo {
   enabled: boolean;
   createdAt: number;
   lastSuccessAt: number | null;
+  /**
+   * The server turned the device off: its pushes failed for
+   * `FAILING_DISABLE_MS` with no success (#118).
+   */
+  notDelivering: boolean;
 }
 
 /**

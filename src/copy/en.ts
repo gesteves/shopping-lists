@@ -273,6 +273,9 @@ export const en = {
     unnamedDevice: "Unnamed device",
     currentDevice: "This device",
     deviceSwitch: (device: string) => `Notifications on ${device}`,
+    /** The server turned the device off after 7 days of failed pushes. */
+    notDelivering:
+      "Not delivering. Notifications failed for 7 days. Turn it on to try again.",
     on: "On",
     off: "Off",
     remove: "Remove",

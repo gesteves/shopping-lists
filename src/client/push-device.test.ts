@@ -12,6 +12,7 @@ function device(enabled: boolean, endpoint = HERE): SubscriptionInfo {
     enabled,
     createdAt: 0,
     lastSuccessAt: null,
+    notDelivering: false,
   };
 }
 

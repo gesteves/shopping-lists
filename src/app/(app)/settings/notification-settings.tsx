@@ -113,11 +113,18 @@ export function NotificationSettings() {
                   key={device.id}
                   className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3"
                 >
-                  <span className="flex-1 font-medium">
-                    {label}
-                    {device.endpoint === endpoint && (
-                      <span className="ml-2 text-sm font-normal text-ink-muted">
-                        {copy.settings.currentDevice}
+                  <span className="flex flex-1 flex-col gap-1">
+                    <span className="font-medium">
+                      {label}
+                      {device.endpoint === endpoint && (
+                        <span className="ml-2 text-sm font-normal text-ink-muted">
+                          {copy.settings.currentDevice}
+                        </span>
+                      )}
+                    </span>
+                    {device.notDelivering && (
+                      <span className="text-sm text-danger">
+                        {copy.settings.notDelivering}
                       </span>
                     )}
                   </span>
