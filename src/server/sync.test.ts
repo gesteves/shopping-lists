@@ -3,12 +3,14 @@ import type { Db } from "@/db/client";
 import { HlcClock, serialize } from "@/shared/hlc";
 import { MAX_PUSH_BYTES, MAX_PUSH_OPS, type PullResponse } from "@/shared/sync";
 import { SAM, createTestDb } from "@/test/db";
-import { purgeTombstones } from "./ops";
+import { purgeTombstones } from "./purge";
 import { handlePull, handlePush } from "./sync";
 
 const CLIENT = "3c3c3c3c-0000-4000-8000-000000000000";
 const LIST = "11111111-1111-4111-8111-111111111111";
 const NOW = 1_764_000_000_000;
+/** A purge time: more than 30 days after the server wrote the deletes. */
+const LATER = NOW + 31 * 24 * 60 * 60 * 1000;
 
 let db: Db;
 let clock: HlcClock;
@@ -286,7 +288,7 @@ describe("reset", () => {
       op("addItem", { itemId: itemId(2), listId: LIST, name: "Eggs" }, old),
       op("deleteItem", { itemId: itemId(1) }, old + 1),
     ]);
-    const { purgedSeq } = purgeTombstones(30, { db, now: () => NOW });
+    const { purgedSeq } = purgeTombstones(30, { db, now: () => LATER });
     expect(purgedSeq).toBe(4);
 
     // This client saw seq 2, so it did not get the delete of item 1.
@@ -316,7 +318,7 @@ describe("reset", () => {
       op("deleteItem", { itemId: itemId(6) }, old + 1),
       op("deleteItem", { itemId: itemId(1) }, old + 2),
     ]);
-    const { purgedSeq } = purgeTombstones(30, { db, now: () => NOW });
+    const { purgedSeq } = purgeTombstones(30, { db, now: () => LATER });
     expect(purgedSeq).toBe(9);
 
     // The client saw seq 3. It pulls two rows for each page.

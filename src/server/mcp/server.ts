@@ -18,6 +18,10 @@ import { TOOLS, ToolError, type ToolContext, type ToolDef } from "./tools";
 
 export const SERVER_INFO = { name: "shopping-lists", version: "1.0.0" };
 
+/** The text of an unexpected error. The model can try again. */
+export const UNEXPECTED_ERROR =
+  "The server had an unexpected error. Try again later.";
+
 /** AuthInfo.extra: the token owner, from src/server/mcp/auth.ts. */
 export interface McpAuthExtra {
   userId: string;
@@ -68,9 +72,17 @@ function register(server: McpServer, ctx: ToolContext, tool: ToolDef) {
           structuredContent: out,
         };
       } catch (error) {
-        if (!(error instanceof ToolError)) throw error;
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text", text: error.message }],
+            isError: true,
+          };
+        }
+        // Not a business error: keep the detail in the log only. The
+        // message can tell about the database or the code.
+        console.error(`MCP tool ${tool.name} failed`, error);
         return {
-          content: [{ type: "text", text: error.message }],
+          content: [{ type: "text", text: UNEXPECTED_ERROR }],
           isError: true,
         };
       }

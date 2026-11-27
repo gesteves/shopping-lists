@@ -33,11 +33,12 @@ export type ListClocks = Partial<Record<ListField, string>>;
 export type ItemClocks = Partial<Record<ItemField, string>>;
 
 const id = z.uuid();
-const listName = z.string().trim().min(1).max(LIST_NAME_MAX);
-const itemName = z.string().trim().min(1).max(ITEM_NAME_MAX);
-const quantity = z.int().min(1).max(QUANTITY_MAX);
+// The field schemas. The MCP tools (src/server/mcp/tools.ts) use them too.
+export const listName = z.string().trim().min(1).max(LIST_NAME_MAX);
+export const itemName = z.string().trim().min(1).max(ITEM_NAME_MAX);
+export const quantity = z.int().min(1).max(QUANTITY_MAX);
 /** An empty string removes the notes. */
-const notes = z.string().trim().max(NOTES_MAX);
+export const notes = z.string().trim().max(NOTES_MAX);
 
 const listArgs = z.strictObject({ listId: id });
 const itemArgs = z.strictObject({ itemId: id });

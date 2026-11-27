@@ -225,6 +225,7 @@ export const en = {
       item_not_found: "the item doesn’t exist anymore",
       item_exists: "that item already exists",
       clock_ahead: "this device’s clock is wrong",
+      op_conflict: "it conflicts with a change from another person",
       invalid: "the change wasn’t valid",
     },
     mergedUnchecked: (name: string) =>

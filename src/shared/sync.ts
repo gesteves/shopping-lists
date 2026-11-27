@@ -33,11 +33,22 @@ export type RejectReason =
   | "item_not_found"
   | "item_exists"
   /** The op HLC is too far after the server clock (MAX_DRIFT_MS). */
-  | "clock_ahead";
+  | "clock_ahead"
+  /** A different user sent an op with this opId first. */
+  | "op_conflict";
 
 /** The result of an op, as processed_ops keeps it. */
 export type StoredResult =
-  | { opId: string; status: "applied"; changed: boolean }
+  | {
+      opId: string;
+      status: "applied";
+      changed: boolean;
+      /**
+       * clearChecked, uncheckAll, checkAll: the items that the op changed.
+       * deleteList: the live items of the list. Only when `changed`.
+       */
+      count?: number;
+    }
   /** addItem found an item with the same name. The client drops its row. */
   | { opId: string; status: "merged"; into: string; changed: boolean }
   | { opId: string; status: "rejected"; reason: RejectReason };
