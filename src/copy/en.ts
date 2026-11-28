@@ -216,7 +216,7 @@ export const en = {
     add: "Add",
     quantity: "Quantity",
     notes: "Notes",
-    notesPlaceholder: "For example, the brand or the size",
+    notesPlaceholder: "For example, brand, size, acceptable substitutions, etc.",
     checkedTitle: (name: string) => `Already on the list. Uncheck ${q(name)}?`,
     checkedConfirm: "Uncheck",
     checkedBody: "It’s checked off. Uncheck it to get it again.",
