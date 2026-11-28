@@ -307,7 +307,6 @@ function CreateListForm() {
       <wa-switch
         className="px-1"
         checked={isPrivate}
-        hint={copy.lists.newPrivateHint}
         onChange={(event) =>
           setPrivate(
             (event.currentTarget as unknown as HTMLInputElement).checked,

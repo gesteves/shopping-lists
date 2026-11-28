@@ -23,7 +23,7 @@ function uniqueName(prefix: string) {
 async function createPrivateList(page: Page, name: string) {
   const index = listIndex(page);
   const control = index.getByRole("switch", { name: copy.lists.newPrivate });
-  // The control itself: the middle of the host is the hint text.
+  // The control itself, as the other switch tests do.
   const part = index
     .locator("wa-switch")
     .filter({

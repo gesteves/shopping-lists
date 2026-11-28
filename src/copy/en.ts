@@ -135,7 +135,6 @@ export const en = {
     create: "Create",
     /** The create form: a private list (#154). */
     newPrivate: "Private list",
-    newPrivateHint: "Only you can see it, and it sends no notifications.",
     /** The label of the lock icon of a private list (#154). */
     private: "Private",
     renameLabel: (name: string) => `New name for ${q(name)}`,
