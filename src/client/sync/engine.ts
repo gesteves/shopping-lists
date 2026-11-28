@@ -10,7 +10,7 @@ import {
   type PushResponse,
   type RejectReason,
 } from "@/shared/sync";
-import { getMeta, type ClientDb, type OutboxEntry } from "../db";
+import { getMeta, setMeta, type ClientDb, type OutboxEntry } from "../db";
 import {
   ensureClientId,
   pendingCount,
@@ -452,7 +452,11 @@ export class SyncEngine {
 
   /** Pull every page. */
   async #pull(run: RunState): Promise<void> {
-    let cursor = (await getMeta(this.#db, "cursor")) ?? 0;
+    // The rows from before #143 have no summaryKey, and a row comes again
+    // only when it changes. Thus pull all the rows one time. It is not a
+    // reset: no row goes.
+    const keys = await getMeta(this.#db, "summaryKeys");
+    let cursor = keys ? ((await getMeta(this.#db, "cursor")) ?? 0) : 0;
     for (let page = 0; page < MAX_PAGES; page++) {
       // `seen` changes at each page: a reset page sends the new purgedSeq.
       const seen = await getMeta(this.#db, "purgedSeq");
@@ -466,7 +470,10 @@ export class SyncEngine {
         run.dirty = true;
       }
       cursor = body.cursor;
-      if (!body.hasMore) return;
+      if (!body.hasMore) {
+        if (!keys) await setMeta(this.#db, "summaryKeys", true);
+        return;
+      }
     }
     throw new Error("Too many pull pages");
   }

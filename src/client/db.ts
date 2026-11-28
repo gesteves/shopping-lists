@@ -56,6 +56,11 @@ export interface MetaValues {
   resetting: { lists: string[]; items: string[] };
   /** The `summaries` of the last pull: the server makes list summaries. */
   summaries: boolean;
+  /**
+   * True after one pull of all the rows, which gives each list its
+   * summaryKey (#143).
+   */
+  summaryKeys: boolean;
 }
 
 export interface MetaEntry<K extends keyof MetaValues = keyof MetaValues> {
