@@ -28,7 +28,7 @@ Use npm. Node 24 or later.
 - `npm run typecheck`: make the route types, then run `tsc`.
 - `npm test`: run the unit tests (Vitest, `src/**/*.test.ts`).
 - `npm run test:e2e`: build, start, and run the Playwright tests (`e2e/`). Run `npx playwright install chromium webkit` one time first. `E2E_NO_BUILD=1` uses the last build. Add `--project=mobile` or `--project=desktop` for one browser. A test with the tag `@once` runs on desktop only: use it for a test where the browser does not change the result (for example, a test that uses only `request`).
-- In e2e, all tests use the same lists, and parallel tests change them. On the list index, use `createList`, `openList`, and `listAction` (`e2e/helpers.ts`): a click there can hit a row that moved. Before a reload, wait for the response of each save.
+- In e2e, all tests use the same lists, and parallel tests change them. On the list index, use `createList`, `openList`, and `listAction` (`e2e/helpers.ts`): a click there can hit a row that moved. In a Move or Copy select, use `pickOption` or `pickList`: a click can select the next option. Before a reload, wait for the response of each save.
 - `npm run db:generate`: make a migration in `drizzle/` from `src/db/schema.ts`.
 - `npm run db:migrate`: apply the migrations to `DATABASE_PATH` (default `./data/dev.db`). It reads `.env.local` if it exists.
 - `npm run try:summaries`: print the Claude notification text for seven sample bursts, and the list summary for two sample lists. It needs `ANTHROPIC_API_KEY` and makes nine small API calls.

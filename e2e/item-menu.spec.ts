@@ -10,6 +10,7 @@ import {
   itemAction,
   openList,
   pickList,
+  pickOption,
   signIn,
   synced,
 } from "./helpers";
@@ -153,7 +154,7 @@ test("the Move dialog: a select, then Move; Cancel changes nothing", async ({
   await expect(select).toBeFocused();
   await expect(confirm).toBeDisabled();
   await select.click();
-  await picker.getByRole("option", { name: to, exact: true }).click();
+  await pickOption(picker, to);
   await expect(select).toHaveValue(to);
   await expect(confirm).toBeEnabled();
 

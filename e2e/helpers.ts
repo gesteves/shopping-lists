@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { E2E_ALLOWED_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
 
@@ -75,6 +80,19 @@ export async function itemAction(page: Page, name: string, action: string) {
 }
 
 /**
+ * Select a list in the open select of a Move or Copy dialog. Parallel tests
+ * add lists, thus the options move between the scroll and the click of
+ * Playwright, and a click can select the next option (for example the list
+ * of the same test in the other browser). The select takes an option at
+ * mouseup: send it to the option itself, with no hit test.
+ */
+export async function pickOption(picker: Locator, name: string) {
+  const option = picker.getByRole("option", { name, exact: true });
+  await expect(option).toBeVisible();
+  await option.dispatchEvent("mouseup");
+}
+
+/**
  * In the open Move or Copy dialog of an item (#134): select the list, then
  * tap Move or Copy. The button is disabled until a list is selected.
  */
@@ -94,7 +112,7 @@ export async function pickList(
   });
   await expect(confirm).toBeDisabled();
   await picker.getByRole("combobox", { name: copy.item.targets }).click();
-  await picker.getByRole("option", { name: list, exact: true }).click();
+  await pickOption(picker, list);
   await expect(confirm).toBeEnabled();
   await confirm.click();
   await expect(picker).toBeHidden();

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
+import { serialize } from "../src/shared/hlc";
 import {
   createList,
   dialog,
@@ -9,6 +10,7 @@ import {
   listIndex,
   openList,
   pickList,
+  pickOption,
   signIn,
   synced,
   itemAction,
@@ -96,6 +98,76 @@ test("move an item to a different list", async ({ page }) => {
   await page.goto("/");
   await openList(page, to);
   await expect(item(page, "Tortillas")).toBeVisible();
+});
+
+test("a sync while the Move dialog is open keeps the selected list", async ({
+  page,
+}) => {
+  await signIn(page);
+  const from = `Keep from ${randomUUID().slice(0, 8)}`;
+  const to = `Keep to ${randomUUID().slice(0, 8)}`;
+  await createList(page, to);
+  await createList(page, from);
+  await openList(page, from);
+  await add(page, "Salsa");
+  await synced(page);
+
+  await itemAction(page, "Salsa", copy.item.move);
+  const picker = dialog(page, copy.item.moveTitle("Salsa"));
+  const confirm = picker.getByRole("button", {
+    name: copy.item.move,
+    exact: true,
+  });
+  await picker.getByRole("combobox", { name: copy.item.targets }).click();
+  await pickOption(picker, to);
+  await expect(confirm).toBeEnabled();
+
+  // Another device edits the item while the dialog is open. The page pulls
+  // it, and the view gives a new row for the item. The selection stays.
+  // All tests share the user: find the item on this list only.
+  const listId = new URL(page.url()).pathname.split("/")[2];
+  const itemId = await page.evaluate(
+    ({ name, listId }) =>
+      new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open("shopping-lists");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const all = db.transaction("items").objectStore("items").getAll();
+          all.onsuccess = () => {
+            db.close();
+            resolve(
+              all.result.find(
+                (i: { name: string; listId: string }) =>
+                  i.name === name && i.listId === listId,
+              ).id,
+            );
+          };
+        };
+      }),
+    { name: "Salsa", listId },
+  );
+  const clientId = randomUUID();
+  const push = await page.request.post("/api/sync/push", {
+    data: {
+      clientId,
+      ops: [
+        {
+          opId: randomUUID(),
+          clientId,
+          hlc: serialize({ wall: Date.now(), counter: 0, node: clientId }),
+          type: "updateItem",
+          args: { itemId, fields: { notes: "Medium" } },
+        },
+      ],
+    },
+  });
+  expect(push.status()).toBe(200);
+  await expect(item(page, "Salsa")).toContainText("Medium");
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(picker).toBeHidden();
+  await expect(toast(page, copy.item.moved("Salsa", to))).toBeVisible();
 });
 
 test("check all, uncheck all, and delete checked items, with undo", async ({
