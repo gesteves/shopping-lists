@@ -8,6 +8,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prompts } from "@/prompts";
 import type { SummaryItem } from "@/shared/summary";
+import { logClaudeError, logClaudeResponse } from "../claude-log";
 import { FALLBACK_BETA, MODEL, cleanLine } from "../notify/summarize";
 
 /** The server cuts at this. It is more than `prompts.listSummary.length`. */
@@ -55,6 +56,7 @@ export function createListSummarizer(
   if (!client) return null;
 
   return async (listName, items) => {
+    const started = Date.now();
     try {
       const response = await client.beta.messages.parse({
         model: MODEL,
@@ -74,6 +76,7 @@ export function createListSummarizer(
           },
         ],
       });
+      logClaudeResponse("list summary", Date.now() - started, response);
       // A refusal (also after the fallback model), a cut answer, or JSON
       // that did not parse.
       if (response.stop_reason !== "end_turn" || !response.parsed_output) {
@@ -82,10 +85,7 @@ export function createListSummarizer(
       }
       return cleanLine(response.parsed_output.summary, MAX_SUMMARY) || null;
     } catch (error) {
-      console.warn(
-        "List summary failed:",
-        error instanceof Anthropic.APIError ? error.status : error,
-      );
+      logClaudeError("list summary", Date.now() - started, error);
       return null;
     }
   };

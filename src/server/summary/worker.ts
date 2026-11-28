@@ -33,6 +33,10 @@ export function summaryKey(summaryItems: SummaryItem[]): string {
     .digest("base64url");
 }
 
+function seconds(ms: number): string {
+  return (ms / 1000).toFixed(1);
+}
+
 /** True if this process runs the summary worker (#143). */
 export function summaryWorkerRunning(): boolean {
   const KEY = Symbol.for(WORKER_KEY);
@@ -76,8 +80,17 @@ export class SummaryWorker {
     this.#running = true;
     try {
       for (const list of this.#ready()) {
+        const started = this.#now();
         const summary = await this.#summarize(list.name, list.items);
         this.#pending.delete(list.id);
+        // The time from the first change of the items to the write: the
+        // wait for a quiet time, then the request. IDs only, no names.
+        const ms = this.#now() - started;
+        console.info(
+          `[summary] list=${list.id} items=${list.items.length} ready=${list.reason}` +
+            ` wait=${seconds(list.waited)}s claude=${seconds(ms)}s` +
+            ` total=${seconds(list.waited + ms)}s ${summary ? "written" : "failed"}`,
+        );
         if (summary) {
           this.#failed.delete(list.id);
           setListSummary(list.id, summary, list.key, { db: this.#db });
@@ -124,6 +137,10 @@ export class SummaryWorker {
       name: string;
       key: string;
       items: SummaryItem[];
+      /** Why it is ready: a quiet time, the longest wait, or a retry. */
+      reason: "quiet" | "max" | "retry";
+      /** The time since the first change of the items. */
+      waited: number;
     }[] = [];
     const ids = new Set(live.map((l) => l.id));
     for (const id of this.#pending.keys()) {
@@ -147,7 +164,14 @@ export class SummaryWorker {
         // The same items failed before: try again after RETRY_MS, with no
         // new quiet time.
         if (now >= failed.until) {
-          ready.push({ id: list.id, name: list.name, key, items: listItems });
+          ready.push({
+            id: list.id,
+            name: list.name,
+            key,
+            items: listItems,
+            reason: "retry",
+            waited: now - (failed.until - RETRY_MS),
+          });
         }
         continue;
       }
@@ -155,17 +179,23 @@ export class SummaryWorker {
       const pending = this.#pending.get(list.id);
       if (!pending) {
         this.#pending.set(list.id, { key, since: now, first: now });
+        console.info(`[summary] list=${list.id} items changed, waiting`);
         continue;
       }
       if (pending.key !== key) {
         pending.key = key;
         pending.since = now;
       }
-      if (
-        now - pending.since >= QUIET_MS ||
-        now - pending.first >= MAX_WAIT_MS
-      ) {
-        ready.push({ id: list.id, name: list.name, key, items: listItems });
+      const quiet = now - pending.since >= QUIET_MS;
+      if (quiet || now - pending.first >= MAX_WAIT_MS) {
+        ready.push({
+          id: list.id,
+          name: list.name,
+          key,
+          items: listItems,
+          reason: quiet ? "quiet" : "max",
+          waited: now - pending.first,
+        });
       }
     }
     return ready;
