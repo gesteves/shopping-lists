@@ -24,6 +24,7 @@ import {
   notes as notesField,
   opSchema,
   quantity,
+  url as urlField,
   type OpInput,
 } from "@/shared/ops";
 import type {
@@ -86,12 +87,17 @@ const notes = notesField.describe(
   "Notes, such as a brand or a size. An empty string removes them",
 );
 
+const url = urlField.describe(
+  "A link to a web page for the item, such as a product page. Only http and https URLs. An empty string removes it",
+);
+
 const listOut = z.object({ list_id: z.string(), name: z.string() });
 const itemOut = z.object({
   item_id: z.string(),
   name: z.string(),
   quantity: z.int(),
   notes: z.string(),
+  url: z.string().describe("A link to a web page for the item, or empty"),
   checked: z.boolean(),
   out_of_stock: z
     .boolean()
@@ -273,6 +279,7 @@ function toItemOut(item: ItemRecord) {
     name: item.name,
     quantity: item.quantity,
     notes: item.notes,
+    url: item.url,
     checked: item.checked,
     out_of_stock: item.outOfStockAt !== null,
   };
@@ -482,7 +489,7 @@ export const TOOLS = [
     name: "add_items",
     title: "Add items",
     description:
-      "Add items to a list. An item whose name is already on the list is not added again: if it was checked off, it is unchecked. Its quantity and notes do not change; use update_item for that.",
+      "Add items to a list. An item whose name is already on the list is not added again: if it was checked off, it is unchecked. Its quantity, notes, and url do not change; use update_item for that.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -497,6 +504,7 @@ export const TOOLS = [
             name: itemName,
             quantity: quantity.optional().describe("Default 1"),
             notes: notes.optional(),
+            url: url.optional(),
           }),
         )
         .min(1)
@@ -524,6 +532,7 @@ export const TOOLS = [
           name: item.name,
           ...(item.quantity !== undefined && { quantity: item.quantity }),
           ...(item.notes !== undefined && { notes: item.notes }),
+          ...(item.url !== undefined && { url: item.url }),
         },
       }));
       const results = apply(ctx, ids, specs);
@@ -552,7 +561,7 @@ export const TOOLS = [
     name: "update_item",
     title: "Update an item",
     description:
-      "Change the name, the quantity, or the notes of an item, or mark it out of stock or in stock. A change to a checked item also unchecks it, because the person is going to buy it again. Marking an item out of stock also unchecks it.",
+      "Change the name, the quantity, the notes, or the url of an item, or mark it out of stock or in stock. A change to a checked item also unchecks it, because the person is going to buy it again. Marking an item out of stock also unchecks it.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -565,6 +574,7 @@ export const TOOLS = [
       name: itemName.optional(),
       quantity: quantity.optional(),
       notes: notes.optional(),
+      url: url.optional(),
       out_of_stock: z
         .boolean()
         .optional()
@@ -603,7 +613,7 @@ export const TOOLS = [
       }
       if (specs.length === 0) {
         throw new ToolError(
-          "Give a name, a quantity, notes, or out_of_stock to change.",
+          "Give a name, a quantity, notes, a url, or out_of_stock to change.",
         );
       }
       apply(ctx, idMaker(ctx, "update_item", input), specs);

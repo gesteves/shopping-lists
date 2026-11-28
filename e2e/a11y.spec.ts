@@ -49,8 +49,16 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(
         page.getByLabel(copy.itemSheet.name, { exact: true }),
       ).toBeVisible();
+      // A URL (#140): the later scans have the link on the row, and Visit
+      // page in the item menu.
+      await page
+        .getByLabel(copy.itemSheet.url, { exact: true })
+        .fill("shop.example.com/milk");
       await scan(page, "item sheet");
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: copy.common.save }).click();
+      await expect(
+        page.getByRole("checkbox", { name: /^Milk\b/ }),
+      ).toContainText("shop.example.com");
 
       await page.getByRole("button", { name: copy.list.actions }).click();
       await expect(

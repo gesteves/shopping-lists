@@ -325,12 +325,35 @@ describe("collapse", () => {
       });
     const rename = (from: string, to: string) =>
       ev("updateItem", { itemName: to, oldName: from, fields: ["name"] });
+    const link = (from: string, to: string) =>
+      ev("updateItem", {
+        itemName: "Milk",
+        fields: ["url"],
+        oldUrl: from,
+        url: to,
+      });
+
+    it("keeps a URL that ends at a new value (#140)", () => {
+      const out = collapse([
+        link("", "https://a.example"),
+        link("https://a.example", "https://b.example"),
+      ]);
+      expect(out.map((e) => e.snapshot.fields)).toEqual([["url"]]);
+      // The URL is only for collapse: it does not go to Claude.
+      expect(out[0].snapshot).not.toHaveProperty("url");
+    });
 
     it("cancels a quantity, notes, or name that goes back", () => {
       expect(collapse([qty(1, 2), qty(2, 1)])).toEqual([]);
       expect(collapse([qty(1, 2), qty(2, 3), qty(3, 1)])).toEqual([]);
       expect(collapse([notes("a", "b"), notes("b", "a")])).toEqual([]);
       expect(collapse([notes("", "2%"), notes("2%", "")])).toEqual([]);
+      expect(
+        collapse([
+          link("", "https://a.example"),
+          link("https://a.example", ""),
+        ]),
+      ).toEqual([]);
       expect(
         collapse([rename("Milk", "Oat milk"), rename("Oat milk", "Milk")]),
       ).toEqual([]);
@@ -693,6 +716,14 @@ describe("collapse", () => {
       expect(collapse([del(), add()])).toEqual([]);
       expect(
         collapse([
+          del({ url: "https://a.example" }),
+          add({ url: "https://a.example" }),
+        ]),
+      ).toEqual([]);
+      // A delete from before #140 has no URL: it is no link.
+      expect(collapse([del(), add({ url: "" })])).toEqual([]);
+      expect(
+        collapse([
           del({ quantity: 2, notes: "2%" }),
           add({ quantity: 2, notes: "2%" }),
         ]),
@@ -725,6 +756,9 @@ describe("collapse", () => {
         "deleteItem",
         "addItem",
       ]);
+      expect(
+        types(collapse([del({ url: "" }), add({ url: "https://a.example" })])),
+      ).toEqual(["deleteItem", "addItem"]);
       expect(types(collapse([del(), add({ itemName: "milk" })]))).toEqual([
         "deleteItem",
         "addItem",

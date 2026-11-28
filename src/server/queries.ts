@@ -33,6 +33,7 @@ export function toItemRecord(row: ItemRow): ItemRecord {
     name: row.name,
     quantity: row.quantity,
     notes: row.notes,
+    url: row.url,
     checked: row.checked,
     checkedAt: ms(row.checkedAt),
     outOfStockAt: ms(row.outOfStockAt),

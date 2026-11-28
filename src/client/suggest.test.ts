@@ -18,6 +18,7 @@ function item(name: string, daysAgo: number): ItemRecord {
     name,
     quantity: 1,
     notes: "",
+    url: "",
     checked: false,
     checkedAt: null,
     outOfStockAt: null,

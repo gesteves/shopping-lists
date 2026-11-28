@@ -3,6 +3,7 @@
   "regular": [
     "arrow-right-arrow-left",
     "arrow-rotate-right",
+    "arrow-up-right-from-square",
     "bell",
     "cart-circle-check",
     "cart-circle-xmark",
@@ -16,6 +17,7 @@
     "copy",
     "ellipsis",
     "gear",
+    "link",
     "list-check",
     "minus",
     "pen",

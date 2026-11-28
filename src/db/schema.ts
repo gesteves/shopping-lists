@@ -377,6 +377,8 @@ export const items = sqliteTable(
     quantity: integer("quantity").notNull().default(1),
     /** An empty string means no notes. */
     notes: text("notes").notNull().default(""),
+    /** An http or https URL (#140). An empty string means no link. */
+    url: text("url").notNull().default(""),
     checked: integer("checked", { mode: "boolean" }).notNull().default(false),
     checkedAt: integer("checked_at", { mode: "timestamp_ms" }),
     /**
@@ -456,22 +458,24 @@ export interface ActivitySnapshot {
   // The values below are only for collapse (#133). They do not go to the
   // push text or to Claude. Older rows do not have them.
   /**
-   * The quantity and the notes after the change: updateItem (only the
-   * fields that changed), addItem, and deleteItem (the item before the
-   * delete).
+   * The quantity, the notes, and the URL after the change: updateItem
+   * (only the fields that changed), addItem, and deleteItem (the item
+   * before the delete). Rows from before #140 have no URL.
    */
   quantity?: number;
   notes?: string;
-  /** updateItem: the quantity and the notes before, if they changed. */
+  url?: string;
+  /** updateItem: the quantity, the notes, and the URL before, if they changed. */
   oldQuantity?: number;
   oldNotes?: string;
+  oldUrl?: string;
   /** deleteItem: the item was checked, or out of stock. */
   checked?: boolean;
   outOfStock?: boolean;
 }
 
 /** The fields that updateItem can change. */
-export type ItemField = "name" | "quantity" | "notes";
+export type ItemField = "name" | "quantity" | "notes" | "url";
 
 /** One row for each change. The notifier (#16) sends them. */
 export const activity = sqliteTable(

@@ -103,6 +103,11 @@ export interface ItemRecord {
   name: string;
   quantity: number;
   notes: string;
+  /**
+   * An http or https URL, or an empty string (#140). A row that the client
+   * got from an older server has no value: read it as empty.
+   */
+  url: string;
   checked: boolean;
   checkedAt: number | null;
   /**

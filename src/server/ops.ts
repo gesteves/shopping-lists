@@ -494,7 +494,7 @@ function changeList(
 // Items
 
 function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
-  const { itemId, listId, name, quantity, notes } = op.args;
+  const { itemId, listId, name, quantity, notes, url } = op.args;
   const list = getList(ctx, listId);
   if (!list) return reject(op, "list_not_found");
   if (list.deletedAt) return reject(op, "list_deleted");
@@ -552,6 +552,7 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
     name: op.hlc,
     quantity: op.hlc,
     notes: op.hlc,
+    url: op.hlc,
     checked: op.hlc,
     deleted: op.hlc,
     outOfStock: op.hlc,
@@ -565,6 +566,7 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
       nameKey: key,
       quantity,
       notes,
+      url,
       checked: false,
       createdBy: ctx.actor.id,
       createdAt: time,
@@ -579,7 +581,7 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
       itemId,
       // The values let collapse find a delete and an add of the same item
       // (#133).
-      snapshot: { listName: list.name, itemName: name, quantity, notes },
+      snapshot: { listName: list.name, itemName: name, quantity, notes, url },
     },
   };
 }
@@ -640,7 +642,7 @@ function changeItem(
   const clocks: ItemClocks = { ...row.clocks };
   switch (op.type) {
     case "updateItem": {
-      const { name, quantity, notes } = op.args.fields;
+      const { name, quantity, notes, url } = op.args.fields;
       if (name !== undefined && newer(op.hlc, clocks.name)) {
         clocks.name = op.hlc;
         if (row.name !== name) {
@@ -655,6 +657,10 @@ function changeItem(
       if (notes !== undefined && newer(op.hlc, clocks.notes)) {
         clocks.notes = op.hlc;
         if (row.notes !== notes) set.notes = notes;
+      }
+      if (url !== undefined && newer(op.hlc, clocks.url)) {
+        clocks.url = op.hlc;
+        if (row.url !== url) set.url = url;
       }
       if (Object.keys(set).length > 0) uncheckOnChange(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
@@ -752,7 +758,7 @@ function changeItem(
     snapshot.inStock = true;
   }
   if (op.type === "updateItem") {
-    const fields = (["name", "quantity", "notes"] as const).filter(
+    const fields = (["name", "quantity", "notes", "url"] as const).filter(
       (field) => set[field] !== undefined,
     );
     if (fields.length > 0) snapshot.fields = fields;
@@ -766,12 +772,17 @@ function changeItem(
       snapshot.oldNotes = row.notes;
       snapshot.notes = set.notes;
     }
+    if (set.url !== undefined) {
+      snapshot.oldUrl = row.url;
+      snapshot.url = set.url;
+    }
   }
   // The item before the delete. Collapse compares it with a new add of the
   // same name (#133).
   if (op.type === "deleteItem") {
     snapshot.quantity = row.quantity;
     snapshot.notes = row.notes;
+    snapshot.url = row.url;
     if (row.checked) snapshot.checked = true;
     if (row.outOfStockAt) snapshot.outOfStock = true;
   }

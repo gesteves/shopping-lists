@@ -63,6 +63,8 @@ export const en = {
     rename: "Rename",
     undo: "Undo",
     reload: "Reload",
+    /** The URL field of an item (#140) has text that is not a web address. */
+    urlInvalid: "Enter a web address, for example store.com/milk.",
   },
 
   people: {
@@ -186,6 +188,10 @@ export const en = {
     /** The menu item, and the badge on the row. */
     outOfStock: "Out of stock",
     inStock: "In stock",
+    /** The menu item of an item with a URL (#140). It opens a new tab. */
+    visitPage: "Visit page",
+    /** Screen reader text before the host of the URL on the row. */
+    linkPrefix: "link to ",
     deleted: (name: string) => `Deleted ${q(name)}.`,
     moved: (name: string, list: string) =>
       `Moved ${q(name)} to the ${q(list)} list.`,
@@ -224,20 +230,34 @@ export const en = {
     suggestions: "Suggestions",
     name: "Item name",
     placeholder: "Add item",
-    details: "Quantity and notes",
+    details: "Quantity, URL, and notes",
     add: "Add",
     quantity: "Quantity",
+    url: "URL",
+    urlPlaceholder: "For example, a link to the product page",
     notes: "Notes",
     notesPlaceholder:
       "For example, brand, size, acceptable substitutions, etc.",
     checkedTitle: (name: string) => `Already on the list. Uncheck ${q(name)}?`,
     checkedConfirm: "Uncheck",
     checkedBody: "It’s checked off. Uncheck it to get it again.",
-    /** The user typed a new quantity, new notes, or both. */
-    checkedBodyChanges: (quantity: number | undefined, notes: boolean) =>
-      quantity === undefined
-        ? "It’s checked off. Uncheck it to get it again, with your notes."
-        : `It’s checked off. Uncheck it to get ×${quantity}${notes ? ", with your notes" : ""}.`,
+    /** The user typed a new quantity, new notes, a new URL, or more. */
+    checkedBodyChanges: (
+      quantity: number | undefined,
+      { notes, url }: { notes: boolean; url: boolean },
+    ) => {
+      const yours =
+        notes && url
+          ? ", with your notes and URL"
+          : notes
+            ? ", with your notes"
+            : url
+              ? ", with your URL"
+              : "";
+      return quantity === undefined
+        ? `It’s checked off. Uncheck it to get it again${yours}.`
+        : `It’s checked off. Uncheck it to get ×${quantity}${yours}.`;
+    },
     /** A write on this device failed. The form is clear already. */
     failed: (name: string) =>
       `${q(name)} wasn’t saved on this device. Add it again.`,
@@ -251,6 +271,8 @@ export const en = {
     title: "Edit item",
     name: "Name",
     quantity: "Quantity",
+    url: "URL",
+    urlPlaceholder: "For example, a link to the product page",
     notes: "Notes",
     /** The item went from the list (a delete or a move on another device). */
     gone: (name: string) => `${q(name)} isn’t on this list anymore.`,

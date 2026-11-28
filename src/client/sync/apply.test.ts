@@ -45,6 +45,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     name: "Milk",
     quantity: 1,
     notes: "",
+    url: "",
     checked: false,
     checkedAt: null,
     outOfStockAt: null,
@@ -197,6 +198,21 @@ describe("applyLocal", () => {
       updatedAt: T - 100,
     });
     expect(s.lists.get(LIST)).toMatchObject({ updatedAt: T - 100 });
+  });
+
+  it("sets the URL of an item, and unchecks it (#140)", () => {
+    const s = state([list()], [item({ checked: true, checkedAt: T - 50 })]);
+    const url = "https://example.com/milk";
+    applyLocal(s, op("updateItem", { itemId: ITEM, fields: { url } }), ME);
+    expect(s.items.get(ITEM)).toMatchObject({ url, checked: false });
+  });
+
+  it("reads a row with no URL as no link (#140)", () => {
+    const old = item({ checked: true, checkedAt: T - 50 });
+    delete (old as Partial<ItemRecord>).url;
+    const s = state([list()], [old]);
+    applyLocal(s, op("updateItem", { itemId: ITEM, fields: { url: "" } }), ME);
+    expect(s.items.get(ITEM)).toMatchObject({ checked: true });
   });
 
   it("clears and unchecks only the checked items of the list", () => {

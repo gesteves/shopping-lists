@@ -13,6 +13,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     name: "Milk",
     quantity: 2,
     notes: "Oat",
+    url: "https://example.com/oat-milk",
     checked: false,
     checkedAt: null,
     outOfStockAt: 1,
@@ -28,7 +29,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
 }
 
 describe("copyPlan", () => {
-  it("adds the name, the quantity, and the notes to the target list", () => {
+  it("adds the name, the quantity, the notes, and the URL to the target list", () => {
     expect(copyPlan(item(), TO, [], NEW)).toEqual({
       kind: "add",
       itemId: NEW,
@@ -41,10 +42,18 @@ describe("copyPlan", () => {
             name: "Milk",
             quantity: 2,
             notes: "Oat",
+            url: "https://example.com/oat-milk",
           },
         },
       ],
     });
+  });
+
+  it("copies a row from an older server with no URL (#140)", () => {
+    const old = item();
+    delete (old as Partial<ItemRecord>).url;
+    const [request] = copyPlan(old, TO, [], NEW).requests;
+    expect(request).toMatchObject({ args: { url: "" } });
   });
 
   it("does nothing when the target has the name, unchecked", () => {
@@ -55,12 +64,13 @@ describe("copyPlan", () => {
     });
   });
 
-  it("unchecks a checked match, with the quantity and the notes", () => {
+  it("unchecks a checked match, with the quantity, the notes, and the URL", () => {
     const there = item({
       id: "b",
       listId: TO,
       quantity: 1,
       notes: "",
+      url: "",
       checked: true,
       checkedAt: 5,
     });
@@ -70,7 +80,14 @@ describe("copyPlan", () => {
         { type: "uncheck", args: { itemId: "b" } },
         {
           type: "updateItem",
-          args: { itemId: "b", fields: { quantity: 2, notes: "Oat" } },
+          args: {
+            itemId: "b",
+            fields: {
+              quantity: 2,
+              notes: "Oat",
+              url: "https://example.com/oat-milk",
+            },
+          },
         },
       ],
     });

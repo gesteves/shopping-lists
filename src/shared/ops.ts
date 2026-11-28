@@ -5,6 +5,7 @@
 // server both use it.
 import { z } from "zod";
 import { NODE_PATTERN, isHlc, parse } from "./hlc";
+import { URL_MAX, isWebUrl } from "./url";
 
 export const LIST_NAME_MAX = 100;
 export const ITEM_NAME_MAX = 200;
@@ -18,13 +19,14 @@ export type Via = (typeof VIA)[number];
 // The fields that have their own HLC clock. Each row keeps one clock for
 // each field in its `clocks` JSON. "deleted" is the clock of `deleted_at`,
 // "listId" is the clock of a move, and "outOfStock" is the clock of
-// `out_of_stock_at` (#131).
+// `out_of_stock_at` (#131). "url" is the link of the item (#140).
 export const LIST_FIELDS = ["name", "deleted"] as const;
 export const ITEM_FIELDS = [
   "listId",
   "name",
   "quantity",
   "notes",
+  "url",
   "checked",
   "deleted",
   "outOfStock",
@@ -41,6 +43,14 @@ export const itemName = z.string().trim().min(1).max(ITEM_NAME_MAX);
 export const quantity = z.int().min(1).max(QUANTITY_MAX);
 /** An empty string removes the notes. */
 export const notes = z.string().trim().max(NOTES_MAX);
+/** An http or https URL (#140). An empty string removes the link. */
+export const url = z
+  .string()
+  .trim()
+  .max(URL_MAX)
+  .refine((v) => v === "" || isWebUrl(v), {
+    message: "Give an http or https URL",
+  });
 
 const listArgs = z.strictObject({ listId: id });
 const itemArgs = z.strictObject({ itemId: id });
@@ -58,11 +68,12 @@ const ARGS = {
     name: itemName,
     quantity: quantity.default(1),
     notes: notes.default(""),
+    url: url.default(""),
   }),
   updateItem: z.strictObject({
     itemId: id,
     fields: z
-      .strictObject({ name: itemName, quantity, notes })
+      .strictObject({ name: itemName, quantity, notes, url })
       .partial()
       .refine((f) => Object.keys(f).length > 0, {
         message: "Give at least one field",

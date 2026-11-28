@@ -276,6 +276,89 @@ describe("field-level last-writer-wins", () => {
   });
 });
 
+describe("item URL (#140)", () => {
+  const URL_1 = "https://example.com/milk";
+  const URL_2 = "https://example.com/oat-milk";
+
+  it("adds an item with a URL, or with none", () => {
+    apply(
+      SAM,
+      op("createList", { listId: LIST, name: "Whole Foods" }, T1),
+      op(
+        "addItem",
+        { itemId: ITEM, listId: LIST, name: "Milk", url: URL_1 },
+        T1,
+      ),
+      op("addItem", { itemId: ITEM_2, listId: LIST, name: "Eggs" }, T1),
+    );
+    expect(getItem()).toMatchObject({ url: URL_1 });
+    expect(getItem()?.clocks.url).toBeDefined();
+    expect(getItem(ITEM_2)).toMatchObject({ url: "" });
+  });
+
+  it("sets and removes the URL, with the old and new values", () => {
+    seed();
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { url: URL_1 } }, T2));
+    expect(getItem()).toMatchObject({ url: URL_1 });
+    const last = db
+      .select({ snapshot: activity.snapshot })
+      .from(activity)
+      .orderBy(desc(activity.id))
+      .get();
+    expect(last?.snapshot).toEqual({
+      listName: "Whole Foods",
+      itemName: "Milk",
+      fields: ["url"],
+      oldUrl: "",
+      url: URL_1,
+    });
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { url: "" } }, T3));
+    expect(getItem()).toMatchObject({ url: "" });
+  });
+
+  it("keeps the newer URL, in each order", () => {
+    for (const order of [
+      [T3, T2],
+      [T2, T3],
+    ]) {
+      db.$client.close();
+      db = createTestDb();
+      seed();
+      apply(
+        SAM,
+        op("updateItem", { itemId: ITEM, fields: { url: URL_1 } }, order[0]),
+      );
+      apply(
+        ALEX,
+        op(
+          "updateItem",
+          { itemId: ITEM, fields: { url: URL_2 } },
+          order[1],
+          LAPTOP,
+        ),
+      );
+      expect(getItem()?.url).toBe(order[0] === T3 ? URL_1 : URL_2);
+    }
+  });
+
+  it("keeps a URL edit and a notes edit of the other person", () => {
+    seed();
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { url: URL_1 } }, T2));
+    apply(
+      ALEX,
+      op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }, T2, LAPTOP),
+    );
+    expect(getItem()).toMatchObject({ url: URL_1, notes: "2%" });
+  });
+
+  it("unchecks a checked item, as each edit does (#112)", () => {
+    seed();
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    apply(SAM, op("updateItem", { itemId: ITEM, fields: { url: URL_1 } }, T3));
+    expect(getItem()).toMatchObject({ checked: false, url: URL_1 });
+  });
+});
+
 describe("delete vs. edit", () => {
   /** Apply the two ops in each order, and give the two item rows. */
   function bothOrders(first: () => Op, second: () => Op) {
@@ -1100,18 +1183,21 @@ describe("activity and pokes", () => {
         itemName: "Milk",
         quantity: 1,
         notes: "",
+        url: "",
       },
       {
         listName: "Whole Foods",
         itemName: "Eggs",
         quantity: 12,
         notes: "Large",
+        url: "",
       },
       {
         listName: "Whole Foods",
         itemName: "Milk",
         quantity: 1,
         notes: "",
+        url: "",
         outOfStock: true,
       },
       {
@@ -1119,6 +1205,7 @@ describe("activity and pokes", () => {
         itemName: "Eggs",
         quantity: 12,
         notes: "Large",
+        url: "",
       },
     ]);
   });

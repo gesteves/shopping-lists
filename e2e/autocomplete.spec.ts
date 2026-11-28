@@ -93,7 +93,9 @@ test("a checked duplicate keeps the quantity and the notes that the user typed",
   await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
   const prompt = dialog(page, copy.addBar.checkedTitle("Flour"));
   await expect(
-    prompt.getByText(copy.addBar.checkedBodyChanges(3, true)),
+    prompt.getByText(
+      copy.addBar.checkedBodyChanges(3, { notes: true, url: false }),
+    ),
   ).toBeVisible();
   const saved = page.waitForResponse("**/api/sync/push");
   await prompt
