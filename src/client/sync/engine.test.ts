@@ -11,7 +11,7 @@ import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
 import { opSchema, type Op } from "@/shared/ops";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { ClientDb, getMeta, setMeta } from "../db";
-import type { PullResponse } from "@/shared/sync";
+import type { ListRecord, PullResponse } from "@/shared/sync";
 import { readList } from "../queries";
 import {
   SyncEngine,
@@ -423,6 +423,28 @@ describe("sync", () => {
     expect(rejected.map((r) => r.reason)).toEqual(["invalid"]);
     expect(await db.outbox.count()).toBe(0);
     expect(serverDb.select().from(serverLists).all()).toHaveLength(1);
+  });
+
+  it("pulls all the rows one time, for the summary keys (#143)", async () => {
+    await seed();
+    expect(await getMeta(db, "summaryKeys")).toBe(true);
+    // A device with rows from before #143.
+    const old = async () => {
+      const row: Partial<ListRecord> = { ...(await db.serverLists.get(LIST)) };
+      delete row.summaryKey;
+      await db.serverLists.put(row as ListRecord);
+    };
+    await old();
+    await db.meta.delete("summaryKeys");
+    await makeEngine().engine.sync();
+    expect(await db.serverLists.get(LIST)).toHaveProperty("summaryKey", null);
+    expect(await getMeta(db, "summaryKeys")).toBe(true);
+    expect((await readList(db, LIST))?.items).toHaveLength(1);
+
+    // Only one time: the next pull starts at the cursor.
+    await old();
+    await makeEngine().engine.sync();
+    expect(await db.serverLists.get(LIST)).not.toHaveProperty("summaryKey");
   });
 
   it("pulls every page", async () => {
