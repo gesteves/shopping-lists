@@ -7,6 +7,7 @@ import { copy } from "../src/copy";
 import {
   createList,
   dialog,
+  escapeRegExp,
   openList,
   scan,
   signIn,
@@ -219,6 +220,39 @@ test("Keep screen on holds the wake lock and is remembered", async ({
   await screenSwitch.click();
   await expect(setting).not.toBeChecked();
   await expect.poll(wake).toBe(0);
+});
+
+test("Keep screen on is disabled until its state is known (#136)", async ({
+  page,
+}) => {
+  const wake = await fakeWakeLock(page);
+  await page.addInitScript(() => localStorage.setItem("keep-screen-on", "1"));
+  await signIn(page);
+  // The server does not know the browser: its HTML has the switch, disabled.
+  const html = await (await page.request.get("/settings")).text();
+  expect(html).toMatch(
+    new RegExp(
+      `<wa-switch[^>]*\\bdisabled\\b[^>]*>${escapeRegExp(copy.settings.keepScreenOn)}<`,
+    ),
+  );
+
+  // After hydration: enabled, and on (the saved setting).
+  await page.goto("/settings");
+  const setting = page.getByRole("switch", {
+    name: copy.settings.keepScreenOn,
+  });
+  await expect(setting).toBeEnabled();
+  await expect(setting).toBeChecked();
+  await expect.poll(wake).toBe(1);
+
+  // The list page knows the state at its first render.
+  const name = `Wake ${randomUUID().slice(0, 8)}`;
+  await page.goto("/");
+  await createList(page, name);
+  await openList(page, name);
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await expect(setting).toBeEnabled();
+  await expect(setting).toBeChecked();
 });
 
 test("Keep screen on is disabled without the Wake Lock API (#136)", async ({
