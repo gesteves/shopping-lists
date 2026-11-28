@@ -66,8 +66,8 @@ test("a URL shows its host on the row, and Visit page opens it", async ({
   );
 
   expect(await menuItems(page, "Coffee")).toEqual([
-    copy.item.edit,
     copy.item.visitPage,
+    copy.item.edit,
     copy.item.move,
     copy.item.copy,
     copy.item.outOfStock,

@@ -11,9 +11,9 @@ import { useWaEvents } from "../../_components/wa";
 import type { PickMode } from "./list-picker";
 
 /**
- * One item: a large target to check it, and a "…" menu (#131): Edit, Visit
- * page (only with a URL, #140), Move, Copy, Out of stock (or In stock), and
- * Delete. An item with a URL shows its host below the notes. An
+ * One item: a large target to check it, and a "…" menu (#131): Visit page
+ * and a divider (only with a URL, #140), Edit, Move, Copy, Out of stock (or
+ * In stock), and Delete. An item with a URL shows its host below the notes. An
  * out-of-stock item has a badge. A checked item is never out of stock, thus its menu has no stock
  * item. An older checked item (#112) has a badge with the days until its
  * automatic delete. The name and the notes wrap, also a long word or URL
@@ -185,16 +185,21 @@ export function ItemRow({
         >
           <wa-icon name="ellipsis" label={copy.item.more(item.name)}></wa-icon>
         </wa-button>
+        {/* Visit page leaves the app, thus it is first and apart from the
+            changes to the item. */}
+        {url && (
+          <>
+            <wa-dropdown-item value="visit">
+              <wa-icon slot="icon" name="arrow-up-right-from-square"></wa-icon>
+              {copy.item.visitPage}
+            </wa-dropdown-item>
+            <wa-divider></wa-divider>
+          </>
+        )}
         <wa-dropdown-item value="edit">
           <wa-icon slot="icon" name="pencil"></wa-icon>
           {copy.item.edit}
         </wa-dropdown-item>
-        {url && (
-          <wa-dropdown-item value="visit">
-            <wa-icon slot="icon" name="arrow-up-right-from-square"></wa-icon>
-            {copy.item.visitPage}
-          </wa-dropdown-item>
-        )}
         <wa-dropdown-item value="move" disabled={!canPick}>
           <wa-icon slot="icon" name="swap"></wa-icon>
           {copy.item.move}
