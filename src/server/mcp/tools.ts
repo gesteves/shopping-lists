@@ -1268,7 +1268,10 @@ export const TOOLS = [
         if (results.has(hit.id)) continue;
         const there = onList.get(nameKey(hit.name));
         if (there) {
-          results.set(there.id, { item: there, result: "already_on_list" });
+          // A restore of this call keeps its result.
+          if (!results.has(there.id)) {
+            results.set(there.id, { item: there, result: "already_on_list" });
+          }
           continue;
         }
         onList.set(nameKey(hit.name), hit);

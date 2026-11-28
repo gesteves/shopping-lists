@@ -1610,6 +1610,33 @@ describe("check_all, copy, restore, and move_items (#162)", () => {
     ]);
   });
 
+  it("restore_items restores one of two deleted items with the same name", async () => {
+    await callTool(emily, "create_list", { name: "Twice #162" });
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const added = await callTool(emily, "add_items", {
+        list: "Twice #162",
+        items: [{ name: "Lime" }],
+      });
+      ids.push((added.structuredContent.items as Json[])[0].item_id as string);
+      await callTool(emily, "delete_items", {
+        list: "Twice #162",
+        items: ["Lime"],
+      });
+    }
+    const restored = await callTool(emily, "restore_items", {
+      list: "Twice #162",
+      items: [ids[1], ids[0]],
+    });
+    expect(
+      (restored.structuredContent.items as Json[]).map((i) => [
+        i.item_id,
+        i.result,
+      ]),
+    ).toEqual([[ids[1], "restored"]]);
+    expect(Object.keys(await names(emily, "Twice #162"))).toEqual(["Lime"]);
+  });
+
   it("restore_list brings back a list with its items, and refuses a name that a live list has", async () => {
     await callTool(emily, "create_list", { name: "Gone #162" });
     await callTool(emily, "add_items", {
