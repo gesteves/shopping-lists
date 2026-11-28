@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { activity, lists } from "@/db/schema";
 import { HlcClock, serialize } from "@/shared/hlc";
@@ -88,6 +88,28 @@ async function seed(w: SummaryWorker) {
 }
 
 describe("SummaryWorker", () => {
+  it("logs the wait and the time of the request, with no names", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const w = new SummaryWorker({
+      db,
+      now: () => now,
+      summarize: async () => {
+        now += 2_500; // The request takes 2.5 s.
+        return answer;
+      },
+    });
+    await seed(w);
+    now += QUIET_MS;
+    await w.tick();
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    expect(lines).toEqual([
+      `[summary] list=${LIST} items changed, waiting`,
+      `[summary] list=${LIST} items=4 ready=quiet wait=60.0s claude=2.5s total=62.5s written`,
+    ]);
+    expect(lines.join("\n")).not.toMatch(/Costco|Milk/);
+    info.mockRestore();
+  });
+
   it("waits until the items are quiet for 60 s, then writes the summary", async () => {
     const w = worker();
     await seed(w);
