@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import {
@@ -45,50 +45,84 @@ export function WakeLockKeeper() {
   return null;
 }
 
-/**
- * The setting of this device, and a function that turns it on or off.
- * Undefined until mount, and where the Wake Lock API is missing.
- */
-function useKeepScreenOn() {
-  const [on, setOn] = useState<boolean>();
+/** The setting of this page. Read from storage one time. */
+let saved: boolean | undefined;
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    // Read the browser state one time at mount, then show it.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (wakeLockSupported()) setOn(readWakeLockSetting());
-  }, []);
-
-  if (on === undefined) return undefined;
-  return {
-    on,
-    toggle() {
-      setOn(!on);
-      void wakeLock().set(!on);
-    },
-  };
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
-/** The switch. Hidden where the Wake Lock API is missing. */
+/** The setting of this device. Null where the Wake Lock API is missing. */
+function snapshot(): boolean | null {
+  if (!wakeLockSupported()) return null;
+  saved ??= readWakeLockSetting();
+  return saved;
+}
+
+/** On the server and while the page hydrates, the browser is not known. */
+function serverSnapshot(): undefined {
+  return undefined;
+}
+
+/**
+ * Save the setting, and get or release the lock. Keep the value here too:
+ * private mode can refuse storage.
+ */
+function setKeepScreenOn(on: boolean) {
+  saved = on;
+  void wakeLock().set(on);
+  listeners.forEach((listener) => listener());
+}
+
+/**
+ * The setting of this device: undefined until it is known, null where the
+ * Wake Lock API is missing. A mount after hydration (the list page) knows it
+ * at the first render, thus the switch does not change after it shows.
+ */
+function useKeepScreenOn() {
+  return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+}
+
+/**
+ * The switch. It is always in the page, thus it does not pop in (#136). It
+ * is disabled until the setting is known, and where the Wake Lock API is
+ * missing.
+ */
 export function KeepScreenOnSwitch({ hint }: { hint?: string }) {
-  const setting = useKeepScreenOn();
-  if (!setting) return null;
+  const on = useKeepScreenOn();
   return (
-    <wa-switch checked={setting.on} onChange={setting.toggle} hint={hint}>
+    <wa-switch
+      disabled={on == null}
+      checked={on === true}
+      onChange={(event) =>
+        setKeepScreenOn(
+          (event.currentTarget as unknown as HTMLInputElement).checked,
+        )
+      }
+      hint={hint}
+    >
       {copy.settings.keepScreenOn}
     </wa-switch>
   );
 }
 
-/** The setting in Settings. Hidden where the Wake Lock API is missing. */
+/** The setting in Settings. Where the Wake Lock API is missing, the hint tells so. */
 export function KeepScreenOnSetting() {
-  const setting = useKeepScreenOn();
-  if (!setting) return null;
+  const on = useKeepScreenOn();
   return (
     <section aria-labelledby="screen" className="flex flex-col gap-3">
       <h2 id="screen" className="text-xl font-semibold">
         {copy.settings.screen}
       </h2>
-      <KeepScreenOnSwitch hint={copy.settings.keepScreenOnHint} />
+      <KeepScreenOnSwitch
+        hint={
+          on === null
+            ? copy.settings.keepScreenOnUnsupported
+            : copy.settings.keepScreenOnHint
+        }
+      />
     </section>
   );
 }

@@ -221,18 +221,31 @@ test("Keep screen on holds the wake lock and is remembered", async ({
   await expect.poll(wake).toBe(0);
 });
 
-test("Keep screen on is hidden without the Wake Lock API", async ({ page }) => {
+test("Keep screen on is disabled without the Wake Lock API (#136)", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "wakeLock", { value: undefined });
   });
   await signIn(page);
   await page.goto("/settings");
+  const setting = page.getByRole("switch", {
+    name: copy.settings.keepScreenOn,
+  });
+  // The hint tells why.
   await expect(
-    page.getByRole("heading", { name: copy.settings.connectedApps }),
+    page.getByText(copy.settings.keepScreenOnUnsupported),
   ).toBeVisible();
-  await expect(
-    page.getByRole("switch", { name: copy.settings.keepScreenOn }),
-  ).toHaveCount(0);
+  await expect(setting).toBeDisabled();
+  await expect(setting).not.toBeChecked();
+
+  const name = `No wake ${randomUUID().slice(0, 8)}`;
+  await page.goto("/");
+  await createList(page, name);
+  await openList(page, name);
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await expect(switchControl(page, copy.settings.keepScreenOn)).toBeVisible();
+  await expect(setting).toBeDisabled();
 });
 
 test("Keep screen on is on the list page too", async ({ page }) => {

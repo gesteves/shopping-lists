@@ -335,6 +335,7 @@ export const en = {
     keepScreenOn: "Keep screen on",
     keepScreenOnHint:
       "While the app is open, so you can see your list in the store. Only on this device.",
+    keepScreenOnUnsupported: "This browser can’t keep the screen on.",
     keepScreenOnFailed: "The screen can’t stay on right now.",
     connectedApps: "Connected apps",
     noApps:
