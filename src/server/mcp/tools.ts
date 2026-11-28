@@ -14,6 +14,8 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Db } from "@/db/client";
+import { copyPlan } from "@/shared/copy-item";
+import { DAY_MS, expiresAt } from "@/shared/expiry";
 import type { HlcClock } from "@/shared/hlc";
 import { nameKey } from "@/shared/names";
 import {
@@ -27,7 +29,12 @@ import {
   url as urlField,
   type OpInput,
 } from "@/shared/ops";
-import type { ListRecord, RejectReason, StoredResult } from "@/shared/sync";
+import type {
+  ItemRecord,
+  ListRecord,
+  RejectReason,
+  StoredResult,
+} from "@/shared/sync";
 import { getServerClock, SERVER_NODE } from "../clock";
 import {
   HISTORY_ACTIONS,
@@ -40,6 +47,8 @@ import {
 } from "../history";
 import { applyOps } from "../ops";
 import {
+  readDeletedItems,
+  readDeletedLists,
   readListById,
   readListItems,
   readLiveLists,
@@ -191,7 +200,11 @@ export function resolveList(ctx: ToolContext, ref: string): ListRecord {
   if (UUID.test(ref)) {
     const list = readListById(ref.toLowerCase(), ctx.userId, ctx.db);
     if (list && list.deletedAt === null) return list;
-    if (list) throw new ToolError(`The list “${list.name}” was deleted.`);
+    if (list) {
+      throw new ToolError(
+        `The list “${list.name}” was deleted. Bring it back with restore_list first.`,
+      );
+    }
   }
   const live = readLiveLists(ctx.userId, ctx.db).map((l) => l.list);
   const key = nameKey(ref);
@@ -202,6 +215,14 @@ export function resolveList(ctx: ToolContext, ref: string): ListRecord {
       `More than one list is named “${ref}”. Use a list_id: ${matches
         .map((l) => l.id)
         .join(", ")}.`,
+    );
+  }
+  const deleted = readDeletedLists(ctx.userId, ctx.db).find(
+    (l) => nameKey(l.name) === key,
+  );
+  if (deleted) {
+    throw new ToolError(
+      `The list “${deleted.name}” was deleted. Bring it back with restore_list first.`,
     );
   }
   throw new ToolError(
@@ -244,6 +265,50 @@ function resolveItems(
   }
   // One item can match two references. Change it one time.
   return [...new Map(found.map((i) => [i.id, i])).values()];
+}
+
+/**
+ * A list for restore_list (#162): a deleted list that the purge did not
+ * remove, or a live list (`live`: nothing to restore, for example a retry).
+ * For a name, a deleted list comes first, the last delete first.
+ */
+function resolveDeletedList(
+  ctx: ToolContext,
+  ref: string,
+): { list: ListRecord; live: boolean } {
+  const gone =
+    'A deleted list stays for 30 days, then it is gone. Call get_history with actions ["list_deleted"] to see the deleted lists.';
+  if (UUID.test(ref)) {
+    const list = readListById(ref.toLowerCase(), ctx.userId, ctx.db);
+    if (list) return { list, live: list.deletedAt === null };
+    throw new ToolError(
+      `No list has the list_id ${ref.toLowerCase()}. ${gone}`,
+    );
+  }
+  const key = nameKey(ref);
+  const deleted = readDeletedLists(ctx.userId, ctx.db).find(
+    (l) => nameKey(l.name) === key,
+  );
+  if (deleted) return { list: deleted, live: false };
+  const live = readLiveLists(ctx.userId, ctx.db)
+    .map((l) => l.list)
+    .filter((l) => nameKey(l.name) === key);
+  if (live.length === 1) return { list: live[0], live: true };
+  if (live.length > 1) {
+    throw new ToolError(
+      `More than one list is named “${ref}”, and none of them is deleted.`,
+    );
+  }
+  throw new ToolError(`No deleted list matches “${ref}”. ${gone}`);
+}
+
+/** True if a checked item expires (#112) in the next day. */
+function expiresSoon(item: ItemRecord, now: number): boolean {
+  return (
+    item.checked &&
+    item.checkedAt !== null &&
+    expiresAt(item.checkedAt) <= now + DAY_MS
+  );
 }
 
 // --- history (#152) -------------------------------------------------------------
@@ -500,7 +565,7 @@ const REJECTED: Record<RejectReason, string> = {
     "This change has the ID of a change of another user. Try again with a new idempotency_key.",
   not_owner: "Only the person who made the list can make it private or shared.",
   privacy_mismatch:
-    "An item cannot move between a private list and a shared list. Add it to the other list with add_items instead, and delete it here if the user wants.",
+    "An item cannot move between a private list and a shared list. Copy it to the other list with copy_items instead, and delete it here if the user wants.",
 };
 
 function iso(ms: number): string {
@@ -873,6 +938,56 @@ export const TOOLS = [
   }),
 
   defineTool({
+    name: "restore_list",
+    title: "Restore a deleted list",
+    description:
+      "Bring back a deleted list with all its items, for both people (only for the user, if the list is private): for example, to undo delete_list. A deleted list stays for 30 days, then it is gone. If a list on the lists now has the same name, rename that list first.",
+    scope: "lists:write",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+    input: z.object({
+      list: listRef.describe("The list_id, or the name of the deleted list"),
+      idempotency_key: idempotencyKey,
+    }),
+    output: listOut.extend({
+      private: privateOut,
+      items: z.int().describe("The number of items on the list now"),
+      result: z
+        .enum(["restored", "not_deleted"])
+        .describe("not_deleted: the list was not deleted, nothing changed"),
+    }),
+    run: (ctx, input) => {
+      const { list, live } = resolveDeletedList(ctx, input.list);
+      const out = () => {
+        const now = readListById(list.id, ctx.userId, ctx.db)!;
+        return {
+          list_id: now.id,
+          name: now.name,
+          private: now.private,
+          items: readListItems(now.id, ctx.db).length,
+        };
+      };
+      if (live) return { ...out(), result: "not_deleted" as const };
+      // Names are references: two live lists with one name are a problem.
+      const clash = readLiveLists(ctx.userId, ctx.db).find(
+        (l) => nameKey(l.list.name) === nameKey(list.name),
+      );
+      if (clash) {
+        throw new ToolError(
+          `The list “${clash.list.name}” has the same name. Rename it with rename_list first, then restore this list (list_id ${list.id}).`,
+        );
+      }
+      apply(ctx, idMaker(ctx, "restore_list", input), [
+        { type: "restoreList", args: { listId: list.id } },
+      ]);
+      return { ...out(), result: "restored" as const };
+    },
+  }),
+
+  defineTool({
     name: "add_items",
     title: "Add items",
     description:
@@ -1098,10 +1213,10 @@ export const TOOLS = [
   }),
 
   defineTool({
-    name: "move_item",
-    title: "Move an item",
+    name: "restore_items",
+    title: "Restore deleted items",
     description:
-      "Move an item from one list to another list. The move unchecks a checked item, and marks an out-of-stock item in stock. Both lists must be private, or both shared: to get an item across, use add_items on the other list.",
+      'Bring back deleted items of a list, for both people (only for the user, on a private list): for example, to undo delete_items or clear_checked, or to get back an item that expired. A deleted item stays for 30 days, then it is gone: add it again with add_items. A restored item keeps its checked state, but an item that was checked off 29 days ago or more comes back unchecked: else it expires again. An item whose name is on the list now does not come back. Call get_history with the list and actions ["deleted", "expired"] to find the deleted items.',
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -1109,70 +1224,294 @@ export const TOOLS = [
       idempotentHint: true,
     },
     input: z.object({
-      list: listRef.describe("The list that has the item now: list_id or name"),
-      item: itemRef,
-      to_list: listRef.describe("The list to move it to: list_id or name"),
+      list: listRef,
+      items: itemRefs.describe(
+        "Item IDs or names of deleted items on that list. For a name, the item with the last delete comes back",
+      ),
       idempotency_key: idempotencyKey,
     }),
-    output: itemOut.extend({
-      from_list_id: z.string(),
-      to_list_id: z.string(),
+    output: listOut.extend({
+      items: z.array(
+        itemOut.extend({
+          result: z
+            .enum(["restored", "already_on_list"])
+            .describe(
+              "already_on_list: an item with this name is on the list, thus nothing changed. The item is that item",
+            ),
+        }),
+      ),
     }),
     run: (ctx, input) => {
-      const { list: ref, item: itemArg, to_list } = input;
-      const from = resolveList(ctx, ref);
-      const [item] = resolveItems(ctx, from, [itemArg]);
-      const to = resolveList(ctx, to_list);
-      if (to.id !== from.id) {
-        apply(ctx, idMaker(ctx, "move_item", input), [
-          { type: "moveItem", args: { itemId: item.id, toListId: to.id } },
-        ]);
+      const { list: ref, items: refs } = input;
+      const list = resolveList(ctx, ref);
+      const live = readListItems(list.id, ctx.db);
+      const deleted = readDeletedItems(list.id, ctx.db);
+      const now = (ctx.now ?? Date.now)();
+      /** The item for each name on the list after the restore. */
+      const onList = new Map(live.map((i) => [nameKey(i.name), i]));
+      const restore: ServerItemRecord[] = [];
+      const results = new Map<
+        string,
+        { item: ServerItemRecord; result: "restored" | "already_on_list" }
+      >();
+      const missing: string[] = [];
+      for (const itemRef of refs) {
+        const id = UUID.test(itemRef) ? itemRef.toLowerCase() : undefined;
+        const hit = id
+          ? (live.find((i) => i.id === id) ?? deleted.find((i) => i.id === id))
+          : (onList.get(nameKey(itemRef)) ??
+            deleted.find((i) => nameKey(i.name) === nameKey(itemRef)));
+        if (!hit) {
+          missing.push(itemRef);
+          continue;
+        }
+        if (results.has(hit.id)) continue;
+        const there = onList.get(nameKey(hit.name));
+        if (there) {
+          results.set(there.id, { item: there, result: "already_on_list" });
+          continue;
+        }
+        onList.set(nameKey(hit.name), hit);
+        restore.push(hit);
+        results.set(hit.id, { item: hit, result: "restored" });
       }
-      // A move unchecks the item: return it as it is now.
-      const after = readListItems(to.id, ctx.db).find((i) => i.id === item.id);
+      if (missing.length > 0) {
+        throw new ToolError(
+          `No deleted item on “${list.name}” matches ${quoteNames(missing)}. Nothing was changed. A deleted item stays for 30 days, then it is gone: add it again with add_items. Call get_history with the list to see its deleted items.`,
+        );
+      }
+      apply(
+        ctx,
+        idMaker(ctx, "restore_items", input),
+        restore.flatMap((i) => [
+          { type: "restoreItem" as const, args: { itemId: i.id } },
+          ...(expiresSoon(i, now)
+            ? [{ type: "uncheck" as const, args: { itemId: i.id } }]
+            : []),
+        ]),
+      );
+      const after = new Map(
+        readListItems(list.id, ctx.db).map((i) => [i.id, i]),
+      );
       return {
-        ...toItemOut(after ?? item),
-        from_list_id: from.id,
-        to_list_id: to.id,
+        list_id: list.id,
+        name: list.name,
+        items: [...results.values()].map(({ item, result }) => ({
+          ...toItemOut(after.get(item.id) ?? item),
+          result,
+        })),
       };
     },
   }),
 
-  ...(["clear_checked", "uncheck_all"] as const).map((name) =>
+  defineTool({
+    name: "move_items",
+    title: "Move items",
+    description:
+      "Move items from one list to another list. A move unchecks a checked item, and marks an out-of-stock item in stock. Both lists must be private, or both shared: to get an item across, use copy_items.",
+    scope: "lists:write",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+    input: z.object({
+      list: listRef.describe(
+        "The list that has the items now: list_id or name",
+      ),
+      items: itemRefs,
+      to_list: listRef.describe("The list to move them to: list_id or name"),
+      idempotency_key: idempotencyKey,
+    }),
+    output: z.object({
+      from_list_id: z.string(),
+      to_list_id: z.string(),
+      items: z.array(itemOut).describe("The items after the move"),
+    }),
+    run: (ctx, input) => {
+      const { list: ref, items: refs, to_list } = input;
+      const from = resolveList(ctx, ref);
+      const items = resolveItems(ctx, from, refs);
+      const to = resolveList(ctx, to_list);
+      if (to.id !== from.id) {
+        apply(
+          ctx,
+          idMaker(ctx, "move_items", input),
+          items.map((i) => ({
+            type: "moveItem" as const,
+            args: { itemId: i.id, toListId: to.id },
+          })),
+        );
+      }
+      // A move unchecks the item: return the items as they are now.
+      const after = new Map(readListItems(to.id, ctx.db).map((i) => [i.id, i]));
+      return {
+        from_list_id: from.id,
+        to_list_id: to.id,
+        items: items.map((i) => toItemOut(after.get(i.id) ?? i)),
+      };
+    },
+  }),
+
+  defineTool({
+    name: "copy_items",
+    title: "Copy items",
+    description:
+      "Copy items to another list. The copy has the same name, quantity, notes, and url, and the item stays on the first list. If the other list has an item with the same name: a checked one is unchecked, and gets the quantity, the notes, and the url of the copy when they are not the defaults; an unchecked one does not change. Copy works between private and shared lists. To move items, use move_items.",
+    scope: "lists:write",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+    input: z.object({
+      list: listRef.describe("The list that has the items: list_id or name"),
+      items: itemRefs,
+      to_list: listRef.describe("The list to copy them to: list_id or name"),
+      idempotency_key: idempotencyKey,
+    }),
+    output: z.object({
+      from_list_id: z.string(),
+      to_list_id: z.string(),
+      items: z.array(
+        z.object({
+          item_id: z.string().describe("The item on the first list"),
+          name: z.string(),
+          result: z
+            .enum(["copied", "unchecked", "already_on_list"])
+            .describe(
+              "copied: a new item. unchecked: the other list had it checked. already_on_list: the other list had it unchecked, nothing changed",
+            ),
+          to_item_id: z.string().describe("The item on the other list"),
+        }),
+      ),
+    }),
+    run: (ctx, input) => {
+      const { list: ref, items: refs, to_list } = input;
+      const from = resolveList(ctx, ref);
+      const sources = resolveItems(ctx, from, refs);
+      const to = resolveList(ctx, to_list);
+      if (to.id === from.id) {
+        throw new ToolError(
+          `The items are on “${from.name}” already. Give a different to_list.`,
+        );
+      }
+      const ids = idMaker(ctx, "copy_items", input);
+      // The target items, with the changes of this call: two items with
+      // the same name give one copy.
+      const target: ItemRecord[] = readListItems(to.id, ctx.db);
+      const specs: OpSpec[] = [];
+      const out: {
+        item_id: string;
+        name: string;
+        result: "copied" | "unchecked" | "already_on_list";
+        to_item_id: string;
+        /** The index of the add in `specs`. */
+        spec?: number;
+      }[] = sources.map((source, i) => {
+        const base = { item_id: source.id, name: source.name };
+        const newId = ids("item", i);
+        // A retry with the same idempotency_key: the copy is there.
+        if (target.some((t) => t.id === newId)) {
+          return { ...base, result: "copied" as const, to_item_id: newId };
+        }
+        const plan = copyPlan(source, to.id, target, newId);
+        specs.push(...plan.requests);
+        if (plan.kind === "add") {
+          target.push({
+            ...source,
+            id: newId,
+            listId: to.id,
+            checked: false,
+            checkedAt: null,
+            outOfStockAt: null,
+            createdAt: Number.MAX_SAFE_INTEGER,
+          });
+          return {
+            ...base,
+            result: "copied" as const,
+            to_item_id: newId,
+            spec: specs.length - 1,
+          };
+        }
+        if (plan.kind === "uncheck") {
+          const match = target.find((t) => t.id === plan.itemId)!;
+          match.checked = false;
+          return {
+            ...base,
+            result: "unchecked" as const,
+            to_item_id: match.id,
+          };
+        }
+        return {
+          ...base,
+          result: "already_on_list" as const,
+          to_item_id: plan.itemId,
+        };
+      });
+      const results = specs.length > 0 ? apply(ctx, ids, specs) : [];
+      return {
+        from_list_id: from.id,
+        to_list_id: to.id,
+        items: out.map(({ spec, ...item }) => {
+          // The other person added the same name between the read and the
+          // write: the server merged the add into that item.
+          const r = spec === undefined ? undefined : results[spec];
+          return r?.status === "merged"
+            ? {
+                ...item,
+                result: "already_on_list" as const,
+                to_item_id: r.into,
+              }
+            : item;
+        }),
+      };
+    },
+  }),
+
+  ...(
+    [
+      {
+        name: "clear_checked",
+        op: "clearChecked",
+        title: "Delete checked items",
+        description:
+          "Delete all checked items from a list, for both people. Confirm with the user first.",
+        destructive: true,
+      },
+      {
+        name: "uncheck_all",
+        op: "uncheckAll",
+        title: "Uncheck all items",
+        description: "Uncheck all items of a list, to shop for them again.",
+        destructive: false,
+      },
+      {
+        name: "check_all",
+        op: "checkAll",
+        title: "Check off all items",
+        description:
+          "Check off all unchecked items of a list, as when they are all in the cart. This also marks them in stock.",
+        destructive: false,
+      },
+    ] as const
+  ).map((bulk) =>
     defineTool({
-      name,
-      title:
-        name === "clear_checked" ? "Delete checked items" : "Uncheck all items",
-      description:
-        name === "clear_checked"
-          ? "Delete all checked items from a list, for both people. Confirm with the user first."
-          : "Uncheck all items of a list, to shop for them again.",
+      name: bulk.name,
+      title: bulk.title,
+      description: bulk.description,
       scope: "lists:write",
-      annotations:
-        name === "clear_checked"
-          ? {
-              readOnlyHint: false,
-              destructiveHint: true,
-              idempotentHint: false,
-            }
-          : {
-              readOnlyHint: false,
-              destructiveHint: false,
-              idempotentHint: true,
-            },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: bulk.destructive,
+        idempotentHint: !bulk.destructive,
+      },
       input: z.object({ list: listRef, idempotency_key: idempotencyKey }),
       output: listOut.extend({ changed_items: z.int() }),
       run: (ctx, input) => {
-        const { list: ref } = input;
-        const list = resolveList(ctx, ref);
-        const [result] = apply(ctx, idMaker(ctx, name, input), [
-          {
-            type:
-              name === "clear_checked"
-                ? ("clearChecked" as const)
-                : ("uncheckAll" as const),
-            args: { listId: list.id },
-          },
+        const list = resolveList(ctx, input.list);
+        const [result] = apply(ctx, idMaker(ctx, bulk.name, input), [
+          { type: bulk.op, args: { listId: list.id } },
         ]);
         return {
           list_id: list.id,

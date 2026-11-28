@@ -1,18 +1,19 @@
 // Copy an item to another list (#131). A copy is an add with the same
 // name, quantity, notes, and URL (#140). It obeys the dedupe rules of the add bar (#14,
 // #120): a name that is on the target list already gives no second item.
-import { nameKey } from "@/shared/names";
-import type { ItemRecord } from "@/shared/sync";
+// The app and the MCP tool copy_items (#162) use it.
 import { checkedFields } from "./duplicate";
-import type { OpRequest } from "./sync";
+import { nameKey } from "./names";
+import type { OpRequest } from "./ops";
+import type { ItemRecord } from "./sync";
 
 export type CopyPlan =
   /** A new item on the target list. Its ID is for the undo. */
   | { kind: "add"; itemId: string; requests: OpRequest[] }
   /** The target has the name, checked: uncheck it, with the new fields. */
-  | { kind: "uncheck"; requests: OpRequest[] }
+  | { kind: "uncheck"; itemId: string; requests: OpRequest[] }
   /** The target has the name, unchecked: nothing to do. */
-  | { kind: "onList"; requests: [] };
+  | { kind: "onList"; itemId: string; requests: [] };
 
 /**
  * The ops for a copy of `item` to `toListId`. `targetItems` are the items of
@@ -55,11 +56,12 @@ export function copyPlan(
       ],
     };
   }
-  if (!match.checked) return { kind: "onList", requests: [] };
+  if (!match.checked) return { kind: "onList", itemId: match.id, requests: [] };
 
   const fields = checkedFields(match, item);
   return {
     kind: "uncheck",
+    itemId: match.id,
     requests: [
       { type: "uncheck", args: { itemId: match.id } },
       ...(fields

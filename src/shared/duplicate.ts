@@ -1,5 +1,6 @@
-// The add bar found a checked item with the same name (#120).
-import type { ItemRecord } from "@/shared/sync";
+// The add bar found a checked item with the same name (#120). The Copy of
+// the app and the MCP tool copy_items use it too (#162).
+import type { ItemRecord } from "./sync";
 
 /** What the user typed in the add bar. */
 export interface Entry {

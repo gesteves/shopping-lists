@@ -17,7 +17,7 @@ import { nameKey } from "@/shared/names";
 import { ITEM_NAME_MAX, NOTES_MAX, QUANTITY_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
 import { normalizeUrl } from "@/shared/url";
-import { checkedFields, type Entry } from "@/client/duplicate";
+import { checkedFields, type Entry } from "@/shared/duplicate";
 import { Stepper } from "../../_components/stepper";
 import { UrlField, type UrlFieldHandle } from "../../_components/url-field";
 import { ConfirmDialog } from "../../_components/wa";

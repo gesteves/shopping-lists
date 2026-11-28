@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { copyPlan } from "@/client/copy-item";
+import { copyPlan } from "@/shared/copy-item";
 import { getClientDb } from "@/client/db";
 import { useLists } from "@/client/hooks";
 import { mutate } from "@/client/sync";

@@ -1,7 +1,19 @@
 // The read module. The sync pull (#6) and the MCP tools (#19) read through
 // it. Writes go through applyOps (src/server/ops.ts).
 import "server-only";
-import { and, asc, desc, eq, gt, isNull, like, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  like,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb, type Reader } from "@/db/client";
 import { items, lists, serverSeq, users } from "@/db/schema";
 import type { ItemRecord, ListRecord, UserRecord } from "@/shared/sync";
@@ -223,6 +235,42 @@ export function readListItems(listId: string, db: Reader = getDb()) {
     .orderBy(asc(items.checked), desc(items.updatedAt), asc(items.name))
     .all()
     .map(toServerItemRecord);
+}
+
+/**
+ * The deleted items of a list that the purge did not remove yet (#162): the
+ * last delete first. Expired items (#112) are deleted items too.
+ */
+export function readDeletedItems(listId: string, db: Reader = getDb()) {
+  return db
+    .select()
+    .from(items)
+    .where(and(eq(items.listId, listId), isNotNull(items.deletedAt)))
+    .orderBy(
+      sql`${items.tombstonedAt} desc nulls last`,
+      desc(items.deletedAt),
+      asc(items.id),
+    )
+    .all()
+    .map(toServerItemRecord);
+}
+
+/**
+ * The deleted lists that the user can see and that the purge did not
+ * remove yet (#162): the last delete first.
+ */
+export function readDeletedLists(userId: string, db: Reader = getDb()) {
+  return db
+    .select()
+    .from(lists)
+    .where(and(isNotNull(lists.deletedAt), visibleTo(userId)))
+    .orderBy(
+      sql`${lists.tombstonedAt} desc nulls last`,
+      desc(lists.deletedAt),
+      asc(lists.id),
+    )
+    .all()
+    .map(toListRecord);
 }
 
 /**
