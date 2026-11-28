@@ -66,9 +66,9 @@ describe("the dictionary", () => {
       "Sent a test notification to 2 devices.",
     );
     expect(copy.lists.deleteBody(1)).toBe(
-      "It has 1 item to get. The other person loses it too.",
+      "It has 1 item to get. It’s deleted for both of you.",
     );
-    expect(copy.lists.deleteBody(0)).toBe("The other person loses it too.");
+    expect(copy.lists.deleteBody(0)).toBe("It’s deleted for both of you.");
     expect(copy.push.burst("Sam", 2, 1, "Costco")).toBe(
       "Sam made 2 changes to the “Costco” list.",
     );

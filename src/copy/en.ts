@@ -134,8 +134,8 @@ export const en = {
     deleteConfirm: "Delete list",
     deleteBody: (remaining: number) =>
       remaining > 0
-        ? `It has ${items(remaining)} to get. The other person loses it too.`
-        : "The other person loses it too.",
+        ? `It has ${items(remaining)} to get. It’s deleted for both of you.`
+        : "It’s deleted for both of you.",
     deleted: (name: string) => `Deleted the ${q(name)} list.`,
   },
 
