@@ -128,6 +128,10 @@ export class Notifier {
       .sort((a, b) => a.id - b.id);
     const groups = new Map<string, ActivityEvent[]>();
     for (const row of rows) {
+      // A change of the server itself has notified_at set at insert, thus
+      // it is not here. This check is for the types (#152).
+      if (row.actorId === null || row.via === "system") continue;
+      if (row.type === "expireItem") continue;
       // One group for each person and channel: "(via Claude)" is for all
       // of the text.
       const key = `${row.actorId}:${row.via}`;

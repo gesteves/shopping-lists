@@ -598,6 +598,35 @@ describe("idempotency", () => {
   });
 });
 
+describe("history (#152)", () => {
+  it("keeps the op time in opAt, and the server time in at", () => {
+    seed();
+    // An offline check: the op time is long before the server gets it.
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    const row = db.select().from(activity).orderBy(activity.id).all().at(-1);
+    expect(row).toMatchObject({
+      type: "check",
+      opAt: new Date(T2),
+      at: new Date(NOW),
+    });
+  });
+
+  it("keeps the list before a move", () => {
+    seed();
+    apply(
+      SAM,
+      op("createList", { listId: LIST_2, name: "Costco" }, T2),
+      op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3),
+    );
+    const row = db.select().from(activity).orderBy(activity.id).all().at(-1);
+    expect(row).toMatchObject({
+      type: "moveItem",
+      listId: LIST_2,
+      snapshot: { fromListId: LIST, fromListName: "Whole Foods" },
+    });
+  });
+});
+
 describe("uncheckedAt (#150)", () => {
   it("is the time of the last uncheck, and null while checked", () => {
     seed();

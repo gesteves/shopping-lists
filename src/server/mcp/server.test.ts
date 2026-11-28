@@ -254,6 +254,7 @@ describe("tools/list", () => {
       "list_lists",
       "get_list",
       "search_items",
+      "get_history",
       "create_list",
       "rename_list",
       "delete_list",
@@ -282,6 +283,7 @@ describe("tools/list", () => {
       tools.map((t: { name: string }) => [t.name, t]),
     );
     expect(byName.list_lists.annotations.readOnlyHint).toBe(true);
+    expect(byName.get_history.annotations.readOnlyHint).toBe(true);
     for (const name of ["delete_list", "delete_items", "clear_checked"]) {
       expect(byName[name].annotations.destructiveHint, name).toBe(true);
     }
@@ -899,6 +901,177 @@ describe("tools", () => {
     expect(
       (got.structuredContent.items as Json[]).find((i) => i.name === "Butter"),
     ).toMatchObject({ added: { by: "Sam" } });
+  });
+});
+
+describe("get_history (#152)", () => {
+  let client: Client;
+  let sam: Client;
+  const LIST = "History #152";
+  const OTHER = "Other #152";
+
+  beforeAll(async () => {
+    client = await connect("modern");
+    const cookie = (await h.signIn(SECOND, "Sam"))!;
+    const other = await h.getTokens(await h.registerClient("Sam's Claude"), {
+      cookie,
+    });
+    sam = await connect("modern", other.access_token);
+
+    await callTool(client, "create_list", { name: LIST });
+    await callTool(client, "create_list", { name: OTHER });
+    await callTool(client, "add_items", {
+      list: LIST,
+      items: [{ name: "Milk" }, { name: "Eggs" }],
+    });
+    await callTool(client, "check_items", { list: LIST, items: ["Milk"] });
+    await callTool(client, "update_item", {
+      list: LIST,
+      item: "Eggs",
+      quantity: 6,
+    });
+    await callTool(sam, "add_items", {
+      list: LIST,
+      items: [{ name: "Bread" }],
+    });
+    await callTool(client, "delete_items", { list: LIST, items: ["Eggs"] });
+    await callTool(client, "move_item", {
+      list: LIST,
+      item: "Milk",
+      to_list: OTHER,
+    });
+    await callTool(client, "delete_list", { list: OTHER });
+  });
+
+  async function history(args: Record<string, unknown>) {
+    const result = await callTool(client, "get_history", args);
+    expect(result.isError, errorText(result)).toBeFalsy();
+    return result.structuredContent as unknown as {
+      entries: Json[];
+      next_cursor: string | null;
+    };
+  }
+
+  it("gives the changes of a list, the last first, with the moves out of it", async () => {
+    const { entries, next_cursor } = await history({ list: LIST });
+    expect(entries.map((e) => [e.action, e.item_name, e.by])).toEqual([
+      ["moved", "Milk", "Ana"],
+      ["deleted", "Eggs", "Ana"],
+      ["added", "Bread", "Sam"],
+      ["edited", "Eggs", "Ana"],
+      ["checked", "Milk", "Ana"],
+      ["added", "Eggs", "Ana"],
+      ["added", "Milk", "Ana"],
+      ["list_created", null, "Ana"],
+    ]);
+    expect(next_cursor).toBeNull();
+    expect(entries[0]).toMatchObject({
+      via_claude: true,
+      list_name: OTHER,
+      from_list_name: LIST,
+      also_unchecked: true,
+    });
+    expect(entries[3]).toMatchObject({
+      changes: { quantity: { from: 1, to: 6 } },
+    });
+    for (const entry of entries) {
+      expect(Date.parse(entry.at as string)).toBeLessThanOrEqual(Date.now());
+    }
+  });
+
+  it("finds a deleted item and a deleted list by name", async () => {
+    const eggs = await history({ list: LIST, item: "EGGS" });
+    expect(eggs.entries.map((e) => e.action)).toEqual([
+      "deleted",
+      "edited",
+      "added",
+    ]);
+    const other = await history({ list: OTHER.toLowerCase() });
+    expect(other.entries.map((e) => e.action)).toEqual([
+      "list_deleted",
+      "moved",
+      "list_created",
+    ]);
+  });
+
+  it("filters by person, action, and time", async () => {
+    const mine = await history({
+      list: LIST,
+      person: "me",
+      actions: ["checked"],
+    });
+    expect(mine.entries.map((e) => e.item_name)).toEqual(["Milk"]);
+    const sams = await history({ list: LIST, person: "sam" });
+    expect(sams.entries.map((e) => e.item_name)).toEqual(["Bread"]);
+    const later = await history({
+      list: LIST,
+      since: new Date(Date.now() + 60_000).toISOString(),
+    });
+    expect(later.entries).toEqual([]);
+    const before = await history({
+      list: LIST,
+      until: "2000-01-01T00:00:00+01:00",
+    });
+    expect(before.entries).toEqual([]);
+  });
+
+  it("gives pages", async () => {
+    const all = (await history({ list: LIST })).entries;
+    const first = await history({ list: LIST, limit: 3 });
+    expect(first.entries).toEqual(all.slice(0, 3));
+    expect(first.next_cursor).toEqual(expect.any(String));
+    const second = await history({
+      list: LIST,
+      limit: 5,
+      cursor: first.next_cursor,
+    });
+    expect(second.entries).toEqual(all.slice(3, 8));
+    expect(second.next_cursor).toBeNull();
+  });
+
+  it("shows an automatic change with no person", async () => {
+    const list = await callTool(client, "list_lists", {});
+    const listId = (list.structuredContent.lists as Json[]).find(
+      (l) => l.name === LIST,
+    )!.list_id as string;
+    h.db
+      .insert(activity)
+      .values({
+        actorId: null,
+        via: "system",
+        type: "expireItem",
+        listId,
+        itemId: crypto.randomUUID(),
+        snapshot: { listName: LIST, itemName: "Old jam" },
+        at: new Date(),
+        opAt: new Date(),
+        notifiedAt: new Date(),
+      })
+      .run();
+    const { entries } = await history({ list: LIST, actions: ["expired"] });
+    expect(entries).toEqual([
+      expect.objectContaining({
+        action: "expired",
+        by: null,
+        via_claude: false,
+        item_name: "Old jam",
+      }),
+    ]);
+  });
+
+  it("gives helpful errors", async () => {
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ item: "Milk" }, /list of the item/],
+      [{ list: LIST, item: "Caviar" }, /No item “Caviar”/],
+      [{ list: "Nowhere" }, /No list, now or in the history/],
+      [{ person: "Zed" }, /No person matches “Zed”.*“Ana”/],
+      [{ cursor: "nope" }, /cursor is not valid/],
+    ];
+    for (const [args, message] of cases) {
+      const result = await callTool(client, "get_history", args);
+      expect(result.isError, JSON.stringify(args)).toBe(true);
+      expect(errorText(result)).toMatch(message);
+    }
   });
 });
 

@@ -29,6 +29,15 @@ import {
 } from "@/shared/ops";
 import type { ListRecord, RejectReason, StoredResult } from "@/shared/sync";
 import { getServerClock, SERVER_NODE } from "../clock";
+import {
+  HISTORY_ACTIONS,
+  historyAction,
+  historyItemNames,
+  historyListNames,
+  readHistory,
+  type HistoryCursor,
+  type HistoryRow,
+} from "../history";
 import { applyOps } from "../ops";
 import {
   readListById,
@@ -230,6 +239,212 @@ function resolveItems(
   return [...new Map(found.map((i) => [i.id, i])).values()];
 }
 
+// --- history (#152) -------------------------------------------------------------
+
+const CURSOR = /^(\d{1,15})\.(\d{1,15})$/;
+
+function toCursor(row: HistoryRow): string {
+  return `${row.opAt.getTime()}.${row.id}`;
+}
+
+function fromCursor(text: string): HistoryCursor {
+  const match = CURSOR.exec(text);
+  if (!match) {
+    throw new ToolError(
+      "The cursor is not valid. Send the next_cursor of the last get_history result, with the same filters.",
+    );
+  }
+  return { opAt: Number(match[1]), id: Number(match[2]) };
+}
+
+/** A list for get_history: a live list, or one in the history only. */
+function resolveHistoryList(
+  ctx: ToolContext,
+  ref: string,
+): { id: string; name: string } {
+  const old = historyListNames(ctx.db);
+  if (UUID.test(ref)) {
+    const id = ref.toLowerCase();
+    const name =
+      readListById(id, ctx.db)?.name ?? old.find((l) => l.listId === id)?.name;
+    if (name !== undefined) return { id, name };
+    throw new ToolError(
+      `No list, now or in the history, has the list_id ${id}.`,
+    );
+  }
+  const key = nameKey(ref);
+  const live = readLiveLists(ctx.db).map((l) => l.list);
+  const liveMatches = live.filter((l) => nameKey(l.name) === key);
+  const matches =
+    liveMatches.length > 0
+      ? liveMatches.map((l) => ({ id: l.id, name: l.name }))
+      : [
+          ...new Map(
+            old
+              .filter((l) => l.name !== null && nameKey(l.name) === key)
+              .map((l) => [l.listId, { id: l.listId, name: l.name }]),
+          ).values(),
+        ];
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new ToolError(
+      `More than one list is named “${ref}”. Use a list_id: ${matches
+        .map((l) => l.id)
+        .join(", ")}.`,
+    );
+  }
+  throw new ToolError(
+    `No list, now or in the history, matches “${ref}”. The lists are: ${quoteNames(live.map((l) => l.name))}.`,
+  );
+}
+
+/**
+ * The item IDs for a reference on a list, for get_history: the live items
+ * and the items in the history with that name. One name can be more than
+ * one item: for example an item that someone deleted and added again.
+ */
+function resolveHistoryItems(
+  ctx: ToolContext,
+  list: { id: string; name: string },
+  ref: string,
+): string[] {
+  const old = historyItemNames(list.id, ctx.db);
+  const live = readListItems(list.id, ctx.db);
+  if (UUID.test(ref)) {
+    const id = ref.toLowerCase();
+    if (live.some((i) => i.id === id) || old.some((i) => i.itemId === id)) {
+      return [id];
+    }
+  } else {
+    const key = nameKey(ref);
+    const ids = new Set([
+      ...live.filter((i) => nameKey(i.name) === key).map((i) => i.id),
+      ...old
+        .filter((i) => i.name !== null && nameKey(i.name) === key)
+        .map((i) => i.itemId),
+    ]);
+    if (ids.size > 0) return [...ids];
+  }
+  throw new ToolError(
+    `No item “${ref}” is on “${list.name}” or in its history. Call get_history with only the list to see its changes.`,
+  );
+}
+
+/** The user ID for "me" or a name (the full name, or the first word). */
+function resolvePerson(ctx: ToolContext, ref: string): string {
+  const key = nameKey(ref);
+  if (key === "me") return ctx.userId;
+  const users = readUsers(ctx.db);
+  const full = users.filter((u) => nameKey(u.name) === key);
+  const first = users.filter((u) => nameKey(u.name).split(" ")[0] === key);
+  const matches = full.length > 0 ? full : first;
+  if (matches.length === 1) return matches[0].id;
+  throw new ToolError(
+    `${matches.length > 1 ? "More than one person" : "No person"} matches “${ref}”. Use "me", or one of: ${quoteNames(users.map((u) => u.name))}.`,
+  );
+}
+
+function fromTo<T extends z.ZodType>(value: T) {
+  return z.object({
+    from: value.nullable().describe("The value before, or null if not known"),
+    to: value,
+  });
+}
+
+const historyEntryOut = z.object({
+  at: z.iso
+    .datetime()
+    .describe("When the change was made, on the device of the person"),
+  by: z
+    .string()
+    .nullable()
+    .describe(
+      "The person. Null for an automatic change: the delete of an item that stayed checked for 30 days",
+    ),
+  via_claude: z.boolean().describe("True if the change came through Claude"),
+  action: z.enum(HISTORY_ACTIONS),
+  list_id: z.string(),
+  list_name: z.string().describe("The name of the list at the time"),
+  item_id: z.string().nullable(),
+  item_name: z.string().nullable().describe("The name of the item at the time"),
+  changes: z
+    .object({
+      name: fromTo(z.string()),
+      quantity: fromTo(z.int()),
+      notes: fromTo(z.string()),
+      url: fromTo(z.string()),
+    })
+    .partial()
+    .optional()
+    .describe("edited: the fields that changed"),
+  from_list_id: z.string().optional().describe("moved: the list before"),
+  from_list_name: z.string().optional().describe("moved: the list before"),
+  added_again: z
+    .boolean()
+    .optional()
+    .describe(
+      "unchecked: someone added the name again while it was checked, and that unchecked it",
+    ),
+  also_unchecked: z
+    .boolean()
+    .optional()
+    .describe("The change also unchecked the item"),
+  also_in_stock: z
+    .boolean()
+    .optional()
+    .describe("The change also marked the item in stock"),
+  count: z
+    .int()
+    .optional()
+    .describe(
+      "Old rows of a check all, uncheck all, or clear checked: the number of items",
+    ),
+});
+
+function toHistoryEntry(
+  row: HistoryRow,
+  names: Map<string, string>,
+): z.output<typeof historyEntryOut> {
+  const s = row.snapshot;
+  const action = historyAction(row.type, s);
+  const entry: z.output<typeof historyEntryOut> = {
+    at: iso(row.opAt.getTime()),
+    by: row.actorId === null ? null : (names.get(row.actorId) ?? "Someone"),
+    via_claude: row.via === "mcp",
+    action,
+    list_id: row.listId,
+    list_name: s.listName,
+    item_id: row.itemId,
+    item_name: s.itemName ?? null,
+  };
+  if (row.type === "updateItem") {
+    const changes: NonNullable<typeof entry.changes> = {};
+    if (s.oldName !== undefined && s.itemName !== undefined) {
+      changes.name = { from: s.oldName, to: s.itemName };
+    }
+    if (s.quantity !== undefined) {
+      changes.quantity = { from: s.oldQuantity ?? null, to: s.quantity };
+    }
+    if (s.notes !== undefined) {
+      changes.notes = { from: s.oldNotes ?? null, to: s.notes };
+    }
+    if (s.url !== undefined) {
+      changes.url = { from: s.oldUrl ?? null, to: s.url };
+    }
+    entry.changes = changes;
+  }
+  if (row.type === "renameList" && s.oldName !== undefined) {
+    entry.changes = { name: { from: s.oldName, to: s.listName } };
+  }
+  if (s.fromListId !== undefined) entry.from_list_id = s.fromListId;
+  if (s.fromListName !== undefined) entry.from_list_name = s.fromListName;
+  if (row.type === "addItem" && s.unchecked) entry.added_again = true;
+  else if (s.unchecked && action !== "unchecked") entry.also_unchecked = true;
+  if (s.inStock) entry.also_in_stock = true;
+  if (s.count !== undefined) entry.count = s.count;
+  return entry;
+}
+
 type OpSpec = Pick<OpInput, "type" | "args">;
 
 /** Applies the ops for the caller with via "mcp". One result per op. */
@@ -410,6 +625,99 @@ export const TOOLS = [
         list_name: r.listName,
       })),
     }),
+  }),
+
+  defineTool({
+    name: "get_history",
+    title: "Get the history of changes",
+    description:
+      'The changes to the lists and items: who did what, and when, the last change first. It includes deleted lists and items. Each filter is optional, and all filters apply together. For example, "what did I buy last week" is actions ["checked"], person "me", and since and until; "who deleted the eggs?" is the list, item "eggs", and actions ["deleted", "expired"]. Results come in pages: for more, call again with the same filters and next_cursor.',
+    scope: "lists:read",
+    annotations: READ,
+    input: z.object({
+      list: listRef
+        .optional()
+        .describe(
+          "Only this list: its list_id or name, also for a deleted list. Includes the moves out of it",
+        ),
+      item: itemRef
+        .optional()
+        .describe(
+          "Only this item: its item_id or name, also for a deleted item. Needs list",
+        ),
+      person: z
+        .string()
+        .trim()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe(
+          'Only the changes of this person: "me" (the user of this connection), or a name',
+        ),
+      actions: z
+        .array(z.enum(HISTORY_ACTIONS))
+        .min(1)
+        .optional()
+        .describe("Only these actions"),
+      since: z.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe("Only changes at or after this time"),
+      until: z.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe("Only changes before this time"),
+      limit: z.int().min(1).max(200).default(50),
+      cursor: z
+        .string()
+        .max(100)
+        .optional()
+        .describe("The next_cursor of the last result, for the next page"),
+    }),
+    output: z.object({
+      entries: z.array(historyEntryOut),
+      next_cursor: z
+        .string()
+        .nullable()
+        .describe("For the next page, or null if there are no more"),
+    }),
+    run: (ctx, input) => {
+      if (input.item !== undefined && input.list === undefined) {
+        throw new ToolError("Give the list of the item too.");
+      }
+      const list =
+        input.list === undefined
+          ? undefined
+          : resolveHistoryList(ctx, input.list);
+      const rows = readHistory(
+        {
+          listId: list?.id,
+          itemIds:
+            list && input.item !== undefined
+              ? resolveHistoryItems(ctx, list, input.item)
+              : undefined,
+          actorId:
+            input.person === undefined
+              ? undefined
+              : resolvePerson(ctx, input.person),
+          actions: input.actions,
+          since:
+            input.since === undefined ? undefined : Date.parse(input.since),
+          until:
+            input.until === undefined ? undefined : Date.parse(input.until),
+          before:
+            input.cursor === undefined ? undefined : fromCursor(input.cursor),
+          limit: input.limit + 1,
+        },
+        ctx.db,
+      );
+      const page = rows.slice(0, input.limit);
+      const names = new Map(readUsers(ctx.db).map((u) => [u.id, u.name]));
+      return {
+        entries: page.map((row) => toHistoryEntry(row, names)),
+        next_cursor: rows.length > input.limit ? toCursor(page.at(-1)!) : null,
+      };
+    },
   }),
 
   defineTool({

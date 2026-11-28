@@ -444,6 +444,8 @@ export interface ActivitySnapshot {
   oldName?: string;
   /** moveItem: the name of the list before. */
   fromListName?: string;
+  /** moveItem: the ID of the list before (#152). Older rows do not have it. */
+  fromListId?: string;
   /**
    * clearChecked, uncheckAll, and checkAll: the number of items they changed.
    * Only older rows have it: newer rows have one row for each item (#133).
@@ -484,25 +486,48 @@ export interface ActivitySnapshot {
 /** The fields that updateItem can change. */
 export type ItemField = "name" | "quantity" | "notes" | "url";
 
-/** One row for each change. The notifier (#16) sends them. */
+/**
+ * The `via` of an activity row: the app, Claude (MCP), or the server
+ * itself (#152), for example the expiry of a checked item.
+ */
+export const ACTIVITY_VIA = [...VIA, "system"] as const;
+export type ActivityVia = (typeof ACTIVITY_VIA)[number];
+
+/**
+ * The type of an activity row: the op type, or a change that the server
+ * made itself (#152). `expireItem`: the expiry deleted a checked item
+ * (#112).
+ */
+export type ActivityType = OpType | "expireItem";
+
+/**
+ * One row for each change: the history of the lists and items (#152). The
+ * notifier (#16) sends the rows of people. The rows stay forever: the
+ * purge does not delete them, and `list_id` and `item_id` are not foreign
+ * keys, thus the history of a purged list or item stays.
+ */
 export const activity = sqliteTable(
   "activity",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     opId: text("op_id"),
-    actorId: text("actor_id")
-      .notNull()
-      .references(userRef, { onDelete: "cascade" }),
-    via: text("via", { enum: VIA }).notNull(),
-    type: text("type").$type<OpType>().notNull(),
-    listId: text("list_id")
-      .notNull()
-      .references(() => lists.id, { onDelete: "cascade" }),
-    itemId: text("item_id").references(() => items.id, { onDelete: "cascade" }),
+    /** Null for a change of the server itself (`via` "system"). */
+    actorId: text("actor_id").references(userRef, { onDelete: "cascade" }),
+    via: text("via", { enum: ACTIVITY_VIA }).notNull(),
+    type: text("type").$type<ActivityType>().notNull(),
+    listId: text("list_id").notNull(),
+    itemId: text("item_id"),
     snapshot: text("snapshot", { mode: "json" })
       .$type<ActivitySnapshot>()
       .notNull(),
+    /** The server time when the server got the change. */
     at: integer("at", { mode: "timestamp_ms" }).notNull().default(now),
+    /**
+     * The time of the change: the op time (the HLC wall time, the clock of
+     * the device). It is before `at` for a change made offline (#152). Rows
+     * from before #152 have `at`.
+     */
+    opAt: integer("op_at", { mode: "timestamp_ms" }).notNull(),
     notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),
   },
   (t) => [
@@ -510,7 +535,10 @@ export const activity = sqliteTable(
     index("activity_pending_idx")
       .on(t.actorId, t.at)
       .where(sql`${t.notifiedAt} IS NULL`),
-    index("activity_list_id_idx").on(t.listId),
+    // The history (#152): all, by list, or by item, the last first.
+    index("activity_op_at_idx").on(t.opAt),
+    index("activity_list_id_op_at_idx").on(t.listId, t.opAt),
+    index("activity_item_id_op_at_idx").on(t.itemId, t.opAt),
   ],
 );
 
