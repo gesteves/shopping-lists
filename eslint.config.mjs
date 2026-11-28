@@ -23,6 +23,14 @@ const eslintConfig = defineConfig([
             "JSXAttribute[name.name=/^(label|placeholder|hint|title|alt|aria-label|confirmLabel)$/] > Literal",
           message: "Put UI text in the dictionary (src/copy).",
         },
+        {
+          // A Web Awesome element sets its own attributes when it upgrades,
+          // before React hydrates it. Thus React must not compare them.
+          selector:
+            "JSXOpeningElement[name.name=/^wa-/]:not(:has(JSXAttribute[name.name='suppressHydrationWarning']))",
+          message:
+            "Give each wa-* element suppressHydrationWarning: it sets its own attributes before hydration.",
+        },
       ],
     },
   },

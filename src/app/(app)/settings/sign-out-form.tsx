@@ -34,7 +34,7 @@ export function SignOutForm({ name }: { name: string }) {
         <p className="flex-1 text-ink-muted">
           {copy.settings.signedInAs(name)}
         </p>
-        <wa-button type="submit" appearance="outlined">
+        <wa-button suppressHydrationWarning type="submit" appearance="outlined">
           {copy.settings.signOut}
         </wa-button>
       </form>

@@ -90,7 +90,11 @@ async function Consent({
         ) : (
           // A DCR client: nothing proves where it comes from, or its name.
           <dd>
-            <wa-badge variant="warning" appearance="filled">
+            <wa-badge
+              suppressHydrationWarning
+              variant="warning"
+              appearance="filled"
+            >
               {copy.consent.unverified}
             </wa-badge>
           </dd>
@@ -103,8 +107,12 @@ async function Consent({
         <dd className="font-medium break-all text-ink">{user.email}</dd>
       </dl>
       {isLoopbackRedirect(redirectUri) && (
-        <wa-callout variant="warning" className="mt-6">
-          <wa-icon slot="icon" name="triangle-exclamation"></wa-icon>
+        <wa-callout suppressHydrationWarning variant="warning" className="mt-6">
+          <wa-icon
+            suppressHydrationWarning
+            slot="icon"
+            name="triangle-exclamation"
+          ></wa-icon>
           {copy.consent.loopback}
         </wa-callout>
       )}
@@ -112,7 +120,11 @@ async function Consent({
       <ul className="mt-2 flex flex-col gap-2">
         {scopes.map((scope) => (
           <li key={scope} className="flex items-start gap-3">
-            <wa-icon name="check" className="mt-1 text-accent"></wa-icon>
+            <wa-icon
+              suppressHydrationWarning
+              name="check"
+              className="mt-1 text-accent"
+            ></wa-icon>
             <span>{scopeText(scope)}</span>
           </li>
         ))}

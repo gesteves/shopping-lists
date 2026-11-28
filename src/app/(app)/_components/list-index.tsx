@@ -91,25 +91,35 @@ function ListRow({ list, now }: { list: ListSummary; now: number | null }) {
           </span>
         </Link>
         {/* <wa-dropdown> is display: contents. The button is the flex item. */}
-        <wa-dropdown ref={menu} placement="bottom-end">
+        <wa-dropdown suppressHydrationWarning ref={menu} placement="bottom-end">
           <wa-button
+            suppressHydrationWarning
             slot="trigger"
             appearance="plain"
             size="l"
             className="me-2"
           >
             <wa-icon
+              suppressHydrationWarning
               name="ellipsis"
               label={copy.lists.more(list.name)}
             ></wa-icon>
           </wa-button>
-          <wa-dropdown-item value="rename">
-            <wa-icon slot="icon" name="pen"></wa-icon>
+          <wa-dropdown-item suppressHydrationWarning value="rename">
+            <wa-icon suppressHydrationWarning slot="icon" name="pen"></wa-icon>
             {copy.common.rename}
           </wa-dropdown-item>
-          <wa-divider></wa-divider>
-          <wa-dropdown-item value="delete" variant="danger">
-            <wa-icon slot="icon" name="trash-can"></wa-icon>
+          <wa-divider suppressHydrationWarning></wa-divider>
+          <wa-dropdown-item
+            suppressHydrationWarning
+            value="delete"
+            variant="danger"
+          >
+            <wa-icon
+              suppressHydrationWarning
+              slot="icon"
+              name="trash-can"
+            ></wa-icon>
             {copy.common.delete}
           </wa-dropdown-item>
         </wa-dropdown>
@@ -137,7 +147,11 @@ function SummaryLine({ list, now }: { list: ListSummary; now: number | null }) {
         data-summary-line
         className="flex h-lh w-40 max-w-full min-w-0 items-center"
       >
-        <wa-skeleton effect="pulse" className="h-[1em]"></wa-skeleton>
+        <wa-skeleton
+          suppressHydrationWarning
+          effect="pulse"
+          className="h-[1em]"
+        ></wa-skeleton>
         <span className="sr-only">{copy.lists.summaryPending}</span>
       </span>
     );
@@ -156,6 +170,7 @@ function SummaryLine({ list, now }: { list: ListSummary; now: number | null }) {
 export function PrivateIcon({ className = "" }: { className?: string }) {
   return (
     <wa-icon
+      suppressHydrationWarning
       name="lock"
       label={copy.lists.private}
       className={`align-[-0.1em] text-[0.8em] text-ink-muted ${className}`}
@@ -234,6 +249,7 @@ export function RenameForm({
       className="flex flex-col gap-3 rounded-xl border border-accent bg-surface p-3"
     >
       <wa-input
+        suppressHydrationWarning
         label={copy.lists.renameLabel(list.name)}
         value={name}
         onInput={(e) => setName((e.target as HTMLInputElement).value)}
@@ -243,10 +259,10 @@ export function RenameForm({
         enterkeyhint="done"
       ></wa-input>
       <div className="flex justify-end gap-2">
-        <wa-button appearance="plain" onClick={onDone}>
+        <wa-button suppressHydrationWarning appearance="plain" onClick={onDone}>
           {copy.common.cancel}
         </wa-button>
-        <wa-button type="submit" variant="brand">
+        <wa-button suppressHydrationWarning type="submit" variant="brand">
           {copy.common.save}
         </wa-button>
       </div>
@@ -284,6 +300,7 @@ function CreateListForm() {
     <form onSubmit={submit} className="flex flex-col gap-3">
       <div className="flex items-end gap-2">
         <wa-input
+          suppressHydrationWarning
           className="wa-sr-label min-w-0 flex-1"
           label={copy.lists.newName}
           placeholder={copy.lists.newPlaceholder}
@@ -295,16 +312,18 @@ function CreateListForm() {
           size="l"
         ></wa-input>
         <wa-button
+          suppressHydrationWarning
           type="submit"
           variant="brand"
           size="l"
           disabled={!name.trim()}
         >
-          <wa-icon slot="start" name="plus"></wa-icon>
+          <wa-icon suppressHydrationWarning slot="start" name="plus"></wa-icon>
           {copy.lists.create}
         </wa-button>
       </div>
       <wa-switch
+        suppressHydrationWarning
         className="px-1"
         checked={isPrivate}
         onChange={(event) =>

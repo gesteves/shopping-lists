@@ -25,6 +25,7 @@ export function SyncStatus() {
     const inner = (
       <>
         <wa-icon
+          suppressHydrationWarning
           name={shown.icon}
           animation={shown.animate ? "fade" : undefined}
           aria-hidden="true"

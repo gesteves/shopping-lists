@@ -35,6 +35,7 @@ export function Stepper({
   }
   return (
     <wa-number-input
+      suppressHydrationWarning
       label={label}
       value={String(value)}
       min={1}

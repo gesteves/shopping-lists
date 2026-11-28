@@ -17,7 +17,7 @@ export async function AppHeader() {
           href="/settings"
           className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
         >
-          <wa-icon name="gear"></wa-icon>
+          <wa-icon suppressHydrationWarning name="gear"></wa-icon>
           {copy.header.settings}
         </Link>
         <Avatar name={user.name} image={user.image} />
@@ -46,6 +46,7 @@ export function HeaderFrame({ children }: { children?: React.ReactNode }) {
 function Avatar({ name, image }: { name: string; image: string | null }) {
   return (
     <wa-avatar
+      suppressHydrationWarning
       image={image ?? undefined}
       initials={initials(name)}
       label={copy.header.signedInAs(name)}

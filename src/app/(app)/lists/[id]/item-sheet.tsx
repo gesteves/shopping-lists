@@ -53,6 +53,7 @@ export function ItemSheet({
   );
   return large ? (
     <wa-dialog
+      suppressHydrationWarning
       ref={ref}
       open={item !== null}
       label={copy.itemSheet.title}
@@ -62,6 +63,7 @@ export function ItemSheet({
     </wa-dialog>
   ) : (
     <wa-drawer
+      suppressHydrationWarning
       ref={ref}
       open={item !== null}
       label={copy.itemSheet.title}
@@ -120,6 +122,7 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
     >
       <Field>
         <wa-input
+          suppressHydrationWarning
           label={copy.itemSheet.name}
           value={name}
           onInput={(e) => setName((e.target as HTMLInputElement).value)}
@@ -145,6 +148,7 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
       </Field>
       <Field>
         <wa-textarea
+          suppressHydrationWarning
           label={copy.itemSheet.notes}
           value={notes}
           onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
@@ -158,10 +162,10 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
           itemHistory(item, users).map((line) => <li key={line}>{line}</li>)}
       </ul>
       <div className="flex items-center justify-end gap-2">
-        <wa-button appearance="plain" onClick={onDone}>
+        <wa-button suppressHydrationWarning appearance="plain" onClick={onDone}>
           {copy.common.cancel}
         </wa-button>
-        <wa-button type="submit" variant="brand">
+        <wa-button suppressHydrationWarning type="submit" variant="brand">
           {copy.common.save}
         </wa-button>
       </div>
