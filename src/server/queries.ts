@@ -48,6 +48,16 @@ export function toItemRecord(row: ItemRow): ItemRecord {
   };
 }
 
+/**
+ * An item for the MCP tools: the sync record and the time of the last
+ * uncheck (#150). The clients do not get `uncheckedAt`.
+ */
+export type ServerItemRecord = ItemRecord & { uncheckedAt: number | null };
+
+function toServerItemRecord(row: ItemRow): ServerItemRecord {
+  return { ...toItemRecord(row), uncheckedAt: ms(row.uncheckedAt) };
+}
+
 /** All users, without their emails. */
 export function readUsers(db: Reader = getDb()): UserRecord[] {
   return db
@@ -168,7 +178,7 @@ export function readListItems(listId: string, db: Reader = getDb()) {
     .where(and(eq(items.listId, listId), isNull(items.deletedAt)))
     .orderBy(asc(items.checked), desc(items.updatedAt), asc(items.name))
     .all()
-    .map(toItemRecord);
+    .map(toServerItemRecord);
 }
 
 /**
@@ -199,5 +209,5 @@ export function searchLiveItems(
     )
     .limit(limit)
     .all()
-    .map((r) => ({ item: toItemRecord(r.item), listName: r.listName }));
+    .map((r) => ({ item: toServerItemRecord(r.item), listName: r.listName }));
 }

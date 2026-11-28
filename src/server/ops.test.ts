@@ -598,6 +598,36 @@ describe("idempotency", () => {
   });
 });
 
+describe("uncheckedAt (#150)", () => {
+  it("is the time of the last uncheck, and null while checked", () => {
+    seed();
+    expect(getItem()?.uncheckedAt).toBeNull();
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    expect(getItem()).toMatchObject({
+      checkedAt: new Date(T2),
+      uncheckedAt: null,
+    });
+    apply(SAM, op("uncheck", { itemId: ITEM }, T3));
+    expect(getItem()).toMatchObject({
+      checkedAt: null,
+      uncheckedAt: new Date(T3),
+    });
+    // An uncheck of an unchecked item changes nothing.
+    apply(SAM, op("uncheck", { itemId: ITEM }, T4));
+    expect(getItem()?.uncheckedAt).toEqual(new Date(T3));
+  });
+
+  it("is set by uncheckAll", () => {
+    seed();
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    apply(SAM, op("uncheckAll", { listId: LIST }, T3));
+    expect(getItem()).toMatchObject({
+      checked: false,
+      uncheckedAt: new Date(T3),
+    });
+  });
+});
+
 describe("dedupe on addItem", () => {
   it("merges into a checked item with the same name and unchecks it", () => {
     seed();
@@ -615,6 +645,7 @@ describe("dedupe on addItem", () => {
     expect(getItem()).toMatchObject({
       checked: false,
       checkedAt: null,
+      uncheckedAt: new Date(T3),
       updatedBy: ALEX.id,
     });
     const last = db.select().from(activity).orderBy(activity.id).all().at(-1);
@@ -879,6 +910,7 @@ describe("an edit or a move of a checked item (#112)", () => {
       quantity: 2,
       checked: false,
       checkedAt: null,
+      uncheckedAt: new Date(T3),
     });
     expect(getItem()?.clocks.checked).toBe(getItem()?.clocks.quantity);
     const last = db.select().from(activity).orderBy(desc(activity.id)).get();
@@ -973,6 +1005,7 @@ describe("out of stock (#131)", () => {
     expect(getItem()).toMatchObject({
       checked: false,
       checkedAt: null,
+      uncheckedAt: new Date(T3),
       outOfStockAt: new Date(T3),
     });
     expect(lastSnapshot()?.snapshot).toMatchObject({ unchecked: true });
