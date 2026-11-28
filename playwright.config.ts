@@ -59,11 +59,15 @@ export default defineConfig({
       // Turns on the sign-in stub (src/lib/auth-stub.ts).
       AUTH_STUB: "1",
       // No Claude: the same as CI, also when .env.local has a key (the env
-      // wins over the file). Thus no summary worker (#143) and no API calls.
+      // wins over the file, also an empty value). Thus no summary worker
+      // (#143) and no API calls.
       ANTHROPIC_API_KEY: "",
     },
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Never use a server that is already on the port: it can have the key
+    // of .env.local (for example `PORT=3100 npm start`), and then each run
+    // calls Claude. A busy port stops the run.
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 });
