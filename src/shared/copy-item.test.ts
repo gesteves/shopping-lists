@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ItemRecord } from "@/shared/sync";
+import type { ItemRecord } from "./sync";
 import { copyPlan } from "./copy-item";
 
 const FROM = "11111111-1111-4111-8111-111111111111";
@@ -60,6 +60,7 @@ describe("copyPlan", () => {
     const there = item({ id: "b", listId: TO, name: " MILK ", notes: "" });
     expect(copyPlan(item(), TO, [there], NEW)).toEqual({
       kind: "onList",
+      itemId: "b",
       requests: [],
     });
   });
@@ -76,6 +77,7 @@ describe("copyPlan", () => {
     });
     expect(copyPlan(item(), TO, [there], NEW)).toEqual({
       kind: "uncheck",
+      itemId: "b",
       requests: [
         { type: "uncheck", args: { itemId: "b" } },
         {

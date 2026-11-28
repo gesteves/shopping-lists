@@ -169,3 +169,7 @@ export type Op = z.output<typeof opSchema>;
 export type OpInput = z.input<typeof opSchema>;
 export type OpOf<T extends OpType> = Extract<Op, { type: T }>;
 export type OpArgs<T extends OpType> = OpOf<T>["args"];
+/** An op without its envelope (opId, clientId, and hlc): its type and args. */
+export type OpRequest = {
+  [T in OpType]: { type: T; args: Extract<OpInput, { type: T }>["args"] };
+}[OpType];

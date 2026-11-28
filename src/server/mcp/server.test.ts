@@ -259,14 +259,18 @@ describe("tools/list", () => {
       "rename_list",
       "set_list_private",
       "delete_list",
+      "restore_list",
       "add_items",
       "update_item",
       "check_items",
       "uncheck_items",
       "delete_items",
-      "move_item",
+      "restore_items",
+      "move_items",
+      "copy_items",
       "clear_checked",
       "uncheck_all",
+      "check_all",
     ]);
     expect(second.body.result.tools).toEqual(first.body.result.tools);
   });
@@ -288,9 +292,27 @@ describe("tools/list", () => {
     for (const name of ["delete_list", "delete_items", "clear_checked"]) {
       expect(byName[name].annotations.destructiveHint, name).toBe(true);
     }
-    for (const name of ["add_items", "check_items", "rename_list"]) {
+    for (const name of [
+      "add_items",
+      "check_items",
+      "rename_list",
+      "restore_list",
+      "restore_items",
+      "move_items",
+      "copy_items",
+      "check_all",
+    ]) {
       expect(byName[name].annotations.destructiveHint, name).toBe(false);
     }
+    for (const name of [
+      "restore_list",
+      "restore_items",
+      "move_items",
+      "check_all",
+    ]) {
+      expect(byName[name].annotations.idempotentHint, name).toBe(true);
+    }
+    expect(byName.copy_items.annotations.idempotentHint).toBe(false);
     expect(byName.delete_items.annotations.idempotentHint).toBe(true);
     expect(byName.add_items.inputSchema.properties).toHaveProperty(
       "idempotency_key",
@@ -533,16 +555,14 @@ describe("tools", () => {
       items: ["Rice"],
     });
     // A move of a checked item unchecks it too. The output shows it.
-    const moved = await callTool(client, "move_item", {
+    const moved = await callTool(client, "move_items", {
       list: "Pantry #150",
-      item: "Beans",
+      items: ["Beans"],
       to_list: "Freezer #150",
     });
-    expect(moved.structuredContent).toMatchObject({
-      checked: false,
-      checked_at: null,
-    });
-    isNow(moved.structuredContent.unchecked_at, uncheckedFrom);
+    const [beans] = moved.structuredContent.items as Json[];
+    expect(beans).toMatchObject({ checked: false, checked_at: null });
+    isNow(beans.unchecked_at, uncheckedFrom);
 
     const items = await byName();
     expect(items.Rice).toMatchObject({ checked: false, checked_at: null });
@@ -573,9 +593,9 @@ describe("tools", () => {
       name: "Sourdough",
       quantity: 2,
     });
-    const moved = await callTool(client, "move_item", {
+    const moved = await callTool(client, "move_items", {
       list: "Pierre’s General Store",
-      item: "Sourdough",
+      items: ["Sourdough"],
       to_list: "oasis",
     });
     expect(moved.isError).toBeFalsy();
@@ -952,9 +972,9 @@ describe("get_history (#152)", () => {
       items: [{ name: "Bread" }],
     });
     await callTool(client, "delete_items", { list: LIST, items: ["Eggs"] });
-    await callTool(client, "move_item", {
+    await callTool(client, "move_items", {
       list: LIST,
-      item: "Milk",
+      items: ["Milk"],
       to_list: OTHER,
     });
     await callTool(client, "delete_list", { list: OTHER });
@@ -1281,13 +1301,13 @@ describe("private lists (#154)", () => {
       list: "Open #154",
       items: [{ name: "Wrapping paper" }],
     });
-    const moved = await callTool(emily, "move_item", {
+    const moved = await callTool(emily, "move_items", {
       list: "Open #154",
-      item: "Wrapping paper",
+      items: ["Wrapping paper"],
       to_list: "Secret #154",
     });
     expect(moved.isError).toBe(true);
-    expect(errorText(moved)).toMatch(/add_items/);
+    expect(errorText(moved)).toMatch(/copy_items/);
   });
 });
 
@@ -1357,5 +1377,393 @@ describe("log (#147)", () => {
       vi.unstubAllEnvs();
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe("check_all, copy, restore, and move_items (#162)", () => {
+  let emily: Client;
+  let haley: Client;
+
+  beforeAll(async () => {
+    emily = await connect("modern");
+    const cookie = (await h.signIn(SECOND, "Haley"))!;
+    const haleyToken = (
+      await h.getTokens(await h.registerClient("Haley’s Claude #162"), {
+        cookie,
+      })
+    ).access_token;
+    haley = await connect("modern", haleyToken);
+  });
+
+  async function names(client: Client, list: string) {
+    const got = await callTool(client, "get_list", { list });
+    expect(got.isError, errorText(got)).toBeFalsy();
+    return Object.fromEntries(
+      (got.structuredContent.items as Json[]).map((i) => [i.name, i]),
+    );
+  }
+
+  it("check_all checks off each unchecked item, and gives the count", async () => {
+    await callTool(emily, "create_list", { name: "Bulk #162" });
+    await callTool(emily, "add_items", {
+      list: "Bulk #162",
+      items: [{ name: "Rice" }, { name: "Beans" }, { name: "Corn" }],
+    });
+    await callTool(emily, "check_items", {
+      list: "Bulk #162",
+      items: ["Corn"],
+    });
+    const first = await callTool(emily, "check_all", { list: "Bulk #162" });
+    expect(first.structuredContent.changed_items).toBe(2);
+    const items = await names(emily, "Bulk #162");
+    expect(Object.values(items).every((i) => i.checked)).toBe(true);
+    const second = await callTool(emily, "check_all", { list: "Bulk #162" });
+    expect(second.structuredContent.changed_items).toBe(0);
+  });
+
+  it("copy_items adds, unchecks a checked match, and leaves an unchecked match", async () => {
+    await callTool(emily, "create_list", { name: "Copy from #162" });
+    await callTool(emily, "create_list", { name: "Copy to #162" });
+    await callTool(emily, "add_items", {
+      list: "Copy from #162",
+      items: [
+        { name: "Milk", quantity: 2, notes: "Oat" },
+        { name: "Eggs", quantity: 12 },
+        { name: "Bread" },
+      ],
+    });
+    await callTool(emily, "add_items", {
+      list: "Copy to #162",
+      items: [{ name: "eggs" }, { name: "Bread", notes: "Rye" }],
+    });
+    await callTool(emily, "check_items", {
+      list: "Copy to #162",
+      items: ["eggs"],
+    });
+
+    const copied = await callTool(emily, "copy_items", {
+      list: "Copy from #162",
+      items: ["Milk", "Eggs", "Bread"],
+      to_list: "Copy to #162",
+    });
+    expect(copied.isError, errorText(copied)).toBeFalsy();
+    expect(
+      (copied.structuredContent.items as Json[]).map((i) => [i.name, i.result]),
+    ).toEqual([
+      ["Milk", "copied"],
+      ["Eggs", "unchecked"],
+      ["Bread", "already_on_list"],
+    ]);
+
+    const there = await names(emily, "Copy to #162");
+    expect(there.Milk).toMatchObject({ quantity: 2, notes: "Oat" });
+    expect(there.eggs).toMatchObject({ checked: false, quantity: 12 });
+    expect(there.Bread).toMatchObject({ notes: "Rye" });
+    // The items stay on the first list.
+    expect(Object.keys(await names(emily, "Copy from #162"))).toHaveLength(3);
+  });
+
+  it("copy_items: a retry with the same key changes nothing", async () => {
+    await callTool(emily, "create_list", { name: "Retry from #162" });
+    await callTool(emily, "create_list", { name: "Retry to #162" });
+    await callTool(emily, "add_items", {
+      list: "Retry from #162",
+      items: [{ name: "Tea" }],
+    });
+    const args = {
+      list: "Retry from #162",
+      items: ["Tea"],
+      to_list: "Retry to #162",
+      idempotency_key: "copy-162",
+    };
+    const first = await callTool(emily, "copy_items", args);
+    const again = await callTool(emily, "copy_items", args);
+    expect(again.structuredContent.items).toEqual(
+      first.structuredContent.items,
+    );
+    expect(Object.keys(await names(emily, "Retry to #162"))).toEqual(["Tea"]);
+  });
+
+  it("copy_items works from a private list to a shared list, and refuses the same list", async () => {
+    await callTool(emily, "create_list", {
+      name: "Private copy #162",
+      private: true,
+    });
+    await callTool(emily, "create_list", { name: "Shared copy #162" });
+    await callTool(emily, "add_items", {
+      list: "Private copy #162",
+      items: [{ name: "Candles" }],
+    });
+    const copied = await callTool(emily, "copy_items", {
+      list: "Private copy #162",
+      items: ["Candles"],
+      to_list: "Shared copy #162",
+    });
+    expect(copied.isError, errorText(copied)).toBeFalsy();
+    expect(Object.keys(await names(haley, "Shared copy #162"))).toEqual([
+      "Candles",
+    ]);
+
+    const same = await callTool(emily, "copy_items", {
+      list: "Shared copy #162",
+      items: ["Candles"],
+      to_list: "Shared copy #162",
+    });
+    expect(same.isError).toBe(true);
+  });
+
+  it("restore_items brings back deleted and expired items", async () => {
+    await callTool(emily, "create_list", { name: "Restore #162" });
+    await callTool(emily, "add_items", {
+      list: "Restore #162",
+      items: [{ name: "Apples" }, { name: "Pears" }, { name: "Plums" }],
+    });
+    await callTool(emily, "check_items", {
+      list: "Restore #162",
+      items: ["Pears", "Plums"],
+    });
+    await callTool(emily, "delete_items", {
+      list: "Restore #162",
+      items: ["Apples"],
+    });
+    // Plums expires (#112): its check is 31 days old.
+    const plums = (await names(emily, "Restore #162")).Plums;
+    h.db
+      .update(items)
+      .set({ checkedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) })
+      .where(eq(items.id, plums.item_id as string))
+      .run();
+    const { expireCheckedItems } = await import("../ops");
+    expect(expireCheckedItems({ db: h.db })).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(await names(emily, "Restore #162"))).toEqual(["Pears"]);
+
+    const restored = await callTool(emily, "restore_items", {
+      list: "Restore #162",
+      items: ["apples", plums.item_id, "Pears"],
+    });
+    expect(restored.isError, errorText(restored)).toBeFalsy();
+    expect(
+      (restored.structuredContent.items as Json[]).map((i) => [
+        i.name,
+        i.result,
+      ]),
+    ).toEqual([
+      ["Apples", "restored"],
+      ["Plums", "restored"],
+      ["Pears", "already_on_list"],
+    ]);
+    const after = await names(emily, "Restore #162");
+    expect(after.Apples).toMatchObject({ checked: false });
+    // An expired item comes back unchecked: else it expires again.
+    expect(after.Plums).toMatchObject({ checked: false });
+    expect(after.Pears).toMatchObject({ checked: true });
+
+    // A retry finds the items on the list, and changes nothing.
+    const again = await callTool(emily, "restore_items", {
+      list: "Restore #162",
+      items: ["apples"],
+    });
+    expect(again.structuredContent.items).toEqual([
+      expect.objectContaining({ name: "Apples", result: "already_on_list" }),
+    ]);
+  });
+
+  it("restore_items keeps one item for each name, and changes nothing for an unknown item", async () => {
+    await callTool(emily, "create_list", { name: "Names #162" });
+    await callTool(emily, "add_items", {
+      list: "Names #162",
+      items: [{ name: "Soap" }, { name: "Salt" }],
+    });
+    await callTool(emily, "delete_items", {
+      list: "Names #162",
+      items: ["Soap", "Salt"],
+    });
+    await callTool(emily, "add_items", {
+      list: "Names #162",
+      items: [{ name: "Soap" }],
+    });
+
+    const unknown = await callTool(emily, "restore_items", {
+      list: "Names #162",
+      items: ["Salt", "Saffron"],
+    });
+    expect(unknown.isError).toBe(true);
+    expect(errorText(unknown)).toContain("Saffron");
+    expect(Object.keys(await names(emily, "Names #162"))).toEqual(["Soap"]);
+
+    const restored = await callTool(emily, "restore_items", {
+      list: "Names #162",
+      items: ["Soap", "Salt"],
+    });
+    expect(
+      (restored.structuredContent.items as Json[]).map((i) => [
+        i.name,
+        i.result,
+      ]),
+    ).toEqual([
+      ["Soap", "already_on_list"],
+      ["Salt", "restored"],
+    ]);
+    expect(Object.keys(await names(emily, "Names #162")).sort()).toEqual([
+      "Salt",
+      "Soap",
+    ]);
+  });
+
+  it("restore_items restores one of two deleted items with the same name", async () => {
+    await callTool(emily, "create_list", { name: "Twice #162" });
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const added = await callTool(emily, "add_items", {
+        list: "Twice #162",
+        items: [{ name: "Lime" }],
+      });
+      ids.push((added.structuredContent.items as Json[])[0].item_id as string);
+      await callTool(emily, "delete_items", {
+        list: "Twice #162",
+        items: ["Lime"],
+      });
+    }
+    const restored = await callTool(emily, "restore_items", {
+      list: "Twice #162",
+      items: [ids[1], ids[0]],
+    });
+    expect(
+      (restored.structuredContent.items as Json[]).map((i) => [
+        i.item_id,
+        i.result,
+      ]),
+    ).toEqual([[ids[1], "restored"]]);
+    expect(Object.keys(await names(emily, "Twice #162"))).toEqual(["Lime"]);
+  });
+
+  it("restore_list brings back a list with its items, and refuses a name that a live list has", async () => {
+    await callTool(emily, "create_list", { name: "Gone #162" });
+    await callTool(emily, "add_items", {
+      list: "Gone #162",
+      items: [{ name: "Flour" }, { name: "Sugar" }],
+    });
+    await callTool(emily, "delete_list", { list: "Gone #162" });
+
+    // A tool on the deleted list tells the model to restore it.
+    const add = await callTool(emily, "add_items", {
+      list: "Gone #162",
+      items: [{ name: "Yeast" }],
+    });
+    expect(add.isError).toBe(true);
+    expect(errorText(add)).toMatch(/restore_list/);
+
+    const restored = await callTool(emily, "restore_list", {
+      list: "gone #162",
+    });
+    expect(restored.structuredContent).toMatchObject({
+      name: "Gone #162",
+      private: false,
+      items: 2,
+      result: "restored",
+    });
+    const again = await callTool(emily, "restore_list", { list: "Gone #162" });
+    expect(again.structuredContent).toMatchObject({ result: "not_deleted" });
+
+    // A deleted list whose name is live again.
+    await callTool(emily, "delete_list", { list: "Gone #162" });
+    await callTool(emily, "create_list", { name: "Gone #162" });
+    const clash = await callTool(emily, "restore_list", { list: "Gone #162" });
+    expect(clash.isError).toBe(true);
+    expect(errorText(clash)).toMatch(/rename_list/);
+
+    const unknown = await callTool(emily, "restore_list", {
+      list: "Never #162",
+    });
+    expect(unknown.isError).toBe(true);
+  });
+
+  it("the other person cannot restore a deleted private list", async () => {
+    const made = await callTool(emily, "create_list", {
+      name: "Hidden #162",
+      private: true,
+    });
+    const listId = made.structuredContent.list_id as string;
+    await callTool(emily, "delete_list", { list: listId });
+    for (const list of [listId, "Hidden #162"]) {
+      const result = await callTool(haley, "restore_list", { list });
+      expect(result.isError, list).toBe(true);
+      // The same answer as for a list that does not exist.
+      expect(errorText(result)).toMatch(/^No (deleted )?list /);
+    }
+  });
+
+  it("move_items moves many items in one call", async () => {
+    await callTool(emily, "create_list", { name: "Move from #162" });
+    await callTool(emily, "create_list", { name: "Move to #162" });
+    await callTool(emily, "add_items", {
+      list: "Move from #162",
+      items: [{ name: "Kale" }, { name: "Leeks" }, { name: "Okra" }],
+    });
+    await callTool(emily, "check_items", {
+      list: "Move from #162",
+      items: ["Kale"],
+    });
+    const moved = await callTool(emily, "move_items", {
+      list: "Move from #162",
+      items: ["Kale", "Leeks"],
+      to_list: "Move to #162",
+    });
+    expect(moved.isError, errorText(moved)).toBeFalsy();
+    expect(
+      (moved.structuredContent.items as Json[]).map((i) => [i.name, i.checked]),
+    ).toEqual([
+      ["Kale", false],
+      ["Leeks", false],
+    ]);
+    expect(Object.keys(await names(emily, "Move from #162"))).toEqual(["Okra"]);
+    expect(Object.keys(await names(emily, "Move to #162")).sort()).toEqual([
+      "Kale",
+      "Leeks",
+    ]);
+  });
+
+  it("sends the other person one grouped push for the changes", async () => {
+    h.db.update(activity).set({ notifiedAt: new Date() }).run();
+    await callTool(emily, "create_list", { name: "Push #162" });
+    await callTool(emily, "add_items", {
+      list: "Push #162",
+      items: [{ name: "Ham" }, { name: "Jam" }],
+    });
+    await callTool(emily, "delete_items", {
+      list: "Push #162",
+      items: ["Ham"],
+    });
+    await callTool(emily, "restore_items", {
+      list: "Push #162",
+      items: ["Ham"],
+    });
+    await callTool(emily, "check_all", { list: "Push #162" });
+
+    const sent: { userId: string; payload: PushPayload }[] = [];
+    const notifier = new Notifier({
+      db: h.db,
+      allowlist: `${ALLOWED},${SECOND}`,
+      now: () => Date.now() + QUIET_MS + 1,
+      send: async (to, payload) => {
+        sent.push({ userId: to, payload });
+      },
+      canPush: () => true,
+    });
+    await notifier.tick();
+    const haleyRow = h.db
+      .select()
+      .from(users)
+      .where(eq(users.email, SECOND))
+      .get()!;
+    expect(sent).toEqual([
+      {
+        userId: haleyRow.id,
+        payload: expect.objectContaining({
+          title: "Push #162",
+          body: expect.stringMatching(/^Emily \(via Claude\) /),
+        }),
+      },
+    ]);
   });
 });

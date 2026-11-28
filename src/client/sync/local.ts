@@ -1,16 +1,14 @@
 // Local writes and the view rebuild. Each function runs in one Dexie
 // transaction.
 import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
-import { opSchema, type Op, type OpInput, type OpType } from "@/shared/ops";
+import { opSchema, type Op, type OpRequest } from "@/shared/ops";
 import type { PullResponse } from "@/shared/sync";
 import type { EntityTable } from "dexie";
 import { getMeta, setMeta, type ClientDb, type MetaValues } from "../db";
 import { applyLocal, type LocalState } from "./apply";
 
 /** An op without its envelope: mutate() adds opId, clientId, and hlc. */
-export type OpRequest = {
-  [T in OpType]: { type: T; args: Extract<OpInput, { type: T }>["args"] };
-}[OpType];
+export type { OpRequest };
 
 /** The client ID of this browser. It makes one if there is none. */
 export async function ensureClientId(db: ClientDb): Promise<string> {
