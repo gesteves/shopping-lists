@@ -507,8 +507,8 @@ Decided in #147. The server writes all its lines through `log` in `src/server/lo
 **Levels:**
 - `error`: an unexpected exception (a bug or an outage). The line has the stack below it.
 - `warn`: a problem that the app handled, but that a person can look at: an auth refusal, a push failure, a Claude failure or fallback, a refused request body, a health check that goes down, a pull reset because the server is behind the client, a browser error.
-- `info`: one line for each thing that happened: the boot, a sync push, a pull with changes, the close of an SSE stream, an MCP tool call, a burst, a summary, a purge.
-- `debug`: routine traffic, off by default: an empty pull, presence, the open of an SSE stream, a 401 of a signed-out device, an expired MCP token, a summary wait.
+- `info`: one line for each thing that happened: the boot, a sync push, a pull with changes, an MCP tool call, a burst, a summary, a purge.
+- `debug`: routine traffic, off by default: an empty pull, presence, the open and the close of an SSE stream, a 401 of a signed-out device, an expired MCP token, a summary wait.
 - `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`; a bad value gives `info` and one warning). On Fly: `fly secrets set LOG_LEVEL=debug`. This restarts the machine.
 
 **Privacy:** the repository is public and the data is personal.
@@ -522,7 +522,7 @@ Decided in #147. The server writes all its lines through `log` in `src/server/lo
 - `boot`: `start version node log` (the first line after each start: the in-memory state of the workers starts again), `migrations applied ms`, `workers notify summary push purge`, and `error migrations failed` before `process.exit(1)`.
 - `request`: `onRequestError` in `src/instrumentation.ts` logs each error that a route, a page, or an action did not catch: `error failed method route type digest`, with the route template (`context.routePath`). `readJson` logs `warn refused route status reason issues`.
 - `sync`: `push user client ops applied duplicate rejected reasons seq ms`, one for each push. `pull user since cursor lists items more reset ms`: `info` with changes, `debug` with none. A reset is `reset=purged` (`info`) or `reset=ahead` (`warn`: the client cursor is after the last seq, for example after a restore).
-- `events`: `debug open user`, and one `info closed user reason ms open` for each stream (`reason` is `max_age`, `client`, or `error`; `open` is the count of open streams).
+- `events`: `debug` only: `open user`, and one `closed user reason ms open` for each stream (`reason` is `max_age`, `client`, or `error`; `open` is the count of open streams). At `info` they were most of the lines: a page load, a hidden tab, and a phone in the background each close a stream. A phone in the background closes at the next ping (`ms` near 20000): iOS stops the app but does not close the connection.
 - `presence`: `debug` only.
 - `auth`: `warn refused reason` (`method_not_allowed`, `email_not_verified`, `email_not_allowed`, `invalid_target`, `invalid_client_metadata`), `info sign-in user`, `info token grant client` and `info client registered client` for MCP clients (`warn` with `status` on an error), `debug unauthorized` for a 401 of the app, and the warnings of Better Auth (`better-auth msg`).
 - `mcp`: `info call tool user client ms result=ok|tool_error|error`, `warn refused status reason` (`origin`, `insufficient_scope`, and the app reasons of `withMcpAuth`: `not_access_token`, `no_subject`, `not_allowed`, `revoked`, `stale_consent`), and `debug refused status=401 reason=token` for a token that the library refuses (often an expired token).
