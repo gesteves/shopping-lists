@@ -36,11 +36,16 @@ export function ListPicker({
 }) {
   // Keep the last request while the dialog closes, so its content stays.
   const [shown, setShown] = useState(request);
-  // The ID of the selected list. Each new request starts with none.
+  if (request && request !== shown) setShown(request);
+  // The ID of the selected list. Each open starts with none. A sync gives
+  // a new request object for the same item: that keeps the selection (an
+  // other device can change any row while the dialog is open).
   const [targetId, setTargetId] = useState("");
-  if (request && request !== shown) {
-    setShown(request);
-    setTargetId("");
+  const openKey = request ? `${request.item.id}:${request.mode}` : null;
+  const [shownKey, setShownKey] = useState<string | null>(null);
+  if (openKey !== shownKey) {
+    setShownKey(openKey);
+    if (openKey !== null) setTargetId("");
   }
   const lists = useLists();
   const mode = shown?.mode ?? "move";
