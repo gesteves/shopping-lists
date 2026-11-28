@@ -285,6 +285,11 @@ How it works:
 - `src/server/push.ts`: `sendToUser(userId, payload)` sends to the enabled devices with a 24 h TTL and a 10 s timeout (#100: a push service that does not answer must not stop the notifier), deletes a subscription on 404 or 410, sets `last_success_at`, and counts the other failures (see Sending). Keys come from `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. The subject is `VAPID_SUBJECT`, or the app origin, so no email is needed. Without keys, nothing is sent.
 - The service worker shows the payload (`PushPayload`: title, body, url, tag). A tap focuses a window of the app on that URL, or opens one. Only same-origin URLs are used.
 
+**App icon badge (#161):** the Home Screen icon shows the number of pushes that came since the user last saw the app on this device (the owner's choice: not the number of items to buy). The Badging API (`navigator.setAppBadge`) works in iOS 16.4+ Home Screen apps with notification permission, and in installed Chromium apps. Elsewhere, nothing happens.
+- Count: the `push` handler of the service worker adds 1 (`addToBadge()` in `src/shared/badge.ts`), in the same `waitUntil` as the notification. A push does not count when a window of the app is visible. The count is in the Cache Storage cache `badge`, because the worker can stop between two pushes. A new version keeps it (it is not in `DROP_AT_UPDATE`). Each push counts, also one that replaces a notification with the same tag, and the test push.
+- Clear: `AppBadgeClearer` in the `(app)` layout clears the badge and the count when a page loads and at each `visibilitychange` to visible (`src/client/badge.ts`). Sign-out clears it too; its delete of the runtime caches also deletes the count.
+- A refused badge (no permission) is not an error: no `reportError`. There is no server change.
+
 ## List summaries
 Code in `src/server/summary/`. The lists page shows one line under each list name, so you can see at a glance what to get:
 - No unchecked items: "Nothing to get".
@@ -575,6 +580,6 @@ To read the logs: `fly logs -a <app>`. Filter with `grep -E ' (warn|error) \['` 
 
 **Accessibility (#20):** `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A and AA) on the main screens in light and dark, on a phone and a desktop: no serious or critical issues. It waits for the Web Awesome animations, also in shadow roots, because colors in a fade are not the real colors. It also tests the item sheet with reduced motion, and the "Keep screen on" toggle with a fake Wake Lock API.
 
-**On a real device (installed iPhone PWA):** Google sign-in, push permission and delivery, deep links from notifications, the wake lock keeping the screen on, airplane-mode shopping and then sync.
+**On a real device (installed iPhone PWA):** Google sign-in, push permission and delivery, the app icon badge (#161), deep links from notifications, the wake lock keeping the screen on, airplane-mode shopping and then sync.
 
 **Ops:** run `fly deploy`, restore Litestream from R2 into a scratch machine, and confirm SSE stays open through Cloudflare past 100s.
