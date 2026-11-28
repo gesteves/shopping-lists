@@ -20,13 +20,19 @@ export function GoogleSignInButton() {
 
   return (
     <wa-button
+      suppressHydrationWarning
       variant="brand"
       size="l"
       onClick={signIn}
       loading={pending}
       className="mt-10 w-full"
     >
-      <wa-icon slot="start" family="brands" name="google"></wa-icon>
+      <wa-icon
+        suppressHydrationWarning
+        slot="start"
+        family="brands"
+        name="google"
+      ></wa-icon>
       {pending ? copy.signIn.opening : copy.signIn.button}
     </wa-button>
   );

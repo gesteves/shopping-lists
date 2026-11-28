@@ -56,7 +56,11 @@ export function ConnectedApps({
                 key={app.clientId}
                 className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3"
               >
-                <wa-icon name="plug" className="text-ink-muted"></wa-icon>
+                <wa-icon
+                  suppressHydrationWarning
+                  name="plug"
+                  className="text-ink-muted"
+                ></wa-icon>
                 <div className="min-w-0 flex-1">
                   <p className="font-medium break-words">{label}</p>
                   <p className="text-sm break-words text-ink-muted">
@@ -70,6 +74,7 @@ export function ConnectedApps({
                   </p>
                 </div>
                 <wa-button
+                  suppressHydrationWarning
                   variant="danger"
                   appearance="plain"
                   onClick={() => setConfirming(app)}
@@ -83,21 +88,35 @@ export function ConnectedApps({
         </ul>
       )}
       <wa-input
+        suppressHydrationWarning
         readonly
         value={mcpUrl}
         label={copy.settings.connectorUrl}
         hint={copy.settings.connectorUrlHint}
       >
         <wa-copy-button
+          suppressHydrationWarning
           ref={copyButton}
           slot="end"
           value={mcpUrl}
           copy-label={copy.settings.copyUrl}
           tooltip="none"
         >
-          <wa-icon slot="copy-icon" name="copy"></wa-icon>
-          <wa-icon slot="success-icon" name="check"></wa-icon>
-          <wa-icon slot="error-icon" name="xmark"></wa-icon>
+          <wa-icon
+            suppressHydrationWarning
+            slot="copy-icon"
+            name="copy"
+          ></wa-icon>
+          <wa-icon
+            suppressHydrationWarning
+            slot="success-icon"
+            name="check"
+          ></wa-icon>
+          <wa-icon
+            suppressHydrationWarning
+            slot="error-icon"
+            name="xmark"
+          ></wa-icon>
         </wa-copy-button>
       </wa-input>
       <ConfirmDialog

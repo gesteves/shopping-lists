@@ -119,6 +119,7 @@ export function Toaster() {
   // Above the add bar of a list.
   return (
     <wa-toast
+      suppressHydrationWarning
       ref={host as never}
       placement="bottom-center"
       className="mb-[calc(env(safe-area-inset-bottom)+4.5rem)]"

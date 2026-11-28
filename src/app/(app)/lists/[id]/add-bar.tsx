@@ -246,21 +246,27 @@ export function AddBar({
           className="h-(--wa-form-control-height) min-w-0 flex-1 rounded-(--wa-form-control-border-radius) border-(length:--wa-form-control-border-width) border-(--wa-form-control-border-color) bg-(--wa-form-control-background-color) px-(--wa-form-control-padding-inline) text-(length:--wa-font-size-l) text-(--wa-form-control-value-color) placeholder:text-(--wa-form-control-placeholder-color)"
         />
         <wa-button
+          suppressHydrationWarning
           appearance="plain"
           size="l"
           aria-expanded={details}
           aria-controls={ids.details}
           onClick={() => setDetails(!details)}
         >
-          <wa-icon name="sliders" label={copy.addBar.details}></wa-icon>
+          <wa-icon
+            suppressHydrationWarning
+            name="sliders"
+            label={copy.addBar.details}
+          ></wa-icon>
         </wa-button>
         <wa-button
+          suppressHydrationWarning
           type="submit"
           variant="brand"
           size="l"
           disabled={!name.trim()}
         >
-          <wa-icon slot="start" name="plus"></wa-icon>
+          <wa-icon suppressHydrationWarning slot="start" name="plus"></wa-icon>
           {copy.addBar.add}
         </wa-button>
       </div>
@@ -279,6 +285,7 @@ export function AddBar({
             handleRef={urlField}
           />
           <wa-textarea
+            suppressHydrationWarning
             label={copy.addBar.notes}
             value={notes}
             onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}

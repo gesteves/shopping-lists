@@ -90,8 +90,17 @@ export function NotificationSettings() {
         ) : support === "ok" ? (
           <div className="flex flex-col items-start gap-2">
             <p className="text-ink-muted">{copy.settings.pushOffer}</p>
-            <wa-button variant="brand" onClick={enable} loading={busy}>
-              <wa-icon slot="start" name="bell"></wa-icon>
+            <wa-button
+              suppressHydrationWarning
+              variant="brand"
+              onClick={enable}
+              loading={busy}
+            >
+              <wa-icon
+                suppressHydrationWarning
+                slot="start"
+                name="bell"
+              ></wa-icon>
               {copy.settings.enablePush}
             </wa-button>
           </div>
@@ -129,6 +138,7 @@ export function NotificationSettings() {
                     )}
                   </span>
                   <wa-switch
+                    suppressHydrationWarning
                     checked={device.enabled}
                     onChange={(event) =>
                       void toggle(
@@ -145,6 +155,7 @@ export function NotificationSettings() {
                     </span>
                   </wa-switch>
                   <wa-button
+                    suppressHydrationWarning
                     variant="danger"
                     appearance="plain"
                     onClick={() => void remove(device)}
@@ -159,11 +170,16 @@ export function NotificationSettings() {
         )}
         {devices && devices.some((d) => d.enabled) && (
           <wa-button
+            suppressHydrationWarning
             appearance="outlined"
             onClick={sendTest}
             className="self-start"
           >
-            <wa-icon slot="start" name="bell"></wa-icon>
+            <wa-icon
+              suppressHydrationWarning
+              slot="start"
+              name="bell"
+            ></wa-icon>
             {copy.settings.sendTest}
           </wa-button>
         )}
@@ -211,6 +227,7 @@ function MutedLists() {
                 {list.name}
               </span>
               <wa-switch
+                suppressHydrationWarning
                 disabled={!muted}
                 checked={muted ? !muted.has(list.id) : false}
                 onChange={(event) =>

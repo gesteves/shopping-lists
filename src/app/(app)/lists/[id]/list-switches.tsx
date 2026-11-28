@@ -68,6 +68,7 @@ export function ListSwitches({
       <KeepScreenOnSwitch />
       {!isPrivate && (
         <wa-switch
+          suppressHydrationWarning
           disabled={!ready}
           checked={push.status === "on" && muted?.has(listId) === false}
           onChange={(event) => {

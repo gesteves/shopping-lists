@@ -72,7 +72,7 @@ export function ListView() {
         href="/"
         className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md pr-2 font-medium text-accent lg:hidden"
       >
-        <wa-icon name="chevron-left"></wa-icon>
+        <wa-icon suppressHydrationWarning name="chevron-left"></wa-icon>
         {copy.list.back}
       </Link>
       {view === undefined ? null : view === null ? (
@@ -87,13 +87,31 @@ export function ListView() {
           {/* Keep the live region in the DOM, so that a screen reader reads the callout when it shows. */}
           <div aria-live="polite">
             {view.items.length === 0 ? (
-              <wa-callout variant="neutral" size="small" className="mt-4">
-                <wa-icon slot="icon" name="cart-shopping"></wa-icon>
+              <wa-callout
+                suppressHydrationWarning
+                variant="neutral"
+                size="small"
+                className="mt-4"
+              >
+                <wa-icon
+                  suppressHydrationWarning
+                  slot="icon"
+                  name="cart-shopping"
+                ></wa-icon>
                 {copy.list.empty}
               </wa-callout>
             ) : remaining === 0 ? (
-              <wa-callout variant="brand" size="small" className="mt-4">
-                <wa-icon slot="icon" name="circle-check"></wa-icon>
+              <wa-callout
+                suppressHydrationWarning
+                variant="brand"
+                size="small"
+                className="mt-4"
+              >
+                <wa-icon
+                  suppressHydrationWarning
+                  slot="icon"
+                  name="circle-check"
+                ></wa-icon>
                 {copy.list.allChecked}
               </wa-callout>
             ) : null}

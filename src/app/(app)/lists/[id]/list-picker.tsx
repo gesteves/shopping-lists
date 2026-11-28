@@ -80,6 +80,7 @@ export function ListPicker({
 
   return (
     <wa-dialog
+      suppressHydrationWarning
       ref={ref}
       open={request !== null}
       label={
@@ -92,13 +93,14 @@ export function ListPicker({
       light-dismiss
     >
       <wa-select
+        suppressHydrationWarning
         ref={selectRef}
         label={copy.item.targets}
         placeholder={copy.item.pickList}
         value={targetId}
       >
         {targets.map((list) => (
-          <wa-option key={list.id} value={list.id}>
+          <wa-option suppressHydrationWarning key={list.id} value={list.id}>
             {list.name}
             {list.private === true && (
               <span slot="end">
@@ -108,16 +110,23 @@ export function ListPicker({
           </wa-option>
         ))}
       </wa-select>
-      <wa-button slot="footer" appearance="plain" onClick={onClose}>
+      <wa-button
+        suppressHydrationWarning
+        slot="footer"
+        appearance="plain"
+        onClick={onClose}
+      >
         {copy.common.cancel}
       </wa-button>
       <wa-button
+        suppressHydrationWarning
         slot="footer"
         variant="brand"
         disabled={!target}
         onClick={() => void confirm()}
       >
         <wa-icon
+          suppressHydrationWarning
           slot="start"
           name={mode === "copy" ? "copy" : "swap"}
         ></wa-icon>

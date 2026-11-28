@@ -30,6 +30,7 @@ export function UrlField({
 }) {
   return (
     <wa-input
+      suppressHydrationWarning
       // A new callback each render: it sets the validity of each value,
       // also when the field mounts again with a value in it.
       ref={(field) => {

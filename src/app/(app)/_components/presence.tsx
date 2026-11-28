@@ -32,6 +32,7 @@ export function ListViewers({ listId }: { listId: string }) {
     <span className="flex -space-x-1">
       {people.map((p) => (
         <wa-avatar
+          suppressHydrationWarning
           key={p.id}
           image={p.image ?? undefined}
           initials={initials(p.name)}
@@ -51,6 +52,7 @@ export function EditingBadge({ itemId }: { itemId: string }) {
   if (people.length === 0) return null;
   return (
     <wa-badge
+      suppressHydrationWarning
       variant="brand"
       appearance="filled"
       pill

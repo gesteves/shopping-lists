@@ -14,9 +14,12 @@ const NONE: LocalPresence = { listId: null, editingItemId: null };
 let entries: PresenceEntry[] = [];
 const listeners = new Set<() => void>();
 
+/** The server snapshot: the same value at each call, as React needs. */
+const SERVER_ENTRIES: PresenceEntry[] = [];
+
 export const presenceStore = {
   getSnapshot: (): PresenceEntry[] => entries,
-  getServerSnapshot: (): PresenceEntry[] => [],
+  getServerSnapshot: (): PresenceEntry[] => SERVER_ENTRIES,
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

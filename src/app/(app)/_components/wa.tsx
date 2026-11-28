@@ -57,12 +57,24 @@ export function ConfirmDialog({
     },
   });
   return (
-    <wa-dialog ref={ref} open={open} label={label} light-dismiss>
+    <wa-dialog
+      suppressHydrationWarning
+      ref={ref}
+      open={open}
+      label={label}
+      light-dismiss
+    >
       <div className="text-ink-muted">{children}</div>
-      <wa-button slot="footer" appearance="plain" onClick={onClose}>
+      <wa-button
+        suppressHydrationWarning
+        slot="footer"
+        appearance="plain"
+        onClick={onClose}
+      >
         {copy.common.cancel}
       </wa-button>
       <wa-button
+        suppressHydrationWarning
         slot="footer"
         variant={danger ? "danger" : "brand"}
         onClick={onConfirm}

@@ -94,6 +94,7 @@ export function KeepScreenOnSwitch({ hint }: { hint?: string }) {
   const on = useKeepScreenOn();
   return (
     <wa-switch
+      suppressHydrationWarning
       disabled={on == null}
       checked={on === true}
       onChange={(event) =>

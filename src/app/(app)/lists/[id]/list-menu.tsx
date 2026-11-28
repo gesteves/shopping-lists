@@ -108,34 +108,65 @@ export function ListHeader({ view }: { view: ListView }) {
           {list.name}
           {isPrivate && <PrivateIcon className="ms-3" />}
         </h1>
-        <wa-dropdown ref={menu} placement="bottom-end">
-          <wa-button slot="trigger" appearance="plain" size="l">
-            <wa-icon name="ellipsis" label={copy.list.actions}></wa-icon>
+        <wa-dropdown suppressHydrationWarning ref={menu} placement="bottom-end">
+          <wa-button
+            suppressHydrationWarning
+            slot="trigger"
+            appearance="plain"
+            size="l"
+          >
+            <wa-icon
+              suppressHydrationWarning
+              name="ellipsis"
+              label={copy.list.actions}
+            ></wa-icon>
           </wa-button>
-          <wa-dropdown-item value="rename">
-            <wa-icon slot="icon" name="pen"></wa-icon>
+          <wa-dropdown-item suppressHydrationWarning value="rename">
+            <wa-icon suppressHydrationWarning slot="icon" name="pen"></wa-icon>
             {copy.common.rename}
           </wa-dropdown-item>
-          <wa-dropdown-item value="check-all" disabled={unchecked.length === 0}>
-            <wa-icon slot="icon" name="square-check"></wa-icon>
+          <wa-dropdown-item
+            suppressHydrationWarning
+            value="check-all"
+            disabled={unchecked.length === 0}
+          >
+            <wa-icon
+              suppressHydrationWarning
+              slot="icon"
+              name="square-check"
+            ></wa-icon>
             {copy.list.checkAll}
           </wa-dropdown-item>
-          <wa-dropdown-item value="uncheck-all" disabled={checked.length === 0}>
-            <wa-icon slot="icon" name="square"></wa-icon>
+          <wa-dropdown-item
+            suppressHydrationWarning
+            value="uncheck-all"
+            disabled={checked.length === 0}
+          >
+            <wa-icon
+              suppressHydrationWarning
+              slot="icon"
+              name="square"
+            ></wa-icon>
             {copy.list.uncheckAll}
           </wa-dropdown-item>
           <wa-dropdown-item
+            suppressHydrationWarning
             value="delete-checked"
             disabled={checked.length === 0}
           >
-            <wa-icon slot="icon" name="trash-can-check"></wa-icon>
+            <wa-icon
+              suppressHydrationWarning
+              slot="icon"
+              name="trash-can-check"
+            ></wa-icon>
             {copy.list.deleteChecked}
           </wa-dropdown-item>
           {isOwner && (
             <>
-              <wa-divider></wa-divider>
-              <wa-dropdown-item value="privacy">
+              <wa-divider suppressHydrationWarning></wa-divider>
+              <wa-dropdown-item suppressHydrationWarning value="privacy">
                 <wa-icon
+                  suppressHydrationWarning
                   slot="icon"
                   name={isPrivate ? "lock-open" : "lock"}
                 ></wa-icon>
@@ -145,9 +176,17 @@ export function ListHeader({ view }: { view: ListView }) {
               </wa-dropdown-item>
             </>
           )}
-          <wa-divider></wa-divider>
-          <wa-dropdown-item value="delete" variant="danger">
-            <wa-icon slot="icon" name="trash-can"></wa-icon>
+          <wa-divider suppressHydrationWarning></wa-divider>
+          <wa-dropdown-item
+            suppressHydrationWarning
+            value="delete"
+            variant="danger"
+          >
+            <wa-icon
+              suppressHydrationWarning
+              slot="icon"
+              name="trash-can"
+            ></wa-icon>
             {copy.list.deleteList}
           </wa-dropdown-item>
         </wa-dropdown>

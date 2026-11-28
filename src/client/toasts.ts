@@ -33,9 +33,15 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
+/**
+ * The server snapshot. React needs the same value at each call: a new
+ * array at each call gives an endless loop warning.
+ */
+const SERVER_TOASTS: Toast[] = [];
+
 export const toastStore = {
   getSnapshot: (): Toast[] => toasts,
-  getServerSnapshot: (): Toast[] => [],
+  getServerSnapshot: (): Toast[] => SERVER_TOASTS,
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

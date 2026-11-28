@@ -115,7 +115,13 @@ export function ItemRow({
           aria-hidden="true"
           className={`grid size-7 shrink-0 place-items-center rounded-full border-2 ${item.checked ? "border-accent bg-accent text-accent-ink" : "border-ink-muted"} ${item.checked ? "opacity-60" : ""}`}
         >
-          {item.checked && <wa-icon name="check" className="text-sm"></wa-icon>}
+          {item.checked && (
+            <wa-icon
+              suppressHydrationWarning
+              name="check"
+              className="text-sm"
+            ></wa-icon>
+          )}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           {/* Inline flow, not flex: the badge has no text baseline, thus flex
@@ -130,6 +136,7 @@ export function ItemRow({
             {item.quantity > 1 && (
               <span className="ms-2 inline-flex h-lh items-center align-top">
                 <wa-badge
+                  suppressHydrationWarning
                   pill
                   appearance="filled"
                   className="text-xs tabular-nums"
@@ -149,7 +156,7 @@ export function ItemRow({
           {url && (
             <span className="flex items-start gap-1.5 text-sm text-ink-muted">
               <span className="inline-flex h-lh shrink-0 items-center">
-                <wa-icon name="link"></wa-icon>
+                <wa-icon suppressHydrationWarning name="link"></wa-icon>
               </span>
               <span className="min-w-0 wrap-anywhere">
                 <span className="sr-only">{copy.item.linkPrefix}</span>
@@ -160,11 +167,16 @@ export function ItemRow({
           {outOfStock && (
             <span className="mt-1">
               <wa-badge
+                suppressHydrationWarning
                 variant="warning"
                 appearance="filled"
                 className="text-xs"
               >
-                <wa-icon slot="start" name="cart-circle-xmark"></wa-icon>
+                <wa-icon
+                  suppressHydrationWarning
+                  slot="start"
+                  name="cart-circle-xmark"
+                ></wa-icon>
                 {copy.item.outOfStock}
               </wa-badge>
             </span>
@@ -172,6 +184,7 @@ export function ItemRow({
           {expiresInDays !== undefined && (
             <span className="mt-1">
               <wa-badge
+                suppressHydrationWarning
                 variant={expiryVariant(expiresInDays)}
                 appearance="filled"
                 className="text-xs"
@@ -183,53 +196,86 @@ export function ItemRow({
         </span>
       </button>
       {/* <wa-dropdown> is display: contents. The button is the flex item. */}
-      <wa-dropdown ref={menu} placement="bottom-end">
+      <wa-dropdown suppressHydrationWarning ref={menu} placement="bottom-end">
         <wa-button
+          suppressHydrationWarning
           slot="trigger"
           appearance="plain"
           size="l"
           className="me-2 self-center"
         >
-          <wa-icon name="ellipsis" label={copy.item.more(item.name)}></wa-icon>
+          <wa-icon
+            suppressHydrationWarning
+            name="ellipsis"
+            label={copy.item.more(item.name)}
+          ></wa-icon>
         </wa-button>
         {/* Visit page leaves the app, thus it is first and apart from the
             changes to the item. */}
         {url && (
           <>
-            <wa-dropdown-item value="visit">
-              <wa-icon slot="icon" name="arrow-up-right-from-square"></wa-icon>
+            <wa-dropdown-item suppressHydrationWarning value="visit">
+              <wa-icon
+                suppressHydrationWarning
+                slot="icon"
+                name="arrow-up-right-from-square"
+              ></wa-icon>
               {copy.item.visitPage}
             </wa-dropdown-item>
-            <wa-divider></wa-divider>
+            <wa-divider suppressHydrationWarning></wa-divider>
           </>
         )}
-        <wa-dropdown-item value="edit">
-          <wa-icon slot="icon" name="pencil"></wa-icon>
+        <wa-dropdown-item suppressHydrationWarning value="edit">
+          <wa-icon suppressHydrationWarning slot="icon" name="pencil"></wa-icon>
           {copy.item.edit}
         </wa-dropdown-item>
-        <wa-dropdown-item value="move" disabled={!canMove}>
-          <wa-icon slot="icon" name="swap"></wa-icon>
+        <wa-dropdown-item
+          suppressHydrationWarning
+          value="move"
+          disabled={!canMove}
+        >
+          <wa-icon suppressHydrationWarning slot="icon" name="swap"></wa-icon>
           {copy.item.move}
         </wa-dropdown-item>
-        <wa-dropdown-item value="copy" disabled={!canCopy}>
-          <wa-icon slot="icon" name="copy"></wa-icon>
+        <wa-dropdown-item
+          suppressHydrationWarning
+          value="copy"
+          disabled={!canCopy}
+        >
+          <wa-icon suppressHydrationWarning slot="icon" name="copy"></wa-icon>
           {copy.item.copy}
         </wa-dropdown-item>
         {!item.checked &&
           (outOfStock ? (
-            <wa-dropdown-item value="in-stock">
-              <wa-icon slot="icon" name="cart-circle-check"></wa-icon>
+            <wa-dropdown-item suppressHydrationWarning value="in-stock">
+              <wa-icon
+                suppressHydrationWarning
+                slot="icon"
+                name="cart-circle-check"
+              ></wa-icon>
               {copy.item.inStock}
             </wa-dropdown-item>
           ) : (
-            <wa-dropdown-item value="out-of-stock">
-              <wa-icon slot="icon" name="cart-circle-xmark"></wa-icon>
+            <wa-dropdown-item suppressHydrationWarning value="out-of-stock">
+              <wa-icon
+                suppressHydrationWarning
+                slot="icon"
+                name="cart-circle-xmark"
+              ></wa-icon>
               {copy.item.outOfStock}
             </wa-dropdown-item>
           ))}
-        <wa-divider></wa-divider>
-        <wa-dropdown-item value="delete" variant="danger">
-          <wa-icon slot="icon" name="trash-can"></wa-icon>
+        <wa-divider suppressHydrationWarning></wa-divider>
+        <wa-dropdown-item
+          suppressHydrationWarning
+          value="delete"
+          variant="danger"
+        >
+          <wa-icon
+            suppressHydrationWarning
+            slot="icon"
+            name="trash-can"
+          ></wa-icon>
           {copy.common.delete}
         </wa-dropdown-item>
       </wa-dropdown>
