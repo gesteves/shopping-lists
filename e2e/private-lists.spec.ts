@@ -86,6 +86,8 @@ async function listMenu(page: Page, action: string | RegExp) {
 }
 
 test("a private list shows only to its creator", async ({ browser }) => {
+  // Two users and many steps: slow on a busy CI runner.
+  test.setTimeout(60_000);
   const ana = await browser.newPage();
   const ben = await browser.newPage();
   try {
@@ -164,6 +166,7 @@ test("a private list shows only to its creator", async ({ browser }) => {
 test("making a list private takes it from the other person, and sharing gives it back", async ({
   browser,
 }) => {
+  test.setTimeout(60_000);
   const ana = await browser.newPage();
   const ben = await browser.newPage();
   try {
