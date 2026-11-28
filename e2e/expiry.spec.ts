@@ -8,7 +8,7 @@ import {
   expiryVariant,
 } from "../src/shared/expiry";
 import { serialize } from "../src/shared/hlc";
-import { dialog, scan, signIn, synced } from "./helpers";
+import { dialog, scan, signIn, synced, itemAction } from "./helpers";
 
 // Days are local calendar days (#112). The browser and this test use the
 // same time zone, so that the expected badges are the same on each machine.
@@ -113,7 +113,7 @@ test("old checked items show in Older items with a badge, and leave it on a chan
   await expect(row(page, "Batteries")).toHaveAttribute("aria-checked", "false");
 
   // Edit: it unchecks the item.
-  await page.getByRole("button", { name: copy.item.edit("Foil") }).click();
+  await itemAction(page, "Foil", copy.item.edit);
   const sheet = dialog(page, copy.itemSheet.title);
   await sheet.getByLabel(copy.itemSheet.notes).fill("Heavy duty");
   await sheet.getByRole("button", { name: copy.common.save }).click();
@@ -122,9 +122,10 @@ test("old checked items show in Older items with a badge, and leave it on a chan
   await expect(row(page, "Foil")).toHaveAttribute("aria-checked", "false");
 
   // Move: it goes to the other list, unchecked.
-  await page.getByRole("button", { name: copy.item.edit("Tape") }).click();
-  await sheet.getByRole("combobox", { name: copy.itemSheet.moveTo }).click();
-  await page.getByRole("option", { name: other }).click();
+  await itemAction(page, "Tape", copy.item.move);
+  await dialog(page, copy.item.moveTitle("Tape"))
+    .getByRole("button", { name: other })
+    .click();
   await expect(row(page, "Tape")).toHaveCount(0);
   await expect(section.getByRole("checkbox")).toHaveCount(1);
 

@@ -277,6 +277,8 @@ function dispatch(ctx: Ctx, op: Op): Outcome {
     case "deleteItem":
     case "restoreItem":
     case "moveItem":
+    case "markOutOfStock":
+    case "markInStock":
       return changeItem(ctx, op);
     case "clearChecked":
     case "uncheckAll":
@@ -538,6 +540,7 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
     notes: op.hlc,
     checked: op.hlc,
     deleted: op.hlc,
+    outOfStock: op.hlc,
   };
   ctx.tx
     .insert(items)
@@ -582,6 +585,18 @@ function uncheckOnChange(
   set.checkedAt = null;
 }
 
+/**
+ * Write "in stock" at the op HLC, if the HLC is newer than the stock clock
+ * (#131). A check and a check all always do this, thus the result is the
+ * same in each order of arrival. A move does it only when it changed the
+ * list, the same as uncheckOnChange.
+ */
+function restock(row: ItemRow, set: ItemSet, clocks: ItemClocks, op: Op) {
+  if (!newer(op.hlc, clocks.outOfStock)) return;
+  clocks.outOfStock = op.hlc;
+  if (row.outOfStockAt) set.outOfStockAt = null;
+}
+
 function changeItem(
   ctx: Ctx,
   op: OpOf<
@@ -591,6 +606,8 @@ function changeItem(
     | "deleteItem"
     | "restoreItem"
     | "moveItem"
+    | "markOutOfStock"
+    | "markInStock"
   >,
 ): Outcome {
   const row = getItem(ctx, op.args.itemId);
@@ -637,9 +654,32 @@ function changeItem(
           set.checkedAt = checked ? opTime(op) : null;
         }
       }
+      // An item in the cart is in stock (#131).
+      if (checked) restock(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
       break;
     }
+    case "markOutOfStock":
+      if (newer(op.hlc, clocks.outOfStock)) {
+        clocks.outOfStock = op.hlc;
+        if (!row.outOfStockAt) set.outOfStockAt = opTime(op);
+      }
+      // The person did not get it: it is not in the cart. Always write the
+      // check clock, as a check writes the stock clock. Thus the result is
+      // the same in each order of arrival.
+      if (newer(op.hlc, clocks.checked)) {
+        clocks.checked = op.hlc;
+        if (row.checked) {
+          set.checked = false;
+          set.checkedAt = null;
+        }
+      }
+      markAlive(clocks, row.deletedAt, set, op.hlc);
+      break;
+    case "markInStock":
+      restock(row, set, clocks, op);
+      markAlive(clocks, row.deletedAt, set, op.hlc);
+      break;
     case "deleteItem":
       if (newer(op.hlc, clocks.deleted)) {
         clocks.deleted = op.hlc;
@@ -654,7 +694,11 @@ function changeItem(
         clocks.listId = op.hlc;
         if (row.listId !== op.args.toListId) set.listId = op.args.toListId;
       }
-      if (set.listId !== undefined) uncheckOnChange(row, set, clocks, op);
+      // The item was out of stock at the other store, not at this one.
+      if (set.listId !== undefined) {
+        uncheckOnChange(row, set, clocks, op);
+        restock(row, set, clocks, op);
+      }
       markAlive(clocks, row.deletedAt, set, op.hlc);
       break;
   }
@@ -688,6 +732,9 @@ function changeItem(
   }
   if (set.name !== undefined) snapshot.oldName = row.name;
   if (set.checked === false && op.type !== "uncheck") snapshot.unchecked = true;
+  if (set.outOfStockAt === null && op.type !== "markInStock") {
+    snapshot.inStock = true;
+  }
   if (op.type === "updateItem") {
     const fields = (["name", "quantity", "notes"] as const).filter(
       (field) => set[field] !== undefined,
@@ -703,10 +750,10 @@ function changeItem(
 /**
  * clearChecked deletes, and uncheckAll unchecks, each item that is checked
  * with a check older than the op. checkAll (#67) checks each item that is
- * not checked, with an uncheck older than the op. An item that someone
- * checked or unchecked after the op HLC stays: the person did not see that
- * change. An item added after the op stays too, because addItem sets its
- * check clock.
+ * not checked, with an uncheck older than the op, and marks it in stock
+ * (#131). An item that someone checked or unchecked after the op HLC stays:
+ * the person did not see that change. An item added after the op stays
+ * too, because addItem sets its check clock.
  */
 function changeAllItems(
   ctx: Ctx,
@@ -744,6 +791,7 @@ function changeAllItems(
       clocks.checked = op.hlc;
       set.checked = checked;
       set.checkedAt = checked ? opTime(op) : null;
+      if (checked) restock(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
     }
     if (saveItem(ctx, op, row, set, clocks)) count++;

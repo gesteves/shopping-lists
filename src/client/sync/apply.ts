@@ -35,6 +35,14 @@ function differs(a: object, b: object): boolean {
   return false;
 }
 
+/**
+ * The fields that mark an item in stock (#131). Empty if it is in stock: a
+ * row from an older server has no `outOfStockAt`, and must not change.
+ */
+function inStock(item: ItemRecord): Partial<ItemRecord> {
+  return item.outOfStockAt != null ? { outOfStockAt: null } : {};
+}
+
 /** Apply `op` to `state`, and add the IDs of the changed rows to `changed`. */
 export function applyLocal(
   state: LocalState,
@@ -130,6 +138,7 @@ export function applyLocal(
         notes,
         checked: false,
         checkedAt: null,
+        outOfStockAt: null,
         createdBy: userId,
         createdAt: time,
         updatedBy: userId,
@@ -165,8 +174,28 @@ export function applyLocal(
         ...item,
         checked,
         checkedAt: checked ? (item.checked ? item.checkedAt : time) : null,
+        // An item in the cart is in stock (#131).
+        ...(checked && inStock(item)),
         deletedAt: null,
       });
+      break;
+    }
+    case "markOutOfStock": {
+      const item = state.items.get(op.args.itemId);
+      if (!item) break;
+      // The person did not get it: it is not in the cart.
+      putItem({
+        ...item,
+        outOfStockAt: item.outOfStockAt ?? time,
+        checked: false,
+        checkedAt: null,
+        deletedAt: null,
+      });
+      break;
+    }
+    case "markInStock": {
+      const item = state.items.get(op.args.itemId);
+      if (item) putItem({ ...item, ...inStock(item), deletedAt: null });
       break;
     }
     case "deleteItem": {
@@ -184,12 +213,13 @@ export function applyLocal(
     case "moveItem": {
       const item = state.items.get(op.args.itemId);
       if (!item || !liveList(op.args.toListId)) break;
-      // A move to another list also unchecks the item (#112).
+      // A move to another list also unchecks the item (#112), and marks it
+      // in stock (#131).
       const moved = item.listId !== op.args.toListId;
       putItem({
         ...item,
         listId: op.args.toListId,
-        ...(moved && { checked: false, checkedAt: null }),
+        ...(moved && { checked: false, checkedAt: null, ...inStock(item) }),
         deletedAt: null,
       });
       break;
@@ -207,7 +237,14 @@ export function applyLocal(
     case "checkAll": {
       if (!liveList(op.args.listId)) break;
       for (const item of liveItemsOf(op.args.listId)) {
-        if (!item.checked) putItem({ ...item, checked: true, checkedAt: time });
+        if (!item.checked) {
+          putItem({
+            ...item,
+            checked: true,
+            checkedAt: time,
+            ...inStock(item),
+          });
+        }
       }
       break;
     }

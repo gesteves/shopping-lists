@@ -517,6 +517,57 @@ describe("tools", () => {
     ]);
   });
 
+  it("marks an item out of stock and in stock (#131)", async () => {
+    // Eggs is checked: the mark also unchecks it.
+    const marked = await callTool(client, "update_item", {
+      list: "Whole Foods",
+      item: "eggs",
+      out_of_stock: true,
+    });
+    expect(marked.isError).toBeFalsy();
+    expect(marked.structuredContent).toMatchObject({
+      name: "Eggs",
+      checked: false,
+      out_of_stock: true,
+    });
+    const got = await callTool(client, "get_list", { list: "Whole Foods" });
+    expect(
+      (got.structuredContent.items as Json[]).find((i) => i.name === "Eggs"),
+    ).toMatchObject({ out_of_stock: true });
+
+    // A check marks it in stock.
+    const checked = await callTool(client, "check_items", {
+      list: "Whole Foods",
+      items: ["Eggs"],
+    });
+    expect(checked.structuredContent.items).toEqual([
+      expect.objectContaining({ checked: true, out_of_stock: false }),
+    ]);
+
+    // An unmark with an edit in one call.
+    await callTool(client, "update_item", {
+      list: "Whole Foods",
+      item: "milk",
+      out_of_stock: true,
+    });
+    const both = await callTool(client, "update_item", {
+      list: "Whole Foods",
+      item: "milk",
+      notes: "2%",
+      out_of_stock: false,
+    });
+    expect(both.structuredContent).toMatchObject({
+      notes: "2%",
+      out_of_stock: false,
+    });
+
+    const nothing = await callTool(client, "update_item", {
+      list: "Whole Foods",
+      item: "milk",
+    });
+    expect(nothing.isError).toBe(true);
+  });
+
   it("unchecks all and clears checked items", async () => {
     await callTool(client, "check_items", {
       list: "Whole Foods",

@@ -379,6 +379,11 @@ export const items = sqliteTable(
     notes: text("notes").notNull().default(""),
     checked: integer("checked", { mode: "boolean" }).notNull().default(false),
     checkedAt: integer("checked_at", { mode: "timestamp_ms" }),
+    /**
+     * The op time when someone marked the item out of stock (#131). Null if
+     * it is in stock.
+     */
+    outOfStockAt: integer("out_of_stock_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").notNull().references(userRef),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedBy: text("updated_by").notNull().references(userRef),
@@ -434,8 +439,13 @@ export interface ActivitySnapshot {
   count?: number;
   /** updateItem: the fields that changed (#89). Older rows do not have it. */
   fields?: ItemField[];
-  /** updateItem and moveItem: the change also unchecked the item (#112). */
+  /**
+   * updateItem, moveItem, and markOutOfStock: the change also unchecked the
+   * item (#112, #131).
+   */
   unchecked?: boolean;
+  /** check and moveItem: the change also marked the item in stock (#131). */
+  inStock?: boolean;
 }
 
 /** The fields that updateItem can change. */

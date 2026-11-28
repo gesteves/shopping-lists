@@ -12,6 +12,7 @@ import {
   openList,
   signIn,
   synced,
+  itemAction,
 } from "./helpers";
 
 /** Make a list in the UI and open it. */
@@ -65,7 +66,7 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await expect.poll(() => order(page)).toEqual(["Bread", "Eggs", "Milk"]);
 
   // Edit the name, the quantity, and the notes.
-  await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+  await itemAction(page, "Milk", copy.item.edit);
   const sheet = dialog(page, copy.itemSheet.title);
   await expect(
     sheet.getByText(copy.item.added("Ana", copy.time.justNow), {
@@ -82,9 +83,8 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await expect(item(page, "Oat milk")).toContainText("Barista edition");
   await expect.poll(() => order(page)).toEqual(["Oat milk", "Bread", "Eggs"]);
 
-  // Delete from the sheet.
-  await page.getByRole("button", { name: copy.item.edit("Eggs") }).click();
-  await sheet.getByRole("button", { name: copy.common.delete }).click();
+  // Delete from the menu.
+  await itemAction(page, "Eggs", copy.common.delete);
   await expect(item(page, "Eggs")).toHaveCount(0);
 
   // The server has it all: a reload shows the same list.
@@ -107,12 +107,12 @@ test("every item action works offline and syncs when online", async ({
   await context.setOffline(true);
   await add(page, "Plums");
   await item(page, "Apples").click();
-  await page.getByRole("button", { name: copy.item.edit("Pears") }).click();
+  await itemAction(page, "Pears", copy.item.edit);
   const sheet = dialog(page, copy.itemSheet.title);
   await sheet.getByLabel(copy.itemSheet.notes).fill("Ripe");
   await sheet.getByRole("button", { name: copy.common.save }).click();
-  await page.getByRole("button", { name: copy.item.edit("Plums") }).click();
-  await sheet.getByRole("button", { name: copy.common.delete }).click();
+  await expect(sheet).toBeHidden();
+  await itemAction(page, "Plums", copy.common.delete);
   await expect(
     page.getByText(anyCount(copy.sync.offlineWithChanges)),
   ).toBeVisible();
@@ -163,7 +163,7 @@ test("the quantity badge is centered on the last line of the name", async ({
   await add(page, short);
   await add(page, long);
   for (const name of [short, long]) {
-    await page.getByRole("button", { name: copy.item.edit(name) }).click();
+    await itemAction(page, name, copy.item.edit);
     const sheet = dialog(page, copy.itemSheet.title);
     await sheet.getByRole("button", { name: copy.stepper.increment }).click();
     await sheet.getByRole("button", { name: copy.common.save }).click();
@@ -224,11 +224,11 @@ test("the sheet keeps the edits of the other person", async ({
     await signIn(ben, E2E_SECOND_EMAIL, "Ben");
     await ben.goto(page.url());
     const benSheet = dialog(ben, copy.itemSheet.title);
-    await ben.getByRole("button", { name: copy.item.edit("Milk") }).click();
+    await itemAction(ben, "Milk", copy.item.edit);
     await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
 
     // Ana renames the item while the sheet of Ben is open.
-    await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+    await itemAction(page, "Milk", copy.item.edit);
     await sheet.getByLabel(copy.itemSheet.name).fill("Oat milk");
     await sheet.getByRole("button", { name: copy.common.save }).click();
     await expect(sheet).toBeHidden();
@@ -245,10 +245,9 @@ test("the sheet keeps the edits of the other person", async ({
     await expect(item(page, "Oat milk")).toContainText(copy.item.quantity(2));
 
     // Ana deletes an item while the sheet of Ben is open: it closes.
-    await ben.getByRole("button", { name: copy.item.edit("Eggs") }).click();
+    await itemAction(ben, "Eggs", copy.item.edit);
     await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
-    await page.getByRole("button", { name: copy.item.edit("Eggs") }).click();
-    await sheet.getByRole("button", { name: copy.common.delete }).click();
+    await itemAction(page, "Eggs", copy.common.delete);
     await expect(benSheet).toBeHidden();
     await expect(
       ben.locator("wa-toast-item", { hasText: copy.itemSheet.gone("Eggs") }),

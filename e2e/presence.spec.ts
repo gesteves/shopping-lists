@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { createList, openList, signIn, synced } from "./helpers";
+import { createList, openList, signIn, synced, itemAction } from "./helpers";
 
 test("each person sees what the other has open and is editing", async ({
   browser,
@@ -33,7 +33,7 @@ test("each person sees what the other has open and is editing", async ({
 
     // A edits the item: B sees the badge in the list.
     await openList(b, name);
-    await a.getByRole("button", { name: copy.item.edit("Milk") }).click();
+    await itemAction(a, "Milk", copy.item.edit);
     const badge = b
       .getByRole("checkbox", { name: /^Milk/ })
       .getByText(copy.item.editing(["Ana"]));

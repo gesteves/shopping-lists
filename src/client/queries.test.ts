@@ -21,6 +21,7 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 const base = {
+  outOfStockAt: null,
   createdBy: "u",
   createdAt: 1,
   updatedBy: "u",

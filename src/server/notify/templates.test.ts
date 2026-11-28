@@ -71,6 +71,14 @@ describe("renderEvent", () => {
         ev("checkAll", { count: 3 }, list),
         "Sam checked everything off the “Whole Foods” list.",
       ],
+      [
+        ev("markOutOfStock", { itemName: "Milk" }),
+        "Sam marked “Milk” as out of stock in the “Whole Foods” list.",
+      ],
+      [
+        ev("markInStock", { itemName: "Milk" }),
+        "Sam marked “Milk” as in stock in the “Whole Foods” list.",
+      ],
     ];
     for (const [event, text] of cases)
       expect(renderEvent(event, "Sam")).toBe(text);

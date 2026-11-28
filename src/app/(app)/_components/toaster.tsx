@@ -136,20 +136,27 @@ async function show(el: WaToast, toast: Toast) {
     ...(toast.icon && { icon: toast.icon }),
   });
   item.addEventListener("wa-after-hide", () => dismissToast(toast.id));
-  if (toast.action) {
-    // The action goes on its own line, below the message.
+  const all = [
+    ...(toast.action ? [toast.action] : []),
+    ...(toast.actions ?? []),
+  ];
+  if (all.length > 0) {
+    // The actions go on their own line, below the message.
     const actions = document.createElement("div");
     actions.style.marginBlockStart = "var(--wa-space-xs)";
-    const button = document.createElement("wa-button");
-    button.setAttribute("size", "s");
-    button.setAttribute("variant", "brand");
-    button.textContent = toast.action.label;
-    const { run } = toast.action;
-    button.addEventListener("click", () => {
-      dismissToast(toast.id);
-      void run();
-    });
-    actions.append(button);
+    actions.style.display = "flex";
+    actions.style.gap = "var(--wa-space-xs)";
+    for (const { label, run } of all) {
+      const button = document.createElement("wa-button");
+      button.setAttribute("size", "s");
+      button.setAttribute("variant", "brand");
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        dismissToast(toast.id);
+        void run();
+      });
+      actions.append(button);
+    }
     item.append(actions);
   }
   return item;

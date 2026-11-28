@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import type { ItemRecord } from "@/shared/sync";
+import { copyPlan } from "./copy-item";
+
+const FROM = "11111111-1111-4111-8111-111111111111";
+const TO = "22222222-2222-4222-8222-222222222222";
+const NEW = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+function item(patch: Partial<ItemRecord> = {}): ItemRecord {
+  return {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    listId: FROM,
+    name: "Milk",
+    quantity: 2,
+    notes: "Oat",
+    checked: false,
+    checkedAt: null,
+    outOfStockAt: 1,
+    createdBy: "u",
+    createdAt: 1,
+    updatedBy: "u",
+    updatedAt: 1,
+    updatedVia: "app",
+    deletedAt: null,
+    seq: 1,
+    ...patch,
+  };
+}
+
+describe("copyPlan", () => {
+  it("adds the name, the quantity, and the notes to the target list", () => {
+    expect(copyPlan(item(), TO, [], NEW)).toEqual({
+      kind: "add",
+      itemId: NEW,
+      requests: [
+        {
+          type: "addItem",
+          args: {
+            itemId: NEW,
+            listId: TO,
+            name: "Milk",
+            quantity: 2,
+            notes: "Oat",
+          },
+        },
+      ],
+    });
+  });
+
+  it("does nothing when the target has the name, unchecked", () => {
+    const there = item({ id: "b", listId: TO, name: " MILK ", notes: "" });
+    expect(copyPlan(item(), TO, [there], NEW)).toEqual({
+      kind: "onList",
+      requests: [],
+    });
+  });
+
+  it("unchecks a checked match, with the quantity and the notes", () => {
+    const there = item({
+      id: "b",
+      listId: TO,
+      quantity: 1,
+      notes: "",
+      checked: true,
+      checkedAt: 5,
+    });
+    expect(copyPlan(item(), TO, [there], NEW)).toEqual({
+      kind: "uncheck",
+      requests: [
+        { type: "uncheck", args: { itemId: "b" } },
+        {
+          type: "updateItem",
+          args: { itemId: "b", fields: { quantity: 2, notes: "Oat" } },
+        },
+      ],
+    });
+  });
+
+  it("only unchecks when the fields are the defaults or the same", () => {
+    const there = item({ id: "b", listId: TO, checked: true, checkedAt: 5 });
+    expect(copyPlan(item(), TO, [there], NEW).requests).toEqual([
+      { type: "uncheck", args: { itemId: "b" } },
+    ]);
+  });
+
+  it("does not count a deleted item or an item on another list", () => {
+    const deleted = item({ id: "b", listId: TO, deletedAt: 5 });
+    const other = item({ id: "c" });
+    expect(copyPlan(item(), TO, [deleted, other], NEW).kind).toBe("add");
+  });
+});

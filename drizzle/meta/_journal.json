@@ -57,6 +57,13 @@
       "when": 1795818534657,
       "tag": "0007_push_failures",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795823182488,
+      "tag": "0008_out_of_stock",
+      "breakpoints": true
     }
   ]
 }

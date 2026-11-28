@@ -37,6 +37,9 @@ export const SNAPSHOT_KEYS: Record<OpType, readonly SnapshotKey[]> = {
   clearChecked: ["listName", "count"],
   uncheckAll: ["listName", "count"],
   checkAll: ["listName", "count"],
+  // The uncheck of a mark is not in the text: "out of stock" tells it.
+  markOutOfStock: ["listName", "itemName"],
+  markInStock: ["listName", "itemName"],
 };
 
 /** The snapshot with only the keys of the type, and no undefined values. */

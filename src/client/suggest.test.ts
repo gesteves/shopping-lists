@@ -20,6 +20,7 @@ function item(name: string, daysAgo: number): ItemRecord {
     notes: "",
     checked: false,
     checkedAt: null,
+    outOfStockAt: null,
     createdBy: "u",
     createdAt: at,
     updatedBy: "u",

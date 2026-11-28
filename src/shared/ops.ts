@@ -17,7 +17,8 @@ export type Via = (typeof VIA)[number];
 
 // The fields that have their own HLC clock. Each row keeps one clock for
 // each field in its `clocks` JSON. "deleted" is the clock of `deleted_at`,
-// and "listId" is the clock of a move.
+// "listId" is the clock of a move, and "outOfStock" is the clock of
+// `out_of_stock_at` (#131).
 export const LIST_FIELDS = ["name", "deleted"] as const;
 export const ITEM_FIELDS = [
   "listId",
@@ -26,6 +27,7 @@ export const ITEM_FIELDS = [
   "notes",
   "checked",
   "deleted",
+  "outOfStock",
 ] as const;
 export type ListField = (typeof LIST_FIELDS)[number];
 export type ItemField = (typeof ITEM_FIELDS)[number];
@@ -76,6 +78,10 @@ const ARGS = {
   clearChecked: listArgs,
   uncheckAll: listArgs,
   checkAll: listArgs,
+  // The item was not in the store (#131). A check, a check all, and a move
+  // to another list also mark it in stock.
+  markOutOfStock: itemArgs,
+  markInStock: itemArgs,
 } as const;
 
 export type OpType = keyof typeof ARGS;
@@ -114,6 +120,8 @@ export const opSchemas = {
   clearChecked: opSchemaFor("clearChecked"),
   uncheckAll: opSchemaFor("uncheckAll"),
   checkAll: opSchemaFor("checkAll"),
+  markOutOfStock: opSchemaFor("markOutOfStock"),
+  markInStock: opSchemaFor("markInStock"),
 } satisfies { [T in OpType]: ReturnType<typeof opSchemaFor<T>> };
 
 /**

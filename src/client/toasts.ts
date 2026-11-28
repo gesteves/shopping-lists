@@ -4,10 +4,17 @@
 // after its duration (it shows a countdown ring, and it waits while the
 // pointer is on it), then the Toaster removes it from the store.
 
+export interface ToastAction {
+  label: string;
+  run: () => void | Promise<void>;
+}
+
 export interface Toast {
   id: number;
   message: string;
-  action?: { label: string; run: () => void | Promise<void> };
+  action?: ToastAction;
+  /** More actions, after `action`, on the same line (#131). */
+  actions?: ToastAction[];
   /** A Font Awesome icon name. */
   icon?: string;
   variant?: "brand" | "success" | "warning" | "danger" | "neutral";
