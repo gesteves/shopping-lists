@@ -20,7 +20,8 @@ export type Via = (typeof VIA)[number];
 // each field in its `clocks` JSON. "deleted" is the clock of `deleted_at`,
 // "listId" is the clock of a move, and "outOfStock" is the clock of
 // `out_of_stock_at` (#131). "url" is the link of the item (#140).
-export const LIST_FIELDS = ["name", "deleted"] as const;
+// "private" is the clock of `lists.private` (#154).
+export const LIST_FIELDS = ["name", "deleted", "private"] as const;
 export const ITEM_FIELDS = [
   "listId",
   "name",
@@ -58,7 +59,13 @@ const itemArgs = z.strictObject({ itemId: id });
 // Each op type and the schema of its `args`. Keep this order: OP_TYPES and
 // the union use it.
 const ARGS = {
-  createList: z.strictObject({ listId: id, name: listName }),
+  // `private` (#154): only the creator sees the list. Older clients do not
+  // send it.
+  createList: z.strictObject({
+    listId: id,
+    name: listName,
+    private: z.boolean().default(false),
+  }),
   renameList: z.strictObject({ listId: id, name: listName }),
   deleteList: listArgs,
   restoreList: listArgs,
@@ -93,6 +100,8 @@ const ARGS = {
   // to another list also mark it in stock.
   markOutOfStock: itemArgs,
   markInStock: itemArgs,
+  // Only the creator of the list can send it (#154).
+  setListPrivate: z.strictObject({ listId: id, private: z.boolean() }),
 } as const;
 
 export type OpType = keyof typeof ARGS;
@@ -133,6 +142,7 @@ export const opSchemas = {
   checkAll: opSchemaFor("checkAll"),
   markOutOfStock: opSchemaFor("markOutOfStock"),
   markInStock: opSchemaFor("markInStock"),
+  setListPrivate: opSchemaFor("setListPrivate"),
 } satisfies { [T in OpType]: ReturnType<typeof opSchemaFor<T>> };
 
 /**

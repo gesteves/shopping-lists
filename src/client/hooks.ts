@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useSyncExternalStore } from "react";
 import type { PresenceEntry } from "@/shared/presence";
 import type { ListRecord, UserRecord } from "@/shared/sync";
-import { getClientDb } from "./db";
+import { getClientDb, getMeta } from "./db";
 import { presenceStore, reportPresence, type LocalPresence } from "./presence";
 import {
   readList,
@@ -97,12 +97,31 @@ export function useMergedOps(handler: (detail: MergedDetail) => void) {
   useEngineEvent("merged", handler);
 }
 
-/** Autocomplete candidates from every item on this device. */
-export function useSuggestionCandidates(): Candidate[] | undefined {
-  return useLiveQuery(
-    async () => buildCandidates(await getClientDb().items.toArray()),
-    [],
-  );
+/** The ID of the signed-in user, or undefined until it is known. */
+export function useMyUserId(): string | undefined {
+  return useLiveQuery(() => getMeta(getClientDb(), "userId"), []);
+}
+
+/**
+ * Autocomplete candidates from the items on this device. On a shared list,
+ * the names from private lists stay out (#154): a tap on one adds a gift
+ * to a list that the other person sees, and notifies them.
+ */
+export function useSuggestionCandidates(
+  listId: string,
+): Candidate[] | undefined {
+  return useLiveQuery(async () => {
+    const db = getClientDb();
+    const [items, lists] = await Promise.all([
+      db.items.toArray(),
+      db.lists.toArray(),
+    ]);
+    const privateIds = new Set(
+      lists.filter((l) => l.private === true).map((l) => l.id),
+    );
+    if (privateIds.has(listId)) return buildCandidates(items);
+    return buildCandidates(items.filter((i) => !privateIds.has(i.listId)));
+  }, [listId]);
 }
 
 /** What the other people show now. Empty while offline. */

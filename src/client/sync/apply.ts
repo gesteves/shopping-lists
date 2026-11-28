@@ -95,8 +95,17 @@ export function applyLocal(
         deletedAt: null,
         summary: null,
         summaryKey: null,
+        private: op.args.private,
         seq: 0,
       });
+      break;
+    }
+    case "setListPrivate": {
+      // Only the creator can (#154).
+      const list = state.lists.get(op.args.listId);
+      if (list && list.createdBy === userId) {
+        putList({ ...list, private: op.args.private });
+      }
       break;
     }
     case "renameList": {
@@ -216,7 +225,12 @@ export function applyLocal(
     }
     case "moveItem": {
       const item = state.items.get(op.args.itemId);
-      if (!item || !liveList(op.args.toListId)) break;
+      const target = liveList(op.args.toListId);
+      if (!item || !target) break;
+      // A move never takes an item across the privacy line (#154). A row
+      // from an older server has no `private`.
+      const source = state.lists.get(item.listId);
+      if (!!source?.private !== !!target.private) break;
       // A move to another list also unchecks the item (#112), and marks it
       // in stock (#131).
       const moved = item.listId !== op.args.toListId;

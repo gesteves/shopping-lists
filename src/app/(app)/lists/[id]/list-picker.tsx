@@ -8,6 +8,7 @@ import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
+import { PrivateIcon } from "../../_components/list-index";
 import { useWaEvents } from "../../_components/wa";
 
 export type PickMode = "move" | "copy";
@@ -22,6 +23,9 @@ export interface PickRequest {
  * or Copy button (#134). The select keeps the dialog short when there are
  * many lists. The button is disabled until the user selects a list. A toast
  * tells the result. Cancel, Escape, and a tap outside close it.
+ *
+ * Move shows only the lists of the same kind (#154): a move never takes an
+ * item between a private list and a shared list. Copy shows all lists.
  */
 export function ListPicker({
   request,
@@ -39,9 +43,9 @@ export function ListPicker({
     setTargetId("");
   }
   const lists = useLists();
-  const targets = lists?.filter((l) => l.id !== shown?.item.listId) ?? [];
-  const target = targets.find((l) => l.id === targetId);
   const mode = shown?.mode ?? "move";
+  const targets = pickTargets(lists ?? [], shown?.item.listId, mode);
+  const target = targets.find((l) => l.id === targetId);
 
   const ref = useWaEvents<HTMLElement>({
     // Only this dialog: the events of the select in it bubble too.
@@ -96,6 +100,11 @@ export function ListPicker({
         {targets.map((list) => (
           <wa-option key={list.id} value={list.id}>
             {list.name}
+            {list.private === true && (
+              <span slot="end">
+                <PrivateIcon />
+              </span>
+            )}
           </wa-option>
         ))}
       </wa-select>
@@ -115,6 +124,23 @@ export function ListPicker({
         {mode === "move" ? copy.item.move : copy.item.copy}
       </wa-button>
     </wa-dialog>
+  );
+}
+
+/**
+ * The lists that an item on `fromId` can go to: all the other lists for a
+ * copy, and the other lists of the same kind for a move (#154).
+ */
+export function pickTargets(
+  lists: ListRecord[],
+  fromId: string | undefined,
+  mode: PickMode,
+): ListRecord[] {
+  const from = lists.find((l) => l.id === fromId);
+  return lists.filter(
+    (l) =>
+      l.id !== fromId &&
+      (mode === "copy" || (l.private === true) === (from?.private === true)),
   );
 }
 

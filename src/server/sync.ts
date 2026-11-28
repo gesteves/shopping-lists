@@ -64,9 +64,13 @@ export async function handlePush(
  * starts again from seq 0. A client that sends `seen` at or after the last
  * purge got that purge in an earlier page: it gets no reset. Thus a reset
  * that needs more than one page completes.
+ *
+ * It sends only the rows that the user can see (#154). A list that becomes
+ * private raises `purged_seq`, thus the other users reset and lose it.
  */
 export function handlePull(
   request: Request,
+  userId: string,
   options: { db?: Db; now?: () => number; summaries?: boolean } = {},
 ): Response {
   const db = options.db ?? getDb();
@@ -88,7 +92,7 @@ export function handlePull(
       (seen === undefined || seen < state.purgedSeq);
     const reset = since > state.seq || purged;
     const from = reset ? 0 : since;
-    const changes = readChanges(from, limit, tx);
+    const changes = readChanges(from, limit, userId, tx);
     return {
       reset,
       lists: changes.lists,

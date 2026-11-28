@@ -85,6 +85,13 @@
       "when": 1795877020549,
       "tag": "0011_activity_history",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795879333838,
+      "tag": "0012_private_lists",
+      "breakpoints": true
     }
   ]
 }

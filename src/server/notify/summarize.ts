@@ -34,7 +34,10 @@ export function summaryInput(events: ActivityEvent[], actorName: string) {
   const shown = events.slice(0, MAX_INPUT_CHANGES);
   const rest = events.slice(MAX_INPUT_CHANGES);
   const types: Record<string, number> = {};
-  for (const e of rest) types[e.type] = (types[e.type] ?? 0) + 1;
+  for (const e of rest) {
+    const type = e.type === "setListPrivate" ? "shareList" : e.type;
+    types[type] = (types[type] ?? 0) + 1;
+  }
   return {
     actor: who(actorName, events[0].via),
     ...(rest.length > 0 && { more: { count: rest.length, types } }),
@@ -42,7 +45,9 @@ export function summaryInput(events: ActivityEvent[], actorName: string) {
       // Only the keys of the type: an add never says "renamed" or "moved".
       const s = snapshotFor(e.type, e.snapshot);
       return {
-        type: e.type,
+        // The prompt calls a share "shareList": a private list sends no
+        // push, thus each setListPrivate here is a share (#154).
+        type: e.type === "setListPrivate" ? "shareList" : e.type,
         list: s.listName,
         ...(s.itemName !== undefined && { item: s.itemName }),
         ...(s.oldName !== undefined && { oldName: s.oldName }),

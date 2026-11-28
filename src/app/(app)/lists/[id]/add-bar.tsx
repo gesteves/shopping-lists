@@ -57,7 +57,7 @@ export function AddBar({
     listbox: useId(),
   };
 
-  const candidates = useSuggestionCandidates();
+  const candidates = useSuggestionCandidates(listId);
   const suggestions = useMemo(() => {
     if (!candidates) return [];
     // The unchecked items of this list are there already.

@@ -75,9 +75,14 @@ export async function recreateFor(ops: Op[]): Promise<Recreate | null> {
     items: todo.map((t) => t.item),
     run: async () => {
       const newListId = crypto.randomUUID();
+      // The new list keeps the privacy of the old one (#154).
       await mutate({
         type: "createList",
-        args: { listId: newListId, name: list.name },
+        args: {
+          listId: newListId,
+          name: list.name,
+          private: list.private === true,
+        },
       });
       for (const { op } of todo) {
         if (op.type === "addItem") {

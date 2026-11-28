@@ -23,15 +23,18 @@ export function ItemRow({
   item,
   onEdit,
   onPick,
-  canPick,
+  canMove,
+  canCopy,
   expiresInDays,
 }: {
   item: ItemRecord;
   onEdit: (item: ItemRecord) => void;
   /** Open the Move or Copy dialog for the item. */
   onPick: (item: ItemRecord, mode: PickMode) => void;
-  /** False if there is no other list to move or copy to. */
-  canPick: boolean;
+  /** False if there is no list to move to (#154: of the same kind). */
+  canMove: boolean;
+  /** False if there is no other list to copy to. */
+  canCopy: boolean;
   /** Local calendar days until the delete, for an item in "Older items". */
   expiresInDays?: number;
 }) {
@@ -66,14 +69,18 @@ export function ItemRow({
     await mutate({ type: "markOutOfStock", args: { itemId: item.id } });
     // Offer to get it at another store. To decline, do nothing: the toast
     // closes itself.
-    if (!canPick) return;
+    if (!canMove && !canCopy) return;
     showToast({
       message: copy.item.markedOutOfStock(item.name),
       icon: "cart-circle-xmark",
       duration: 10_000,
       actions: [
-        { label: copy.item.move, run: () => onPick(item, "move") },
-        { label: copy.item.copy, run: () => onPick(item, "copy") },
+        ...(canMove
+          ? [{ label: copy.item.move, run: () => onPick(item, "move") }]
+          : []),
+        ...(canCopy
+          ? [{ label: copy.item.copy, run: () => onPick(item, "copy") }]
+          : []),
       ],
     });
   }
@@ -200,11 +207,11 @@ export function ItemRow({
           <wa-icon slot="icon" name="pencil"></wa-icon>
           {copy.item.edit}
         </wa-dropdown-item>
-        <wa-dropdown-item value="move" disabled={!canPick}>
+        <wa-dropdown-item value="move" disabled={!canMove}>
           <wa-icon slot="icon" name="swap"></wa-icon>
           {copy.item.move}
         </wa-dropdown-item>
-        <wa-dropdown-item value="copy" disabled={!canPick}>
+        <wa-dropdown-item value="copy" disabled={!canCopy}>
           <wa-icon slot="icon" name="copy"></wa-icon>
           {copy.item.copy}
         </wa-dropdown-item>

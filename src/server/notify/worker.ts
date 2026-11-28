@@ -6,7 +6,7 @@ import "server-only";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { copy } from "@/copy";
 import { getDb, type Db } from "@/db/client";
-import { activity, listMutes, users } from "@/db/schema";
+import { activity, listMutes, lists, users } from "@/db/schema";
 import { isAllowedEmail } from "@/lib/allowlist";
 import type { PushPayload } from "@/shared/push";
 import { canPushTo, sendToUser } from "../push";
@@ -155,7 +155,8 @@ export class Notifier {
     );
   }
 
-  async #flush(group: ActivityEvent[]): Promise<void> {
+  async #flush(rows: ActivityEvent[]): Promise<void> {
+    let group = rows;
     const db = this.#db;
     const actorId = group[0].actorId;
     const ids = group.map((e) => e.id);
@@ -176,6 +177,25 @@ export class Notifier {
           .run();
       }
     });
+
+    // A private list sends no push (#154). The rows on a private list have
+    // notified_at set at insert. These are the rows from before the list
+    // became private.
+    const privateLists = new Set(
+      db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(
+          and(
+            eq(lists.private, true),
+            inArray(lists.id, [...new Set(group.map((e) => e.listId))]),
+          ),
+        )
+        .all()
+        .map((l) => l.id),
+    );
+    group = group.filter((e) => !privateLists.has(e.listId));
+    if (group.length === 0) return;
 
     const actor = db
       .select({ name: users.name })
