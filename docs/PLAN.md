@@ -81,7 +81,7 @@ Schema in `src/db/schema.ts`.
 | `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, tombstoned_at (server time of the delete, #101), clocks (JSON), summary and summary_key (see List summaries), seq |
 | `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, out_of_stock_at (the op time of the mark, or null, #131), created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at (server time). It makes pushes idempotent: a retry gets the stored result. The purge keeps the rows for 180 days (#119). |
-| `activity` | id, op_id, actor_id, via, type (the op type; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed; `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
+| `activity` | id, op_id, actor_id, via, type (the op type; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed; `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131; an add of a name that is checked on the list has `unchecked`, #133; the values for collapse, #133: see Notifications), at, notified_at. A bulk op (`clearChecked`, `uncheckAll`, `checkAll`) writes one row for each item that it changed, with the op type and the item (#133; older rows: one row with `count` and no item). Drives notifications. A partial index covers the rows with no `notified_at`. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at, failure_count, failing_since, last_failure_at (#118) |
 | `list_mutes` | user_id, list_id |
 | `server_seq` | one global counter and `purged_seq` (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
@@ -196,13 +196,34 @@ Code in `src/server/notify/`.
 **Recipients:** every user except the actor who is still in `ALLOWED_EMAILS` (#100). Muted lists are left out per recipient, and so are disabled devices. A recipient with no enabled device, or a server with no VAPID keys, gets no text and thus no Claude call (`canPushTo()`, #118).
 
 **`collapse.ts`:** cancels out changes that add up to nothing.
-- Check then uncheck → nothing. An edit or a move that unchecked (#112) counts as the uncheck, and so does a mark out of stock that unchecked (#131).
+- Check then uncheck → nothing. An edit or a move that unchecked (#112) counts as the uncheck, and so does a mark out of stock that unchecked (#131) and an add of a name that is checked on the list (#133).
 - Out of stock then in stock (or the other way) → nothing (#131). A check or a move that marked the item in stock counts as the "in stock"; the check or the move stays. Add then out of stock → "added" and "marked out of stock".
+- If the event that tells an uncheck or an "in stock" cancels out, but the state change stays, collapse gives "unchecked" or "marked in stock" (#133). For example: an edit that unchecked, then an edit back; a move that unchecked, then a move back; a check of an out of stock item, then an uncheck.
 - Add then delete, including an undone delete → nothing.
 - Add then update → "added".
-- Several updates → one update.
+- Several updates → one update, with only the fields that end at a different value. Updates that all end at their first value → nothing (#133).
 - An item or a list that is not there at the start and at the end of the burst (new or deleted before, and deleted at the end) → nothing. For such a list, also nothing for its items (#118).
 - Each kept event has only the snapshot keys of its type (`SNAPSHOT_KEYS` in `types.ts`, #118). `summaryInput` uses the same keys. Thus an "added" never has the old name, the from list, or the fields of a later rename or move.
+
+**Pairs that cancel out (#133).** Each pair below gives no push, in each order where both orders are possible, also mixed with other events. A burst of only such pairs sends nothing, and makes no Claude call.
+- Check / uncheck an item (app, MCP `check_items` / `uncheck_items`).
+- Out of stock / in stock (app item menu, MCP `update_item` with `out_of_stock`).
+- Add / delete an item, and the Undo of a copy (a delete of the new item).
+- Delete an item / Undo (restore).
+- Delete a list / Undo (restore). Create / delete a list.
+- Rename a list and back. Move an item and back (also the Undo of a move).
+- Edit an item and back: name, quantity, or notes (app edit dialog, MCP `update_item`).
+- Check all / Undo (an uncheck of each item). Uncheck all / Undo (a check of each item). Delete checked / Undo (a restore of each item). Check all / uncheck all, in each order. MCP `uncheck_all` and `clear_checked` are the same bulk ops.
+- An item event and a bulk event of the same item, for example "check milk", then "uncheck all".
+- Add a name that is checked on the list ("buy it again", app or MCP `add_items`) / check it.
+- Delete an item / add a new item with the same name (exact), quantity, and notes to the same list. The deleted item must not be checked or out of stock, its other changes in the burst must cancel out, and the new item must end unchecked and in stock.
+
+How it works:
+- **Edits:** the snapshot of an update has the old and new values of the fields that changed: `oldName` and `itemName` (there before #133), `oldQuantity` and `quantity`, `oldNotes` and `notes`. A field ends at its first value if the old value of its first update is the new value of its last update. Older rows have no values: their fields count as changed.
+- **Bulk ops:** each Undo sends one op for each item (`list-menu.tsx`). Thus a bulk op writes one row for each item, and collapse treats each row as a delete, an uncheck, or a check of that item (a `checkAll` row has `inStock` if it marked the item in stock). The rows that are left give one bulk event for each op type and list, with their count, at the place of the first row. Thus a partial cancel gives the correct count. An older bulk row (one row, `count`, no item) stays as it is.
+- **Delete and add again:** an add and a delete have `quantity` and `notes` in the snapshot, and a delete has `checked` and `outOfStock` when they are true. The new item has a new ID, thus collapse compares the two item groups after it collapses each one.
+- The values (`quantity`, `notes`, `oldQuantity`, `oldNotes`, `checked`, `outOfStock`) are not in `SNAPSHOT_KEYS`, thus they do not go to Claude. A name, a quantity, or notes that ends at its first value is not in `fields`, and an `oldName` that ends at the current name is dropped.
+- **Not a cancel:** "Check all, then Undo" of an item that was out of stock: the check marked it in stock, and the Undo does not mark it out of stock again. The push says "marked in stock". The same for a delete of a checked item and an add again: the new item is unchecked.
 
 **Each burst (#89):** `summarize.ts` calls Claude, also for one event, because Claude writes item names in lowercase, as in a sentence ("Sam added eggs to the “Whole Foods” list."). The fallback for one event is its template, with curly quotes, a/an, and "(via Claude)".
 - `@anthropic-ai/sdk`, model `claude-sonnet-5-5`, with `output_config: { effort: "low", format: <zod { body: string }> }`.

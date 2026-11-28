@@ -197,6 +197,112 @@ describe("Notifier", () => {
     ).toEqual([]);
   });
 
+  describe("pairs that cancel out (#133)", () => {
+    const MILK = crypto.randomUUID();
+    const EGGS = crypto.randomUUID();
+    const BREAD = crypto.randomUUID();
+    const op = (type: string, args: Record<string, unknown>) => {
+      now += 1000;
+      act(SAM, { type, args } as never);
+    };
+
+    /** Milk (checked), eggs, and bread, sent and done. */
+    function seedItems() {
+      seedLists();
+      op("addItem", { itemId: MILK, listId: LIST, name: "Milk" });
+      op("addItem", {
+        itemId: EGGS,
+        listId: LIST,
+        name: "Eggs",
+        notes: "Large",
+      });
+      op("addItem", { itemId: BREAD, listId: LIST, name: "Bread" });
+      op("check", { itemId: MILK });
+      db.update(activity)
+        .set({ notifiedAt: new Date(now) })
+        .run();
+    }
+
+    it("sends no push and makes no Claude call for a burst of only such pairs", async () => {
+      seedItems();
+      // An edit that goes back.
+      op("updateItem", { itemId: EGGS, fields: { quantity: 2 } });
+      op("updateItem", {
+        itemId: EGGS,
+        fields: { quantity: 1, notes: "Small" },
+      });
+      op("updateItem", { itemId: EGGS, fields: { notes: "Large" } });
+      op("updateItem", { itemId: BREAD, fields: { name: "Rye bread" } });
+      op("updateItem", { itemId: BREAD, fields: { name: "Bread" } });
+      // Check all, then its undo.
+      op("checkAll", { listId: LIST });
+      op("uncheck", { itemId: EGGS });
+      op("uncheck", { itemId: BREAD });
+      // Uncheck all, then its undo.
+      op("uncheckAll", { listId: LIST });
+      op("check", { itemId: MILK });
+      // Delete checked, then its undo.
+      op("clearChecked", { listId: LIST });
+      op("restoreItem", { itemId: MILK });
+      // Check eggs, then uncheck all.
+      op("check", { itemId: EGGS });
+      op("uncheckAll", { listId: LIST });
+      op("check", { itemId: MILK });
+      // An add of a checked name, then a check.
+      op("addItem", {
+        itemId: crypto.randomUUID(),
+        listId: LIST,
+        name: "milk",
+      });
+      op("check", { itemId: MILK });
+      // Delete bread, then add it again.
+      op("deleteItem", { itemId: BREAD });
+      op("addItem", {
+        itemId: crypto.randomUUID(),
+        listId: LIST,
+        name: "Bread",
+      });
+      // Out of stock, then in stock.
+      op("markOutOfStock", { itemId: EGGS });
+      op("markInStock", { itemId: EGGS });
+
+      now += QUIET_MS;
+      const summarize = vi.fn(async () => "Sam made changes.");
+      await notifier({ summarize }).tick();
+      expect(summarize).not.toHaveBeenCalled();
+      expect(sent).toEqual([]);
+      expect(pendingActivity(db).all()).toEqual([]);
+    });
+
+    it("gives the correct count after a partial cancel", async () => {
+      seedItems();
+      op("checkAll", { listId: LIST });
+      op("uncheck", { itemId: EGGS });
+      op("updateItem", { itemId: MILK, fields: { quantity: 3 } });
+      now += QUIET_MS;
+      const seen: ActivityEvent[][] = [];
+      await notifier({
+        summarize: async (events) => {
+          seen.push(events);
+          return "Sam checked off bread.";
+        },
+      }).tick();
+      expect(seen.map((events) => summaryInput(events, "Sam").changes)).toEqual(
+        [
+          [
+            { type: "checkAll", list: "Whole Foods", count: 1 },
+            {
+              type: "updateItem",
+              list: "Whole Foods",
+              item: "Milk",
+              fields: ["quantity"],
+            },
+          ],
+        ],
+      );
+    });
+  });
+
   it("does not send changes to a muted list", async () => {
     seedLists();
     setListMuted(ALEX.id, LIST, true, db);

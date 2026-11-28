@@ -20,7 +20,10 @@ type SnapshotKey = keyof ActivitySnapshot;
 /**
  * The snapshot keys that each event type uses. Collapse and the model input
  * keep only these keys, thus a key of a different event (for example the
- * `fromListName` of a later move on an add) does not go to the text.
+ * `fromListName` of a later move on an add) does not go to the text. The
+ * values (`quantity`, `notes`, `oldQuantity`, `oldNotes`, `checked`,
+ * `outOfStock`) are only for collapse (#133): they are not here, thus they
+ * do not go to Claude.
  */
 export const SNAPSHOT_KEYS: Record<OpType, readonly SnapshotKey[]> = {
   createList: ["listName"],
