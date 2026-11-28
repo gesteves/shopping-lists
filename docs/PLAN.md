@@ -506,7 +506,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 - template strings and a/an;
 - the summarizer fallback path, with the SDK mocked.
 
-**End-to-end tests (Playwright):** each test runs on the `mobile` (WebKit) and `desktop` (Chromium) projects. A test with the tag `@once` runs on desktop only, because the browser does not change its result (#85). When the stub is on, the Better Auth rate limit is off: all the e2e requests come from one IP. The e2e server gets `ANTHROPIC_API_KEY=""` (#143): the env wins over `.env.local`, thus a local run makes no Claude calls and runs no summary worker, the same as CI.
+**End-to-end tests (Playwright):** each test runs on the `mobile` (WebKit) and `desktop` (Chromium) projects. A test with the tag `@once` runs on desktop only, because the browser does not change its result (#85). When the stub is on, the Better Auth rate limit is off: all the e2e requests come from one IP. The e2e server gets `ANTHROPIC_API_KEY=""` (#143): the env wins over `.env.local`, thus a local run makes no Claude calls and runs no summary worker, the same as CI. Playwright never uses a server that is already on the port (`reuseExistingServer: false`): such a server can have the key of `.env.local`. The unit tests get `ANTHROPIC_API_KEY=""` from `vitest.config.mts`, also when the shell has a key, and `src/test/no-claude.ts` stops each request to an Anthropic host. `src/test/no-claude.test.ts` checks the guards.
 - two browser contexts as two users: realtime updates within about 1s, and presence badges;
 - `context.setOffline(true)`: make edits, go back online, confirm they reconcile, with conflicting edits on both sides;
 - the undo toast;

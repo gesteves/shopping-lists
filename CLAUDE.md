@@ -84,6 +84,7 @@ This project uses Next.js 16, with Cache Components on. Your training data can b
 - Use the `cf` CLI for Cloudflare. Run each change with `--dry-run` first.
 - The MCP server follows spec 2026-07-28. Read the spec again before MCP work.
 - For Claude API code, load the `claude-api` skill first.
+- Tests never call Claude (the Anthropic API), locally or in CI. `.env.local` has a real key, and each call costs money. `vitest.config.mts` sets `ANTHROPIC_API_KEY` to `""`, and `src/test/no-claude.ts` stops each request to an Anthropic host. The e2e server gets `ANTHROPIC_API_KEY: ""`, and Playwright never uses a server that is already on the port. `src/test/no-claude.test.ts` checks these guards: do not remove them. A test that needs a Claude response gives a fake `client`. Only `npm run try:summaries` calls Claude, on purpose.
 - Prompts: put all the prompts for Claude in `src/prompts/index.ts` (import `prompts` from `@/prompts`). This includes system prompts and the MCP server instructions. The MCP tool descriptions stay in `TOOLS`.
 - For UI work, use the `frontend-design` skill.
 - UI copy: put all text that the app shows in the dictionary (`src/copy/en.ts`, import `copy` from `@/copy`). This includes labels, `aria-label`, sr-only text, toasts, and push text. Text with values is a function; use `plural` for counts. The e2e tests find text through `copy` too. List and item names are data. ESLint refuses JSX text and literal text props.

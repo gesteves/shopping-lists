@@ -14,5 +14,9 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     environment: "node",
+    // No Claude in the tests: no key, also when the shell has one, and no
+    // request to an Anthropic host (src/test/no-claude.ts).
+    env: { ANTHROPIC_API_KEY: "" },
+    setupFiles: ["src/test/no-claude.ts"],
   },
 });
