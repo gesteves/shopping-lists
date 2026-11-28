@@ -6,7 +6,7 @@ export interface Entry {
   name: string;
   quantity: number;
   notes: string;
-  /** The add bar has no URL field. A copy (#140) gives one. */
+  /** The URL (#140). Normalized before the dedupe prompt. */
   url?: string;
 }
 

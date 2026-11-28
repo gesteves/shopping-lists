@@ -4,16 +4,28 @@
 export const URL_MAX = 2000;
 
 const SCHEME = /^[a-z][a-z\d+.-]*:/i;
+/**
+ * A host after the URL parser: labels of letters, digits, "_", and "-" (an
+ * IDN is punycode then), or an IPv6 address in brackets. Chromium accepts a
+ * space in a host and encodes it ("not%20a%20url"); Node refuses it. This
+ * check makes both the same.
+ */
+const HOST =
+  /^(?:\[[\da-f:.]+\]|[\w](?:[\w-]*[\w])?(?:\.[\w](?:[\w-]*[\w])?)*\.?)$/i;
 
 /**
  * True if `value` is an http or https URL with a host. Only these URLs can
  * go in an item: the app opens them in a new tab, thus a `javascript:` URL
- * must never get in.
+ * must never get in. No whitespace: the parsers of the browsers do not
+ * agree on it, and the server must accept each URL that the client accepts.
  */
 export function isWebUrl(value: string): boolean {
-  if (!URL.canParse(value)) return false;
+  if (/\s/.test(value) || !URL.canParse(value)) return false;
   const url = new URL(value);
-  return (url.protocol === "http:" || url.protocol === "https:") && !!url.host;
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    HOST.test(url.hostname)
+  );
 }
 
 /**

@@ -8,8 +8,9 @@ import { useMedia } from "@/client/use-media";
 import { copy } from "@/copy";
 import { ITEM_NAME_MAX, NOTES_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
-import { URL_MAX, normalizeUrl } from "@/shared/url";
+import { normalizeUrl } from "@/shared/url";
 import { Stepper } from "../../_components/stepper";
+import { UrlField, type UrlFieldHandle } from "../../_components/url-field";
 import { useWaEvents } from "../../_components/wa";
 
 /**
@@ -87,16 +88,7 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   const [notes, setNotes] = useState(item.notes);
   // A row from an older server has no url.
   const [url, setUrl] = useState(item.url ?? "");
-  const urlField = useRef<{ reportValidity(): boolean } | null>(null);
-
-  /** Mark the URL field invalid, thus the form does not submit. */
-  function onUrlInput(event: Event) {
-    const field = event.target as HTMLInputElement;
-    setUrl(field.value);
-    field.setCustomValidity(
-      normalizeUrl(field.value) === undefined ? copy.itemSheet.urlInvalid : "",
-    );
-  }
+  const urlField = useRef<UrlFieldHandle>(null);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -143,24 +135,13 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
         />
       </div>
       <Field>
-        {/* Text with the URL keyboard, not type="url": the browser refuses a
-            URL with no scheme, and normalizeUrl adds https:// to it. */}
-        <wa-input
-          ref={(field) => {
-            urlField.current = field;
-          }}
+        <UrlField
           label={copy.itemSheet.url}
           placeholder={copy.itemSheet.urlPlaceholder}
           value={url}
-          onInput={onUrlInput}
-          inputmode="url"
-          autocapitalize="off"
-          autocorrect={false}
-          spellcheck={false}
-          enterkeyhint="done"
-          maxlength={URL_MAX}
-          with-clear
-        ></wa-input>
+          onChange={setUrl}
+          handleRef={urlField}
+        />
       </Field>
       <Field>
         <wa-textarea

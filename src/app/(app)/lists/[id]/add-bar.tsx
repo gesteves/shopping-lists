@@ -16,14 +16,17 @@ import { showToast } from "@/client/toasts";
 import { nameKey } from "@/shared/names";
 import { ITEM_NAME_MAX, NOTES_MAX, QUANTITY_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
+import { normalizeUrl } from "@/shared/url";
 import { checkedFields, type Entry } from "@/client/duplicate";
 import { Stepper } from "../../_components/stepper";
+import { UrlField, type UrlFieldHandle } from "../../_components/url-field";
 import { ConfirmDialog } from "../../_components/wa";
 
 /**
- * The add bar at the bottom of a list. The name is required. The quantity
- * and the notes are behind the "Quantity and notes" button, below the name. Typing shows suggestions from past
- * items (#14). A name that is already on the list asks first.
+ * The add bar at the bottom of a list. The name is required. The quantity,
+ * the URL (#140), and the notes are behind the "Quantity, URL, and notes"
+ * button, below the name. Typing shows suggestions from past items (#14).
+ * A name that is already on the list asks first.
  */
 export function AddBar({
   listId,
@@ -36,6 +39,8 @@ export function AddBar({
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
+  const [url, setUrl] = useState("");
+  const urlField = useRef<UrlFieldHandle>(null);
   const [details, setDetails] = useState(false);
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -69,6 +74,7 @@ export function AddBar({
     setName("");
     setQuantity(1);
     setNotes("");
+    setUrl("");
     setDetails(false);
     setActive(-1);
     setDismissed(false);
@@ -77,6 +83,16 @@ export function AddBar({
   async function add(entry: Entry) {
     const key = nameKey(entry.name);
     if (!key) return;
+    // The field is invalid, thus a submit cannot get here with it open. A
+    // suggestion can, and so can a submit with the details closed: show
+    // the field and its error.
+    const link = normalizeUrl(entry.url ?? "");
+    if (link === undefined) {
+      setDetails(true);
+      requestAnimationFrame(() => urlField.current?.reportValidity());
+      return;
+    }
+    entry = { ...entry, url: link };
     const match = items.find((i) => nameKey(i.name) === key);
     if (match) {
       // Keep the form: Cancel must not lose the name, quantity, and notes.
@@ -97,6 +113,7 @@ export function AddBar({
           name: entry.name.trim(),
           quantity: entry.quantity,
           notes: entry.notes.trim(),
+          url: link,
         },
       },
     ]);
@@ -118,7 +135,7 @@ export function AddBar({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    void add({ name, quantity, notes });
+    void add({ name, quantity, notes, url });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -134,7 +151,7 @@ export function AddBar({
       setDismissed(true);
     } else if (event.key === "Enter" && active >= 0) {
       event.preventDefault();
-      void add({ name: suggestions[active].name, quantity, notes });
+      void add({ name: suggestions[active].name, quantity, notes, url });
     }
   }
 
@@ -189,7 +206,7 @@ export function AddBar({
               aria-selected={i === active}
               // Keep the focus in the field, so the keyboard stays open.
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => void add({ name: s.name, quantity, notes })}
+              onClick={() => void add({ name: s.name, quantity, notes, url })}
               className={`flex min-h-12 cursor-pointer items-center px-4 py-2 text-lg leading-snug wrap-anywhere ${i === active ? "bg-accent-soft" : "hover:bg-accent-soft"}`}
             >
               {s.name}
@@ -254,6 +271,13 @@ export function AddBar({
             onChange={setQuantity}
             label={copy.addBar.quantity}
           />
+          <UrlField
+            label={copy.addBar.url}
+            placeholder={copy.addBar.urlPlaceholder}
+            value={url}
+            onChange={setUrl}
+            handleRef={urlField}
+          />
           <wa-textarea
             label={copy.addBar.notes}
             value={notes}
@@ -298,9 +322,9 @@ export function AddBar({
 function checkedBody(item: ItemRecord, entry: Entry) {
   const fields = checkedFields(item, entry);
   return fields
-    ? copy.addBar.checkedBodyChanges(
-        fields.quantity,
-        fields.notes !== undefined,
-      )
+    ? copy.addBar.checkedBodyChanges(fields.quantity, {
+        notes: fields.notes !== undefined,
+        url: fields.url !== undefined,
+      })
     : copy.addBar.checkedBody;
 }

@@ -5,6 +5,11 @@ describe("isWebUrl", () => {
   it("accepts http and https URLs with a host", () => {
     expect(isWebUrl("https://example.com")).toBe(true);
     expect(isWebUrl("http://example.com/a?b=c#d")).toBe(true);
+    expect(isWebUrl("https://xn--caf-dma.example/")).toBe(true);
+    expect(isWebUrl("https://café.example/")).toBe(true);
+    expect(isWebUrl("http://[::1]:3000/")).toBe(true);
+    expect(isWebUrl("http://127.0.0.1/")).toBe(true);
+    expect(isWebUrl("https://my_shop.example.com/")).toBe(true);
   });
 
   it("refuses other schemes and text that is not a URL", () => {
@@ -16,6 +21,9 @@ describe("isWebUrl", () => {
       "example.com",
       "https://",
       "not a url",
+      "https://not a url",
+      "https://example.com/a b",
+      "https://exa%mple.com",
       "",
     ]) {
       expect(isWebUrl(value), value).toBe(false);

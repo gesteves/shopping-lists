@@ -102,7 +102,7 @@ test("the sheet refuses a URL that is not a web address", async ({ page }) => {
   await expect(sheet.getByLabel(copy.itemSheet.name)).toBeVisible();
   await expect(sheet.locator("wa-input").nth(1)).toHaveJSProperty(
     "validationMessage",
-    copy.itemSheet.urlInvalid,
+    copy.common.urlInvalid,
   );
 
   // A good URL saves. Then an empty field removes it.
@@ -118,4 +118,56 @@ test("the sheet refuses a URL that is not a web address", async ({ page }) => {
   await expect(sheet).toBeHidden();
   await expect(item(page, "Tea")).not.toContainText("shop.example.com");
   expect(await menuItems(page, "Tea")).not.toContain(copy.item.visitPage);
+});
+
+test("the add bar adds an item with a URL", async ({ page }) => {
+  await signIn(page);
+  await newListWith(page, "Kettle");
+  const bar = page.getByRole("form", { name: copy.addBar.label });
+  const field = bar.getByRole("textbox", { name: copy.addBar.url });
+
+  // A bad URL: no add. The field shows its error.
+  await bar.getByRole("combobox", { name: copy.addBar.name }).fill("Grinder");
+  await bar.getByRole("button", { name: copy.addBar.details }).click();
+  await field.fill("not a url");
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  await expect(bar.locator("wa-input")).toHaveJSProperty(
+    "validationMessage",
+    copy.common.urlInvalid,
+  );
+  await expect(item(page, "Grinder")).toHaveCount(0);
+
+  // A good URL adds the item, and the form clears.
+  await field.fill("shop.example.com/grinder");
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  await expect(item(page, "Grinder")).toContainText("shop.example.com");
+  await expect(field).toHaveCount(0);
+
+  // A bad URL with the details closed: the add bar opens them.
+  await bar.getByRole("combobox", { name: copy.addBar.name }).fill("Scale");
+  await bar.getByRole("button", { name: copy.addBar.details }).click();
+  await field.fill("javascript:alert(1)");
+  await bar.getByRole("button", { name: copy.addBar.details }).click();
+  await expect(field).toHaveCount(0);
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  await expect(field).toHaveValue("javascript:alert(1)");
+  await expect(item(page, "Scale")).toHaveCount(0);
+
+  // A checked item with the name gets the URL when the user unchecks it.
+  await item(page, "Kettle").click();
+  await expect(item(page, "Kettle")).toHaveAttribute("aria-checked", "true");
+  await bar.getByRole("combobox", { name: copy.addBar.name }).fill("kettle");
+  await field.fill("shop.example.com/kettle");
+  await bar.getByRole("button", { name: copy.addBar.add, exact: true }).click();
+  const prompt = dialog(page, copy.addBar.checkedTitle("Kettle"));
+  await expect(
+    prompt.getByText(
+      copy.addBar.checkedBodyChanges(undefined, { notes: false, url: true }),
+    ),
+  ).toBeVisible();
+  await prompt
+    .getByRole("button", { name: copy.addBar.checkedConfirm })
+    .click();
+  await expect(item(page, "Kettle")).toHaveAttribute("aria-checked", "false");
+  await expect(item(page, "Kettle")).toContainText("shop.example.com");
 });
