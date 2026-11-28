@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
-import { useListSummaries } from "@/client/hooks";
+import { useListSummaries, useOtherUserNames } from "@/client/hooks";
 import { listLine, type ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
@@ -129,10 +129,11 @@ export function DeleteDialog({
   onDeleted,
 }: {
   open: boolean;
-  list: Pick<ListSummary, "id" | "name" | "remaining">;
+  list: Pick<ListSummary, "id" | "name" | "total">;
   onClose: () => void;
   onDeleted?: () => void;
 }) {
+  const others = useOtherUserNames() ?? [];
   async function confirm() {
     onClose();
     await mutate({ type: "deleteList", args: { listId: list.id } });
@@ -155,7 +156,7 @@ export function DeleteDialog({
       onConfirm={confirm}
       onClose={onClose}
     >
-      {copy.lists.deleteBody(list.remaining)}
+      {copy.lists.deleteBody(list.total, others)}
     </ConfirmDialog>
   );
 }

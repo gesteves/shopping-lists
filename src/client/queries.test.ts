@@ -1,12 +1,13 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
-import { ClientDb } from "./db";
+import { ClientDb, setMeta } from "./db";
 import {
   listLine,
   readList,
   readListSummaries,
   readLists,
+  readOtherUserNames,
   splitOlder,
   type ListSummary,
 } from "./queries";
@@ -121,6 +122,33 @@ describe("readListSummaries", () => {
       ["Target", 2],
     ]);
   });
+
+  it("counts the items that are not deleted, checked or not", async () => {
+    await db.lists.bulkPut([list("l", "Target"), list("m", "Costco")]);
+    await db.items.bulkPut([
+      item("a", 1),
+      item("c", 1, true),
+      item("d", 1, false, 5),
+    ]);
+    expect((await readListSummaries(db)).map((l) => [l.name, l.total])).toEqual(
+      [
+        ["Costco", 0],
+        ["Target", 2],
+      ],
+    );
+  });
+});
+
+describe("readOtherUserNames", () => {
+  it("gives the names of the other users, by name", async () => {
+    await db.users.bulkPut([
+      { id: "me", name: "Pat", image: null },
+      { id: "s", name: "Sam", image: null },
+      { id: "a", name: "Alex", image: null },
+    ]);
+    await setMeta(db, "userId", "me");
+    expect(await readOtherUserNames(db)).toEqual(["Alex", "Sam"]);
+  });
 });
 
 describe("readListSummaries names", () => {
@@ -138,6 +166,7 @@ describe("listLine", () => {
   const summary = (patch: Partial<ListSummary>): ListSummary => ({
     ...list("l", "Target"),
     remaining: 0,
+    total: 0,
     names: [],
     ...patch,
   });
