@@ -25,7 +25,6 @@ const RESULT: PurgeResult = {
   lists: 1,
   items: 2,
   processedOps: 3,
-  activity: 4,
   tombstoned: 0,
   purgedSeq: 5,
 };
@@ -163,6 +162,33 @@ describe("purgeTombstones", () => {
     expect(purge().purgedSeq).toBe(purgedItemSeq);
   });
 
+  it("keeps the history of purged lists and items (#152)", () => {
+    const old = NOW - 400 * DAY;
+    apply(
+      old,
+      op("createList", { listId: LIST, name: "Old" }, old),
+      op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
+      op("deleteItem", { itemId: ITEM }, old + 1),
+      op("deleteList", { listId: LIST }, old + 1),
+    );
+    // All rows are sent, and older than one year.
+    db.update(activity)
+      .set({ notifiedAt: new Date(old) })
+      .run();
+    const before = db.select().from(activity).all();
+    expect(before.map((r) => r.type)).toEqual([
+      "createList",
+      "addItem",
+      "deleteItem",
+      "deleteList",
+    ]);
+
+    expect(purge()).toMatchObject({ lists: 1, items: 1 });
+    expect(getList(LIST)).toBeUndefined();
+    expect(getItem(ITEM)).toBeUndefined();
+    expect(db.select().from(activity).all()).toEqual(before);
+  });
+
   it("makes the live items of an old deleted list tombstones, and deletes them later", () => {
     const old = NOW - 40 * DAY;
     apply(
@@ -298,7 +324,6 @@ describe("purgeTombstones", () => {
       lists: 0,
       items: 0,
       processedOps: 0,
-      activity: 0,
       tombstoned: 0,
       purgedSeq: 0,
     });
@@ -351,8 +376,20 @@ describe("purgeTombstones", () => {
       expect(pokes).toEqual([milk.seq]);
       expect(getItem(ITEM_2)?.deletedAt).toBeNull();
       expect(getItem(ITEM_3)?.deletedAt).toBeNull();
-      // No activity rows, thus no notification.
-      expect(db.select().from(activity).all()).toHaveLength(activityBefore);
+      // One history row (#152), with no actor, and sent: no notification.
+      const rows = db.select().from(activity).all();
+      expect(rows).toHaveLength(activityBefore + 1);
+      expect(rows.at(-1)).toMatchObject({
+        actorId: null,
+        via: "system",
+        type: "expireItem",
+        listId: LIST,
+        itemId: ITEM,
+        snapshot: { listName: "Target", itemName: "Milk" },
+        at: new Date(NOW),
+        opAt: new Date(NOW),
+        notifiedAt: new Date(NOW),
+      });
       // A second run deletes nothing.
       expect(expire()).toBe(0);
     });

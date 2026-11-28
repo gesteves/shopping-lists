@@ -140,7 +140,9 @@ describe("runMigrations", () => {
     expect(result.items).toEqual(
       expect.arrayContaining(["seq", "list_id,name_key", "name_key"]),
     );
-    expect(result.activity).toContain("list_id");
+    expect(result.activity).toEqual(
+      expect.arrayContaining(["op_at", "list_id,op_at", "item_id,op_at"]),
+    );
   });
 
   it("keeps server_seq to one row", () => {
@@ -188,6 +190,82 @@ describe("runMigrations", () => {
     const count = sqlite.prepare("SELECT count(*) FROM items").pluck().get();
     sqlite.close();
     expect(count).toBe(2);
+  });
+
+  it("keeps the activity rows in 0011, with op_at from at, and no list and item keys (#152)", () => {
+    dir = mkdtempSync(join(tmpdir(), "shopping-lists-"));
+    // The migrations up to 0010.
+    const old = join(dir, "drizzle-0010");
+    cpSync(MIGRATIONS_FOLDER, old, { recursive: true });
+    const journalPath = join(old, "meta", "_journal.json");
+    const copy = JSON.parse(
+      readFileSync(journalPath, "utf8"),
+    ) as typeof journal;
+    copy.entries = copy.entries.filter((e) => e.idx <= 10);
+    writeFileSync(journalPath, JSON.stringify(copy));
+    const path = join(dir, "test.db");
+    runMigrations(path, old);
+    const before = new Database(path);
+    before.exec(`
+      INSERT INTO users (id, name, email, email_verified, created_at, updated_at)
+        VALUES ('u1', 'Sam', 'sam@example.com', 1, 0, 0);
+      INSERT INTO lists (id, name, created_by, created_at, updated_by, updated_at, clocks, seq)
+        VALUES ('l1', 'Target', 'u1', 0, 'u1', 0, '{}', 1);
+      INSERT INTO items (id, list_id, name, name_key, created_by, created_at, updated_by, updated_at, clocks, seq)
+        VALUES ('i1', 'l1', 'Milk', 'milk', 'u1', 0, 'u1', 0, '{}', 2);
+      INSERT INTO activity (op_id, actor_id, via, type, list_id, item_id, snapshot, at, notified_at)
+        VALUES ('o1', 'u1', 'app', 'createList', 'l1', NULL, '{"listName":"Target"}', 1000, 1500),
+               ('o2', 'u1', 'mcp', 'addItem', 'l1', 'i1', '{"listName":"Target","itemName":"Milk"}', 2000, NULL);
+    `);
+    before.close();
+
+    runMigrations(path);
+
+    const sqlite = new Database(path);
+    const rows = sqlite
+      .prepare(
+        "SELECT id, op_id, actor_id, via, type, list_id, item_id, snapshot, at, op_at, notified_at FROM activity ORDER BY id",
+      )
+      .all();
+    expect(rows).toEqual([
+      {
+        id: 1,
+        op_id: "o1",
+        actor_id: "u1",
+        via: "app",
+        type: "createList",
+        list_id: "l1",
+        item_id: null,
+        snapshot: '{"listName":"Target"}',
+        at: 1000,
+        op_at: 1000,
+        notified_at: 1500,
+      },
+      {
+        id: 2,
+        op_id: "o2",
+        actor_id: "u1",
+        via: "mcp",
+        type: "addItem",
+        list_id: "l1",
+        item_id: "i1",
+        snapshot: '{"listName":"Target","itemName":"Milk"}',
+        at: 2000,
+        op_at: 2000,
+        notified_at: null,
+      },
+    ]);
+    const keys = (
+      sqlite.pragma("foreign_key_list(activity)") as { from: string }[]
+    ).map((k) => k.from);
+    expect(keys).toEqual(["actor_id"]);
+    // The delete of a list and an item keeps their history.
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.exec("DELETE FROM items; DELETE FROM lists;");
+    expect(sqlite.prepare("SELECT count(*) FROM activity").pluck().get()).toBe(
+      2,
+    );
+    sqlite.close();
   });
 
   it("fails when a migration leaves a row with a bad foreign key", () => {

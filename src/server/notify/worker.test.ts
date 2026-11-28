@@ -6,7 +6,7 @@ import { HlcClock, serialize } from "@/shared/hlc";
 import { opSchema, type OpInput } from "@/shared/ops";
 import type { PushPayload } from "@/shared/push";
 import { ALEX, SAM, createTestDb } from "@/test/db";
-import { applyOps } from "../ops";
+import { applyOps, expireCheckedItems } from "../ops";
 import { saveSubscription, setListMuted } from "../push";
 import { MAX_INPUT_CHANGES, summaryInput } from "./summarize";
 import type { ActivityEvent } from "./types";
@@ -322,6 +322,38 @@ describe("Notifier", () => {
     addItem("Milk", LIST);
     now += QUIET_MS;
     await notifier().tick();
+    expect(sent).toEqual([]);
+  });
+
+  it("sends nothing for a change of the server itself (#152)", async () => {
+    const start = now;
+    now -= 31 * 24 * 60 * 60 * 1000;
+    seedLists();
+    const itemId = crypto.randomUUID();
+    act(SAM, {
+      type: "addItem",
+      args: { itemId, listId: LIST, name: "Milk" },
+    } as never);
+    act(SAM, { type: "check", args: { itemId } } as never);
+    db.update(activity)
+      .set({ notifiedAt: new Date(now) })
+      .run();
+    now = start;
+    expect(
+      expireCheckedItems({
+        db,
+        clock: new HlcClock("server", undefined, () => now),
+        now: () => now,
+      }),
+    ).toBe(1);
+    // Also a system row that is not marked as sent.
+    db.update(activity)
+      .set({ notifiedAt: null })
+      .where(eq(activity.via, "system"))
+      .run();
+    const n = notifier();
+    now += MAX_WAIT_MS + QUIET_MS;
+    await n.tick();
     expect(sent).toEqual([]);
   });
 

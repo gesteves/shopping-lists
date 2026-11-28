@@ -148,9 +148,10 @@ export function tombstoneItems(
 /**
  * Delete each checked item whose check is older than EXPIRE_AFTER_DAYS
  * (#112). This is a write-path exception (CLAUDE.md): there is no person to
- * be the actor, thus it writes no processed_ops and no activity rows, and
- * sends no push. Each row becomes a tombstone (tombstoneItems), thus a newer
- * uncheck or edit brings it back. The normal purge removes the row 30 days
+ * be the actor, thus it writes no processed_ops. It writes one activity
+ * row for each item, with `via` "system", no actor, and `notified_at` set,
+ * thus the history has it but no push goes (#152). Each row becomes a
+ * tombstone (tombstoneItems), thus a newer uncheck or edit brings it back. The normal purge removes the row 30 days
  * later. It returns the number of deleted items.
  */
 export function expireCheckedItems(
@@ -162,8 +163,15 @@ export function expireCheckedItems(
   const cutoff = new Date(now.getTime() - EXPIRE_AFTER_DAYS * DAY_MS);
   const last = db.transaction((tx) => {
     const rows = tx
-      .select({ id: items.id, clocks: items.clocks })
+      .select({
+        id: items.id,
+        clocks: items.clocks,
+        listId: items.listId,
+        name: items.name,
+        listName: lists.name,
+      })
       .from(items)
+      .innerJoin(lists, eq(lists.id, items.listId))
       .where(
         and(
           eq(items.checked, true),
@@ -172,6 +180,21 @@ export function expireCheckedItems(
         ),
       )
       .all();
+    for (const row of rows) {
+      tx.insert(activity)
+        .values({
+          actorId: null,
+          via: "system",
+          type: "expireItem",
+          listId: row.listId,
+          itemId: row.id,
+          snapshot: { listName: row.listName, itemName: row.name },
+          at: now,
+          opAt: now,
+          notifiedAt: now,
+        })
+        .run();
+    }
     return { count: rows.length, seq: tombstoneItems(tx, rows, clock, now) };
   });
   if (last.seq !== null) bus.emit("poke", { seq: last.seq });
@@ -263,6 +286,7 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
         itemId: row.itemId ?? null,
         snapshot: row.snapshot,
         at: ctx.now,
+        opAt: opTime(op),
       })
       .run();
   }
@@ -755,6 +779,7 @@ function changeItem(
   };
   if (op.type === "moveItem") {
     snapshot.fromListName = getList(ctx, row.listId)?.name ?? "";
+    snapshot.fromListId = row.listId;
   }
   if (set.name !== undefined) snapshot.oldName = row.name;
   if (set.checked === false && op.type !== "uncheck") snapshot.unchecked = true;

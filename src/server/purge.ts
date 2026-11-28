@@ -19,14 +19,14 @@ import {
   sql,
 } from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
-import { activity, items, lists, processedOps } from "@/db/schema";
+import { items, lists, processedOps } from "@/db/schema";
 import type { HlcClock } from "@/shared/hlc";
 import { DAY_MS } from "@/shared/expiry";
 import { bus } from "./bus";
 import { getServerClock } from "./clock";
 import { expireCheckedItems, tombstoneItems } from "./ops";
 
-/** Delete tombstones and old sent activity rows after this many days. */
+/** Delete tombstones after this many days. */
 export const PURGE_AFTER_DAYS = 30;
 /**
  * Keep processed_ops rows this many days (#119). A retry of an op that the
@@ -44,7 +44,6 @@ export interface PurgeResult {
   lists: number;
   items: number;
   processedOps: number;
-  activity: number;
   /** The live items of old deleted lists that became tombstones. */
   tombstoned: number;
   /** The new value of server_seq.purged_seq. */
@@ -54,8 +53,8 @@ export interface PurgeResult {
 /**
  * Delete the rows of lists and items that the server marked as deleted more
  * than `olderThanDays` ago (`tombstoned_at`, server time). Also delete
- * processed_ops rows older than `keepOpsDays`, and old sent activity rows.
- * startPurger() runs it on a schedule.
+ * processed_ops rows older than `keepOpsDays`. The activity rows stay: they
+ * are the history (#152). startPurger() runs it on a schedule.
  *
  * `deleted_at` is the op time (the client clock), thus a delete that came
  * late would go at once. The server time keeps it for the full time (#101).
@@ -156,10 +155,6 @@ export function purgeTombstones(
       .delete(processedOps)
       .where(lt(processedOps.processedAt, opsCutoff))
       .run().changes;
-    const activityCount = tx
-      .delete(activity)
-      .where(and(isNotNull(activity.notifiedAt), lt(activity.at, cutoff)))
-      .run().changes;
 
     const row = tx.get<{ purged_seq: number }>(
       sql`INSERT INTO server_seq (id, value, purged_seq) VALUES (1, 0, ${maxSeq})
@@ -173,7 +168,6 @@ export function purgeTombstones(
         lists: listCount,
         items: itemCount,
         processedOps: opCount,
-        activity: activityCount,
         tombstoned: live.length,
         purgedSeq: row.purged_seq,
       },
