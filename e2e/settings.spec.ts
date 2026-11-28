@@ -110,7 +110,7 @@ function savedMute(page: Page) {
 test("mute and unmute a list", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name === "mobile",
-    "WebKit has no PushManager here: the list switch is hidden.",
+    "WebKit has no PushManager here: the list switch is disabled.",
   );
   // The list switch shows this device (#98): a subscribed browser.
   const endpoint = await fakePushBrowser(page, { subscribed: true });
@@ -188,6 +188,37 @@ function listSwitch(page: Page) {
   });
 }
 
+/**
+ * Hold each GET of the mutes until the returned function runs (#136). It
+ * wraps fetch in the page, thus it works with the service worker too. A new
+ * page holds them again.
+ */
+async function holdMutes(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { releaseMutes?: () => void };
+    const released = new Promise<void>((resolve) => {
+      w.releaseMutes = resolve;
+    });
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url =
+        input instanceof Request ? input.url : new URL(input, location.href);
+      const get = (init?.method ?? "GET") === "GET";
+      if (get && new URL(url).pathname === "/api/push/mutes") await released;
+      return original(input, init);
+    };
+  });
+  return () =>
+    page.evaluate(() =>
+      (window as unknown as { releaseMutes: () => void }).releaseMutes(),
+    );
+}
+
+/** Let the page apply the last responses, then the state must stay. */
+async function settle(page: Page) {
+  await page.waitForTimeout(500);
+}
+
 /** Wait until the list page knows the devices and the mutes. */
 async function switchesLoaded(page: Page, run: () => Promise<unknown>) {
   const devices = page.waitForResponse((r) =>
@@ -229,6 +260,31 @@ test.describe("the list switch shows this device (#98)", () => {
     }
   });
 
+  test("the switch shows at once, disabled until the state is known (#136)", async ({
+    page,
+  }) => {
+    const endpoint = await fakePushBrowser(page, { subscribed: true });
+    const release = await holdMutes(page);
+    await signIn(page);
+    try {
+      await saveFakeSubscription(page, endpoint, "Pop-in device");
+      await newList(page, "Pop in");
+      const host = switchControl(page, copy.list.notifications);
+      await expect(host).toBeVisible();
+      await expect(listSwitch(page)).toBeDisabled();
+      await expect(listSwitch(page)).not.toBeChecked();
+      const before = await host.boundingBox();
+
+      await release();
+      await expect(listSwitch(page)).toBeEnabled();
+      await expect(listSwitch(page)).toBeChecked();
+      // No layout shift: the switch keeps its place and its size.
+      expect(await host.boundingBox()).toEqual(before);
+    } finally {
+      await removeFakeSubscription(page, endpoint);
+    }
+  });
+
   test("a device that is off in Settings: off", async ({ page }) => {
     const endpoint = await fakePushBrowser(page, { subscribed: true });
     await signIn(page);
@@ -246,13 +302,49 @@ test.describe("the list switch shows this device (#98)", () => {
   });
 });
 
-test("Safari on iPhone outside the Home Screen app: no Notifications switch", async ({
+test("Safari on iPhone outside the Home Screen app: the Notifications switch stays disabled", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "An iPhone test.");
   await signIn(page);
   await switchesLoaded(page, () => newList(page, "iPhone"));
-  await expect(listSwitch(page)).toHaveCount(0);
+  await settle(page);
+  await expect(listSwitch(page)).toBeDisabled();
+  await expect(listSwitch(page)).not.toBeChecked();
+});
+
+test("no Notification or PushManager: the Notifications switch stays disabled (#136)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    delete w.Notification;
+    delete w.PushManager;
+  });
+  await signIn(page);
+  await switchesLoaded(page, () => newList(page, "No push"));
+  await expect(switchControl(page, copy.list.notifications)).toBeVisible();
+  await settle(page);
+  await expect(listSwitch(page)).toBeDisabled();
+  await expect(listSwitch(page)).not.toBeChecked();
+});
+
+test("Settings: the list switches show at once, disabled until the mutes load (#136)", async ({
+  page,
+}) => {
+  const release = await holdMutes(page);
+  await signIn(page);
+  const name = `Held ${randomUUID().slice(0, 8)}`;
+  await createList(page, name);
+  await page.getByRole("link", { name: copy.header.settings }).click();
+  const toggle = page.getByRole("switch", {
+    name: copy.settings.listSwitch(name),
+  });
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).not.toBeChecked();
+  await release();
+  await expect(toggle).toBeEnabled();
+  await expect(toggle).toBeChecked();
 });
 
 test.describe("errors", () => {

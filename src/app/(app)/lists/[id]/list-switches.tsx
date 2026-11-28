@@ -11,15 +11,18 @@ import { KeepScreenOnSwitch } from "../../_components/keep-screen-on";
  * (#82). Settings has the same switches. On a narrow screen they wrap.
  *
  * The Notifications switch shows this device (#98): it is on only if this
- * device gets pushes and the list is not muted. It is hidden where push
- * cannot work. On turns on push here (one tap) and unmutes the list. Off
- * mutes the list on all devices.
+ * device gets pushes and the list is not muted. It is always in the page,
+ * thus it does not pop in (#136). It is disabled until the device and the
+ * mutes are known, and where push cannot work. On turns on push here (one
+ * tap) and unmutes the list. Off mutes the list on all devices.
  */
 export function ListSwitches({ listId }: { listId: string }) {
   const { muted, setListMuted } = useMutedLists();
   const push = usePushDevice();
-  const show = muted !== undefined && push.status !== "loading";
-  const available = push.status !== "unavailable";
+  const ready =
+    muted !== undefined &&
+    push.status !== "loading" &&
+    push.status !== "unavailable";
 
   async function turnOn(control: HTMLInputElement) {
     if (push.status !== "on" && !(await push.enable())) {
@@ -55,17 +58,16 @@ export function ListSwitches({ listId }: { listId: string }) {
   return (
     <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
       <KeepScreenOnSwitch />
-      {show && available && (
-        <wa-switch
-          checked={push.status === "on" && !muted.has(listId)}
-          onChange={(event) => {
-            const control = event.currentTarget as unknown as HTMLInputElement;
-            void (control.checked ? turnOn(control) : turnOff(control));
-          }}
-        >
-          {copy.list.notifications}
-        </wa-switch>
-      )}
+      <wa-switch
+        disabled={!ready}
+        checked={push.status === "on" && muted?.has(listId) === false}
+        onChange={(event) => {
+          const control = event.currentTarget as unknown as HTMLInputElement;
+          void (control.checked ? turnOn(control) : turnOff(control));
+        }}
+      >
+        {copy.list.notifications}
+      </wa-switch>
     </div>
   );
 }

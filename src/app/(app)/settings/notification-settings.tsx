@@ -174,7 +174,10 @@ export function NotificationSettings() {
   );
 }
 
-/** A switch for each list: notifications about it, or not. */
+/**
+ * A switch for each list: notifications about it, or not. The switches show
+ * with the lists, disabled until the mutes are known (#136).
+ */
 function MutedLists() {
   const lists = useLists();
   const { muted, setListMuted } = useMutedLists();
@@ -189,7 +192,7 @@ function MutedLists() {
     }
   }
 
-  if (!lists || !muted || lists.length === 0) return null;
+  if (!lists || lists.length === 0) return null;
   return (
     <section aria-labelledby="lists" className="flex flex-col gap-3">
       <h2 id="lists" className="text-xl font-semibold">
@@ -207,7 +210,8 @@ function MutedLists() {
                 {list.name}
               </span>
               <wa-switch
-                checked={!muted.has(list.id)}
+                disabled={!muted}
+                checked={muted ? !muted.has(list.id) : false}
                 onChange={(event) =>
                   void toggleList(
                     list.id,
