@@ -6,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { copy } from "../src/copy";
 import {
   createList,
+  dialog,
   openList,
   scan,
   signIn,
@@ -83,6 +84,17 @@ for (const colorScheme of ["light", "dark"] as const) {
         await itemAction(page, "Milk", action);
         await expect(page.getByRole("dialog", { name: title })).toBeVisible();
         await scan(page, `${action} dialog`);
+        // The open select of the lists (#134).
+        await page.getByRole("combobox", { name: copy.item.targets }).click();
+        await expect(
+          dialog(page, title).getByRole("option").first(),
+        ).toBeVisible();
+        await scan(page, `${action} select`);
+        // The first Escape closes the select, the second the dialog.
+        await page.keyboard.press("Escape");
+        await expect(
+          dialog(page, title).getByRole("option").first(),
+        ).toBeHidden();
         await page.keyboard.press("Escape");
         await expect(page.getByRole("dialog", { name: title })).toBeHidden();
       }

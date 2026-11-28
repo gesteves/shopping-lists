@@ -74,6 +74,32 @@ export async function itemAction(page: Page, name: string, action: string) {
   await item.click();
 }
 
+/**
+ * In the open Move or Copy dialog of an item (#134): select the list, then
+ * tap Move or Copy. The button is disabled until a list is selected.
+ */
+export async function pickList(
+  page: Page,
+  mode: "move" | "copy",
+  itemName: string,
+  list: string,
+) {
+  const picker = dialog(
+    page,
+    (mode === "move" ? copy.item.moveTitle : copy.item.copyTitle)(itemName),
+  );
+  const confirm = picker.getByRole("button", {
+    name: mode === "move" ? copy.item.move : copy.item.copy,
+    exact: true,
+  });
+  await expect(confirm).toBeDisabled();
+  await picker.getByRole("combobox", { name: copy.item.targets }).click();
+  await picker.getByRole("option", { name: list, exact: true }).click();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(picker).toBeHidden();
+}
+
 /** The number of ops in the local outbox (Dexie database "shopping-lists"). */
 export function outboxCount(page: Page): Promise<number> {
   return page.evaluate(
