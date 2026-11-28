@@ -18,6 +18,7 @@ import {
   RETRY_MS,
   SummaryWorker,
   TICK_MS,
+  quietMsFromEnv,
   summaryKey,
 } from "./worker";
 
@@ -87,7 +88,41 @@ async function seed(w: SummaryWorker) {
   await w.tick();
 }
 
+describe("quietMsFromEnv", () => {
+  it("reads seconds, with the default when not set or empty", () => {
+    expect(quietMsFromEnv(undefined)).toBe(QUIET_MS);
+    expect(quietMsFromEnv(" ")).toBe(QUIET_MS);
+    expect(quietMsFromEnv("30")).toBe(30_000);
+    expect(quietMsFromEnv("0")).toBe(0);
+    expect(quietMsFromEnv("2.5")).toBe(2_500);
+  });
+
+  it("uses the default for a bad value, with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(quietMsFromEnv("soon")).toBe(QUIET_MS);
+    expect(quietMsFromEnv("-5")).toBe(QUIET_MS);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+});
+
 describe("SummaryWorker", () => {
+  it("uses the quiet time of its options", async () => {
+    const w = new SummaryWorker({
+      db,
+      now: () => now,
+      quietMs: 5_000,
+      summarize: async () => answer,
+    });
+    await seed(w);
+    now += 4_999;
+    await w.tick();
+    expect(list().summary).toBeNull();
+    now += 1;
+    await w.tick();
+    expect(list().summary).toBe("Milk, eggs, and produce");
+  });
+
   it("logs the wait and the time of the request, with no names", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const w = new SummaryWorker({
@@ -104,13 +139,13 @@ describe("SummaryWorker", () => {
     const lines = info.mock.calls.map((c) => String(c[0]));
     expect(lines).toEqual([
       `[summary] list=${LIST} items changed, waiting`,
-      `[summary] list=${LIST} items=4 ready=quiet wait=60.0s claude=2.5s total=62.5s written`,
+      `[summary] list=${LIST} items=4 ready=quiet wait=15.0s claude=2.5s total=17.5s written`,
     ]);
     expect(lines.join("\n")).not.toMatch(/Costco|Milk/);
     info.mockRestore();
   });
 
-  it("waits until the items are quiet for 60 s, then writes the summary", async () => {
+  it("waits until the items are quiet for 15 s, then writes the summary", async () => {
     const w = worker();
     await seed(w);
     now += 30_000;

@@ -16,8 +16,11 @@ import type { ListSummarizer } from "./summarize";
 
 export const TICK_MS = 10_000;
 const WORKER_KEY = "shopping-lists.summary-worker";
-/** Wait this long after the last change of the items. */
-export const QUIET_MS = 60_000;
+/**
+ * Wait this long after the last change of the items, by default. The env
+ * var SUMMARY_QUIET_SECONDS changes it (quietMsFromEnv).
+ */
+export const QUIET_MS = 15_000;
 /** Make a summary at most this long after the first change. */
 export const MAX_WAIT_MS = 3 * 60_000;
 /** After a failure, wait this long before a new try for the same items. */
@@ -47,6 +50,28 @@ export interface SummaryWorkerOptions {
   db?: Db;
   now?: () => number;
   summarize: ListSummarizer;
+  /** The quiet time. Default: QUIET_MS. */
+  quietMs?: number;
+}
+
+/**
+ * The quiet time from SUMMARY_QUIET_SECONDS: a number of seconds, 0 or
+ * more. Empty or not set gives QUIET_MS. A bad value gives QUIET_MS and a
+ * warning. MAX_WAIT_MS stays the limit, thus a long value waits at most
+ * that long.
+ */
+export function quietMsFromEnv(
+  value = process.env.SUMMARY_QUIET_SECONDS,
+): number {
+  if (value === undefined || value.trim() === "") return QUIET_MS;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    console.warn(
+      `SUMMARY_QUIET_SECONDS is not a number of seconds; using ${QUIET_MS / 1000}`,
+    );
+    return QUIET_MS;
+  }
+  return Math.round(seconds * 1000);
 }
 
 interface Pending {
@@ -61,6 +86,7 @@ export class SummaryWorker {
   readonly #db: Db;
   readonly #now: () => number;
   readonly #summarize: ListSummarizer;
+  readonly #quietMs: number;
   readonly #pending = new Map<string, Pending>();
   readonly #failed = new Map<string, { key: string; until: number }>();
   #running = false;
@@ -69,6 +95,7 @@ export class SummaryWorker {
     this.#db = options.db ?? getDb();
     this.#now = options.now ?? Date.now;
     this.#summarize = options.summarize;
+    this.#quietMs = options.quietMs ?? QUIET_MS;
   }
 
   /**
@@ -186,7 +213,7 @@ export class SummaryWorker {
         pending.key = key;
         pending.since = now;
       }
-      const quiet = now - pending.since >= QUIET_MS;
+      const quiet = now - pending.since >= this.#quietMs;
       if (quiet || now - pending.first >= MAX_WAIT_MS) {
         ready.push({
           id: list.id,
@@ -212,7 +239,9 @@ export function startSummaryWorker(
   const KEY = Symbol.for(WORKER_KEY);
   const store = globalThis as typeof globalThis & { [KEY]?: SummaryWorker };
   if (store[KEY]) return store[KEY];
-  const worker = new SummaryWorker(options);
+  const quietMs = options.quietMs ?? quietMsFromEnv();
+  const worker = new SummaryWorker({ ...options, quietMs });
+  console.info(`[summary] worker started, quiet=${quietMs / 1000}s`);
   setInterval(() => void worker.tick(), TICK_MS).unref();
   store[KEY] = worker;
   return worker;
