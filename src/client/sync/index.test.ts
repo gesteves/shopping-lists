@@ -78,7 +78,7 @@ describe("startSync with a different user", () => {
     // get-session fails while the browser is online. The data stays.
     const op = await sync.mutate({
       type: "createList",
-      args: { listId: LIST_2, name: "Costco" },
+      args: { listId: LIST_2, name: "JojaMart" },
     });
     expect(await getMeta(db, "userId")).toBe(SAM.id);
     expect(await db.outbox.count()).toBe(2);

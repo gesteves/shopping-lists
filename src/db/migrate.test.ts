@@ -47,7 +47,7 @@ function seeded(dir: string) {
     INSERT INTO users (id, name, email, email_verified, created_at, updated_at)
       VALUES ('u1', 'Sam', 'sam@example.com', 1, 0, 0);
     INSERT INTO lists (id, name, created_by, created_at, updated_by, updated_at, clocks, seq)
-      VALUES ('l1', 'Target', 'u1', 0, 'u1', 0, '{}', 1);
+      VALUES ('l1', 'Oasis', 'u1', 0, 'u1', 0, '{}', 1);
     INSERT INTO items (id, list_id, name, name_key, created_by, created_at, updated_by, updated_at, clocks, seq)
       VALUES ('i1', 'l1', 'Milk', 'milk', 'u1', 0, 'u1', 0, '{}', 2),
              ('i2', 'l1', 'Eggs', 'eggs', 'u1', 0, 'u1', 0, '{}', 3);
@@ -210,12 +210,12 @@ describe("runMigrations", () => {
       INSERT INTO users (id, name, email, email_verified, created_at, updated_at)
         VALUES ('u1', 'Sam', 'sam@example.com', 1, 0, 0);
       INSERT INTO lists (id, name, created_by, created_at, updated_by, updated_at, clocks, seq)
-        VALUES ('l1', 'Target', 'u1', 0, 'u1', 0, '{}', 1);
+        VALUES ('l1', 'Oasis', 'u1', 0, 'u1', 0, '{}', 1);
       INSERT INTO items (id, list_id, name, name_key, created_by, created_at, updated_by, updated_at, clocks, seq)
         VALUES ('i1', 'l1', 'Milk', 'milk', 'u1', 0, 'u1', 0, '{}', 2);
       INSERT INTO activity (op_id, actor_id, via, type, list_id, item_id, snapshot, at, notified_at)
-        VALUES ('o1', 'u1', 'app', 'createList', 'l1', NULL, '{"listName":"Target"}', 1000, 1500),
-               ('o2', 'u1', 'mcp', 'addItem', 'l1', 'i1', '{"listName":"Target","itemName":"Milk"}', 2000, NULL);
+        VALUES ('o1', 'u1', 'app', 'createList', 'l1', NULL, '{"listName":"Oasis"}', 1000, 1500),
+               ('o2', 'u1', 'mcp', 'addItem', 'l1', 'i1', '{"listName":"Oasis","itemName":"Milk"}', 2000, NULL);
     `);
     before.close();
 
@@ -236,7 +236,7 @@ describe("runMigrations", () => {
         type: "createList",
         list_id: "l1",
         item_id: null,
-        snapshot: '{"listName":"Target"}',
+        snapshot: '{"listName":"Oasis"}',
         at: 1000,
         op_at: 1000,
         notified_at: 1500,
@@ -249,7 +249,7 @@ describe("runMigrations", () => {
         type: "addItem",
         list_id: "l1",
         item_id: "i1",
-        snapshot: '{"listName":"Target","itemName":"Milk"}',
+        snapshot: '{"listName":"Oasis","itemName":"Milk"}',
         at: 2000,
         op_at: 2000,
         notified_at: null,

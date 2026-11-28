@@ -267,7 +267,7 @@ describe("purgeTombstones", () => {
       { itemId: ITEM, listId: LIST, name: "Milk" },
       old,
     );
-    apply(old, op("createList", { listId: LIST, name: "Target" }, old), add);
+    apply(old, op("createList", { listId: LIST, name: "Oasis" }, old), add);
     apply(old + 1, op("deleteItem", { itemId: ITEM }, old + 1));
     // 31 days later, the purge deletes the item, and keeps the ops.
     expect(purge()).toMatchObject({ items: 1, processedOps: 0 });
@@ -288,7 +288,7 @@ describe("purgeTombstones", () => {
     const old = NOW - 40 * DAY;
     apply(
       old,
-      op("createList", { listId: LIST, name: "Target" }, old),
+      op("createList", { listId: LIST, name: "Oasis" }, old),
       op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
     );
     // A device that was offline for 40 days sends its delete now.
@@ -308,7 +308,7 @@ describe("purgeTombstones", () => {
   it("clears the tombstone time on a restore", () => {
     apply(
       NOW,
-      op("createList", { listId: LIST, name: "Target" }, NOW - 3),
+      op("createList", { listId: LIST, name: "Oasis" }, NOW - 3),
       op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, NOW - 3),
       op("deleteItem", { itemId: ITEM }, NOW - 2),
       op("restoreItem", { itemId: ITEM }, NOW - 1),
@@ -336,7 +336,7 @@ describe("purgeTombstones", () => {
     function seedChecked() {
       apply(
         old,
-        op("createList", { listId: LIST, name: "Target" }, old),
+        op("createList", { listId: LIST, name: "Oasis" }, old),
         op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, old),
         op("addItem", { itemId: ITEM_2, listId: LIST, name: "Eggs" }, old),
         op("addItem", { itemId: ITEM_3, listId: LIST, name: "Bread" }, old),
@@ -385,7 +385,7 @@ describe("purgeTombstones", () => {
         type: "expireItem",
         listId: LIST,
         itemId: ITEM,
-        snapshot: { listName: "Target", itemName: "Milk" },
+        snapshot: { listName: "Oasis", itemName: "Milk" },
         at: new Date(NOW),
         opAt: new Date(NOW),
         notifiedAt: new Date(NOW),

@@ -169,7 +169,7 @@ describe("list mutes", () => {
     db.insert(lists)
       .values({
         id: LIST,
-        name: "Target",
+        name: "Oasis",
         createdBy: SAM.id,
         createdAt: new Date(),
         updatedBy: SAM.id,

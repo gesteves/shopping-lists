@@ -25,7 +25,7 @@ function op(type: OpType, args: Record<string, unknown>, wall = T) {
 function list(patch: Partial<ListRecord> = {}): ListRecord {
   return {
     id: LIST,
-    name: "Target",
+    name: "Oasis",
     createdBy: "other",
     createdAt: T - 100,
     updatedBy: "other",
@@ -84,7 +84,10 @@ describe("applyLocal", () => {
       checkedAt: null,
     });
 
-    s = state([list(), list({ id: LIST_2, name: "Costco" })], [item(checked)]);
+    s = state(
+      [list(), list({ id: LIST_2, name: "JojaMart" })],
+      [item(checked)],
+    );
     applyLocal(s, op("moveItem", { itemId: ITEM, toListId: LIST_2 }), ME);
     expect(s.items.get(ITEM)).toMatchObject({ listId: LIST_2, checked: false });
   });
@@ -190,7 +193,7 @@ describe("applyLocal", () => {
       op("updateItem", { itemId: ITEM, fields: { name: "Milk", notes: "" } }),
       op("moveItem", { itemId: ITEM, toListId: LIST }),
       op("restoreItem", { itemId: ITEM }),
-      op("renameList", { listId: LIST, name: "Target" }),
+      op("renameList", { listId: LIST, name: "Oasis" }),
     ]) {
       const changed = applyLocal(s, o, ME);
       expect(changed.items.size + changed.lists.size, o.type).toBe(0);
@@ -249,10 +252,10 @@ describe("applyLocal", () => {
 
   it("renames, deletes, and restores a list", () => {
     const s = state([list()]);
-    applyLocal(s, op("renameList", { listId: LIST, name: "Costco" }), ME);
+    applyLocal(s, op("renameList", { listId: LIST, name: "JojaMart" }), ME);
     applyLocal(s, op("deleteList", { listId: LIST }, T + 1), ME);
     expect(s.lists.get(LIST)).toMatchObject({
-      name: "Costco",
+      name: "JojaMart",
       deletedAt: T + 1,
     });
     applyLocal(s, op("restoreList", { listId: LIST }, T + 2), ME);
@@ -318,7 +321,7 @@ describe("applyLocal", () => {
       expect(s.items.get(ITEM)?.outOfStockAt).toBeNull();
 
       s = state(
-        [list(), list({ id: LIST_2, name: "Costco" })],
+        [list(), list({ id: LIST_2, name: "JojaMart" })],
         [item({ outOfStockAt: OUT })],
       );
       applyLocal(s, op("moveItem", { itemId: ITEM, toListId: LIST_2 }), ME);
@@ -341,7 +344,7 @@ describe("applyLocal", () => {
 
     it("a copy (an add) starts in stock", () => {
       const s = state(
-        [list(), list({ id: LIST_2, name: "Costco" })],
+        [list(), list({ id: LIST_2, name: "JojaMart" })],
         [item({ outOfStockAt: OUT })],
       );
       applyLocal(

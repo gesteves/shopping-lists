@@ -32,9 +32,9 @@ describe("the dictionary", () => {
   });
 
   it("puts values in the text", () => {
-    expect(copy.lists.deleted("Costco")).toBe("Deleted the “Costco” list.");
-    expect(copy.item.moved("Milk", "Target")).toBe(
-      "Moved “Milk” to the “Target” list.",
+    expect(copy.lists.deleted("JojaMart")).toBe("Deleted the “JojaMart” list.");
+    expect(copy.item.moved("Milk", "Oasis")).toBe(
+      "Moved “Milk” to the “Oasis” list.",
     );
     expect(copy.item.editing(["Sam", "Alex"])).toBe("Sam, Alex is editing…");
     expect(copy.app.pageTitle("Settings")).toBe("Settings – Shopping Lists");
@@ -81,10 +81,10 @@ describe("the dictionary", () => {
       "It has 3 items. They’ll be deleted for everyone.",
     );
     expect(copy.lists.deleteBody(0, [])).toBe("It’ll be deleted.");
-    expect(copy.push.burst("Sam", 2, 1, "Costco")).toBe(
-      "Sam made 2 changes to the “Costco” list.",
+    expect(copy.push.burst("Sam", 2, 1, "JojaMart")).toBe(
+      "Sam made 2 changes to the “JojaMart” list.",
     );
-    expect(copy.push.burst("Sam", 5, 3, "Costco")).toBe(
+    expect(copy.push.burst("Sam", 5, 3, "JojaMart")).toBe(
       "Sam made 5 changes to 3 lists.",
     );
   });

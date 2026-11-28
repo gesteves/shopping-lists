@@ -8,76 +8,76 @@ describe("renderEvent", () => {
   it("gives the exact text for each event", () => {
     const cases: [ReturnType<typeof ev>, string][] = [
       [
-        ev("createList", { listName: "Costco" }, list),
-        "Sam created a “Costco” list.",
+        ev("createList", { listName: "JojaMart" }, list),
+        "Sam created a “JojaMart” list.",
       ],
       [
-        ev("createList", { listName: "Aldi" }, list),
-        "Sam created an “Aldi” list.",
+        ev("createList", { listName: "Adventurer’s Guild" }, list),
+        "Sam created an “Adventurer’s Guild” list.",
       ],
       [
-        ev("deleteList", { listName: "Target" }, list),
-        "Sam deleted the “Target” list.",
+        ev("deleteList", { listName: "Oasis" }, list),
+        "Sam deleted the “Oasis” list.",
       ],
       [
-        ev("renameList", { listName: "Costco", oldName: "Sam's Club" }, list),
-        "Sam renamed the “Sam's Club” list to “Costco”.",
+        ev("renameList", { listName: "JojaMart", oldName: "Sam's Club" }, list),
+        "Sam renamed the “Sam's Club” list to “JojaMart”.",
       ],
       [
-        ev("restoreList", { listName: "Target" }, list),
-        "Sam restored the “Target” list.",
+        ev("restoreList", { listName: "Oasis" }, list),
+        "Sam restored the “Oasis” list.",
       ],
       [
         ev("addItem", { itemName: "Milk" }),
-        "Sam added “Milk” to the “Whole Foods” list.",
+        "Sam added “Milk” to the “Pierre’s General Store” list.",
       ],
       [
         ev("updateItem", { itemName: "Milk" }),
-        "Sam updated “Milk” in the “Whole Foods” list.",
+        "Sam updated “Milk” in the “Pierre’s General Store” list.",
       ],
       [
         ev("deleteItem", { itemName: "Milk" }),
-        "Sam removed “Milk” from the “Whole Foods” list.",
+        "Sam removed “Milk” from the “Pierre’s General Store” list.",
       ],
       [
         ev("restoreItem", { itemName: "Milk" }),
-        "Sam put “Milk” back on the “Whole Foods” list.",
+        "Sam put “Milk” back on the “Pierre’s General Store” list.",
       ],
       [
         ev("check", { itemName: "Milk" }),
-        "Sam checked “Milk” off the “Whole Foods” list.",
+        "Sam checked “Milk” off the “Pierre’s General Store” list.",
       ],
       [
         ev("uncheck", { itemName: "Milk" }),
-        "Sam unchecked “Milk” in the “Whole Foods” list.",
+        "Sam unchecked “Milk” in the “Pierre’s General Store” list.",
       ],
       [
         ev("moveItem", {
           itemName: "Milk",
-          listName: "Target",
-          fromListName: "Costco",
+          listName: "Oasis",
+          fromListName: "JojaMart",
         }),
-        "Sam moved “Milk” from the “Costco” list to the “Target” list.",
+        "Sam moved “Milk” from the “JojaMart” list to the “Oasis” list.",
       ],
       [
         ev("clearChecked", { count: 3 }, list),
-        "Sam deleted the checked items from the “Whole Foods” list.",
+        "Sam deleted the checked items from the “Pierre’s General Store” list.",
       ],
       [
         ev("uncheckAll", { count: 3 }, list),
-        "Sam unchecked everything in the “Whole Foods” list.",
+        "Sam unchecked everything in the “Pierre’s General Store” list.",
       ],
       [
         ev("checkAll", { count: 3 }, list),
-        "Sam checked everything off the “Whole Foods” list.",
+        "Sam checked everything off the “Pierre’s General Store” list.",
       ],
       [
         ev("markOutOfStock", { itemName: "Milk" }),
-        "Sam marked “Milk” as out of stock in the “Whole Foods” list.",
+        "Sam marked “Milk” as out of stock in the “Pierre’s General Store” list.",
       ],
       [
         ev("markInStock", { itemName: "Milk" }),
-        "Sam marked “Milk” as in stock in the “Whole Foods” list.",
+        "Sam marked “Milk” as in stock in the “Pierre’s General Store” list.",
       ],
     ];
     for (const [event, text] of cases)
@@ -90,14 +90,17 @@ describe("renderEvent", () => {
         ev("addItem", { itemName: "Eggs" }, {}, { via: "mcp" }),
         "Sam",
       ),
-    ).toBe("Sam (via Claude) added “Eggs” to the “Whole Foods” list.");
+    ).toBe(
+      "Sam (via Claude) added “Eggs” to the “Pierre’s General Store” list.",
+    );
   });
 });
 
 describe("article", () => {
   it("uses an before a vowel sound", () => {
     for (const name of [
-      "Aldi",
+      "Adventurer’s Guild",
+      "Oasis",
       "eggs",
       "IKEA",
       "Office",
@@ -110,12 +113,12 @@ describe("article", () => {
       expect(article(name), name).toBe("an");
     }
     for (const name of [
-      "Costco",
-      "Target",
+      "JojaMart",
+      "Blacksmith",
       "1 more",
       "110 Main",
-      "Whole Foods",
-      "  Costco",
+      "Pierre’s General Store",
+      "  JojaMart",
     ]) {
       expect(article(name), name).toBe("a");
     }
@@ -129,7 +132,7 @@ describe("renderFallback", () => {
       ev("check", { itemName: "B" }),
     ];
     expect(renderFallback(one, "Sam")).toBe(
-      "Sam made 2 changes to the “Whole Foods” list.",
+      "Sam made 2 changes to the “Pierre’s General Store” list.",
     );
     const two = [...one, ev("addItem", { itemName: "C" }, { listId: "l2" })];
     expect(renderFallback(two, "Sam")).toBe("Sam made 3 changes to 2 lists.");

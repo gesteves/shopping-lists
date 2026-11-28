@@ -20,7 +20,7 @@ export function ev(
     type,
     listId: ids.listId ?? "list-1",
     itemId: ids.itemId === undefined ? "item-1" : ids.itemId,
-    snapshot: { listName: "Whole Foods", ...snapshot },
+    snapshot: { listName: "Pierre’s General Store", ...snapshot },
     at: id * 1000,
     ...extra,
   };

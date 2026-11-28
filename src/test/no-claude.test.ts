@@ -22,11 +22,11 @@ describe("no Claude in the unit tests", () => {
       type: "addItem" as const,
       listId: "l",
       itemId: "i",
-      snapshot: { listName: "Target", itemName: "Milk" },
+      snapshot: { listName: "Oasis", itemName: "Milk" },
       at: 0,
     };
     expect(await summarize([event], "Sam")).toBe(
-      "Sam added “Milk” to the “Target” list.",
+      "Sam added “Milk” to the “Oasis” list.",
     );
   });
 

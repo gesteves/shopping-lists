@@ -79,7 +79,10 @@ function list() {
 }
 
 beforeEach(() => {
-  act({ type: "createList", args: { listId: LIST, name: "Costco" } } as never);
+  act({
+    type: "createList",
+    args: { listId: LIST, name: "JojaMart" },
+  } as never);
 });
 
 /** Add four items, then let the worker see them. */
@@ -141,7 +144,7 @@ describe("SummaryWorker", () => {
       `[summary] list=${LIST} items changed, waiting`,
       `[summary] list=${LIST} items=4 ready=quiet wait=15.0s claude=2.5s total=17.5s written`,
     ]);
-    expect(lines.join("\n")).not.toMatch(/Costco|Milk/);
+    expect(lines.join("\n")).not.toMatch(/JojaMart|Milk/);
     info.mockRestore();
   });
 
@@ -158,7 +161,7 @@ describe("SummaryWorker", () => {
     now += 1;
     await w.tick();
     expect(calls).toEqual([
-      { list: "Costco", items: ["Bread", "Eggs", "Kale", "Lemons", "Milk"] },
+      { list: "JojaMart", items: ["Bread", "Eggs", "Kale", "Lemons", "Milk"] },
     ]);
     expect(list().summary).toBe("Milk, eggs, and produce");
 

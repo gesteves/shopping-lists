@@ -96,7 +96,7 @@ describe("collapse", () => {
         ev("markOutOfStock", { itemName: "Milk", unchecked: true }),
       ]);
       expect(out.snapshot).toStrictEqual({
-        listName: "Whole Foods",
+        listName: "Pierre’s General Store",
         itemName: "Milk",
       });
     });
@@ -148,8 +148,8 @@ describe("collapse", () => {
         "moveItem",
         {
           itemName: "Oat milk",
-          listName: "Target",
-          fromListName: "Whole Foods",
+          listName: "Oasis",
+          fromListName: "Pierre’s General Store",
           unchecked: true,
         },
         { listId: "list-2" },
@@ -160,7 +160,7 @@ describe("collapse", () => {
       {
         ...add,
         listId: "list-2",
-        snapshot: { itemName: "Oat milk", listName: "Target" },
+        snapshot: { itemName: "Oat milk", listName: "Oasis" },
       },
     ]);
   });
@@ -173,8 +173,8 @@ describe("collapse", () => {
       ev("deleteList", { listName: "Old", oldName: "x" }, L),
     ]);
     expect(out.map((e) => e.snapshot)).toEqual([
-      { listName: "Whole Foods", itemName: "Tea" },
-      { listName: "Whole Foods", count: 2 },
+      { listName: "Pierre’s General Store", itemName: "Tea" },
+      { listName: "Pierre’s General Store", count: 2 },
       { listName: "Old" },
     ]);
   });
@@ -198,8 +198,14 @@ describe("collapse", () => {
     const restore = ev("restoreItem", { itemName: "Milk" });
     const check = ev("check", { itemName: "Milk" });
     expect(collapse([restore, check])).toEqual([
-      { ...check, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
-      { ...restore, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
+      {
+        ...check,
+        snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
+      },
+      {
+        ...restore,
+        snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
+      },
     ]);
   });
 
@@ -231,7 +237,11 @@ describe("collapse", () => {
       ev("updateItem", { itemName: "Milk 1%", oldName: "Milk 2%" }),
     ]);
     expect(out.map((e) => e.snapshot)).toEqual([
-      { listName: "Whole Foods", itemName: "Milk 1%", oldName: "Milk" },
+      {
+        listName: "Pierre’s General Store",
+        itemName: "Milk 1%",
+        oldName: "Milk",
+      },
     ]);
   });
 
@@ -285,8 +295,8 @@ describe("collapse", () => {
   it("folds a rename into a create, and cancels a rename back", () => {
     const L = { listId: "l", itemId: null };
     const out = collapse([
-      ev("createList", { listName: "Costco" }, L),
-      ev("renameList", { listName: "Sam's Club", oldName: "Costco" }, L),
+      ev("createList", { listName: "JojaMart" }, L),
+      ev("renameList", { listName: "Sam's Club", oldName: "JojaMart" }, L),
     ]);
     expect(out.map((e) => [e.type, e.snapshot])).toEqual([
       ["createList", { listName: "Sam's Club" }],
@@ -377,7 +387,7 @@ describe("collapse", () => {
         {
           ...last,
           snapshot: {
-            listName: "Whole Foods",
+            listName: "Pierre’s General Store",
             itemName: "Milk",
             fields: ["quantity"],
           },
@@ -391,7 +401,7 @@ describe("collapse", () => {
         {
           ...last,
           snapshot: {
-            listName: "Whole Foods",
+            listName: "Pierre’s General Store",
             itemName: "Milk",
             fields: ["quantity"],
           },
@@ -405,7 +415,7 @@ describe("collapse", () => {
       ]);
       expect(out.map((e) => e.snapshot)).toEqual([
         {
-          listName: "Whole Foods",
+          listName: "Pierre’s General Store",
           itemName: "Soy milk",
           oldName: "Milk",
           fields: ["quantity", "name"],
@@ -441,7 +451,7 @@ describe("collapse", () => {
         {
           ...first,
           type: "uncheck",
-          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+          snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
         },
       ]);
       // A check after it: the item ends checked, as it started.
@@ -489,7 +499,7 @@ describe("collapse", () => {
         {
           ...check,
           type: "markInStock",
-          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+          snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
         },
       ]);
     });
@@ -517,7 +527,10 @@ describe("collapse", () => {
     it("stays an add when the item ends unchecked", () => {
       const add = merged();
       expect(collapse([add])).toEqual([
-        { ...add, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
+        {
+          ...add,
+          snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
+        },
       ]);
     });
 
@@ -545,7 +558,7 @@ describe("collapse", () => {
           ...first,
           type: "checkAll",
           itemId: null,
-          snapshot: { listName: "Whole Foods", count: 2 },
+          snapshot: { listName: "Pierre’s General Store", count: 2 },
         },
       ]);
     });
@@ -598,7 +611,7 @@ describe("collapse", () => {
         {
           ...eggs,
           itemId: null,
-          snapshot: { listName: "Whole Foods", count: 1 },
+          snapshot: { listName: "Pierre’s General Store", count: 1 },
         },
       ]);
     });
@@ -612,7 +625,7 @@ describe("collapse", () => {
         {
           ...eggs,
           itemId: null,
-          snapshot: { listName: "Whole Foods", count: 1 },
+          snapshot: { listName: "Pierre’s General Store", count: 1 },
         },
       ]);
       // Uncheck milk, then check all of milk only: nothing.
@@ -642,7 +655,7 @@ describe("collapse", () => {
         {
           ...first,
           itemId: null,
-          snapshot: { listName: "Whole Foods", count: 2 },
+          snapshot: { listName: "Pierre’s General Store", count: 2 },
         },
         expect.objectContaining({ type: "check", itemId: "tea" }),
       ]);
@@ -656,10 +669,26 @@ describe("collapse", () => {
         bulk("uncheckAll", "eggs"),
       ]);
       expect(out.map((e) => [e.type, e.listId, e.snapshot])).toEqual([
-        ["addItem", "list-1", { listName: "Whole Foods", itemName: "tea" }],
-        ["clearChecked", "list-1", { listName: "Whole Foods", count: 1 }],
-        ["clearChecked", "l2", { listName: "Whole Foods", count: 1 }],
-        ["uncheckAll", "list-1", { listName: "Whole Foods", count: 1 }],
+        [
+          "addItem",
+          "list-1",
+          { listName: "Pierre’s General Store", itemName: "tea" },
+        ],
+        [
+          "clearChecked",
+          "list-1",
+          { listName: "Pierre’s General Store", count: 1 },
+        ],
+        [
+          "clearChecked",
+          "l2",
+          { listName: "Pierre’s General Store", count: 1 },
+        ],
+        [
+          "uncheckAll",
+          "list-1",
+          { listName: "Pierre’s General Store", count: 1 },
+        ],
       ]);
     });
 
@@ -668,7 +697,11 @@ describe("collapse", () => {
         bulk("checkAll", "milk"),
         ev(
           "moveItem",
-          { itemName: "milk", listName: "B", fromListName: "Whole Foods" },
+          {
+            itemName: "milk",
+            listName: "B",
+            fromListName: "Pierre’s General Store",
+          },
           { itemId: "milk", listId: "b" },
         ),
       ]);
@@ -814,7 +847,7 @@ describe("collapse", () => {
       expect(collapse([del(), add(), second])).toEqual([
         {
           ...second,
-          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+          snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
         },
       ]);
     });

@@ -180,7 +180,7 @@ afterEach(async () => {
 async function seed() {
   await mutateLocal(db, {
     type: "createList",
-    args: { listId: LIST, name: "Whole Foods" },
+    args: { listId: LIST, name: "Pierre’s General Store" },
   });
   await mutateLocal(db, {
     type: "addItem",
@@ -195,7 +195,7 @@ describe("mutate", () => {
   it("applies a change at once and adds it to the outbox", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: " Whole Foods " },
+      args: { listId: LIST, name: " Pierre’s General Store " },
     });
     const op = await mutateLocal(db, {
       type: "addItem",
@@ -203,7 +203,7 @@ describe("mutate", () => {
     });
 
     expect(await readList(db, LIST)).toMatchObject({
-      list: { name: "Whole Foods", createdBy: SAM.id, seq: 0 },
+      list: { name: "Pierre’s General Store", createdBy: SAM.id, seq: 0 },
       items: [{ id: ITEM, name: "Milk", quantity: 1, checked: false }],
     });
     const outbox = await db.outbox.orderBy("seq").toArray();
@@ -239,7 +239,10 @@ describe("sync", () => {
 
   it("re-applies the pending ops after a pull", async () => {
     await seed();
-    serverWrite({ type: "renameList", args: { listId: LIST, name: "Costco" } });
+    serverWrite({
+      type: "renameList",
+      args: { listId: LIST, name: "JojaMart" },
+    });
     await mutateLocal(db, { type: "check", args: { itemId: ITEM } });
 
     // A pull without a push: the check is still pending.
@@ -252,7 +255,7 @@ describe("sync", () => {
     await rebuildView(db);
 
     const view = await readList(db, LIST);
-    expect(view?.list.name).toBe("Costco");
+    expect(view?.list.name).toBe("JojaMart");
     expect(view?.items[0].checked).toBe(true);
     expect((await db.serverItems.get(ITEM))?.checked).toBe(false);
     expect(await db.outbox.count()).toBe(1);
@@ -349,7 +352,7 @@ describe("sync", () => {
   it("runs one sync at a time", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: "Target" },
+      args: { listId: LIST, name: "Oasis" },
     });
     const { engine } = makeEngine();
     const first = engine.sync();
@@ -409,7 +412,7 @@ describe("sync", () => {
   it("drops an op that is no longer valid, and pushes the others", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: "Target" },
+      args: { listId: LIST, name: "Oasis" },
     });
     // An op from an old app version that the schema now refuses.
     const [entry] = await db.outbox.toArray();
@@ -537,7 +540,7 @@ describe("sync", () => {
   it("makes the batch smaller after a 413", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: "Target" },
+      args: { listId: LIST, name: "Oasis" },
     });
     for (let n = 0; n < 120; n++) {
       await mutateLocal(db, {
@@ -558,7 +561,7 @@ describe("sync", () => {
   it("finds an op that the server refuses with 400, and drops only it", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: "Target" },
+      args: { listId: LIST, name: "Oasis" },
     });
     const ops: Op[] = [];
     for (let n = 0; n < 9; n++) {
@@ -898,7 +901,7 @@ describe("the push limit (#115)", () => {
   it("schedules a sync when ops are still pending", async () => {
     await mutateLocal(db, {
       type: "createList",
-      args: { listId: LIST, name: "Target" },
+      args: { listId: LIST, name: "Oasis" },
     });
     for (let n = 0; n < 120; n++) {
       await mutateLocal(db, {
@@ -931,7 +934,7 @@ describe("resetForUser and an undecided user check (#115)", () => {
     // The page of Alex made a write before the check.
     await mutateLocal(
       db,
-      { type: "createList", args: { listId: LIST_2, name: "Costco" } },
+      { type: "createList", args: { listId: LIST_2, name: "JojaMart" } },
       ALEX.id,
     );
 

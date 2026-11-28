@@ -84,7 +84,7 @@ function activityTypes() {
 function seed() {
   apply(
     SAM,
-    op("createList", { listId: LIST, name: "Whole Foods" }, T1),
+    op("createList", { listId: LIST, name: "Pierre’s General Store" }, T1),
     op("addItem", { itemId: ITEM, listId: LIST, name: "Milk" }, T1),
   );
   pokes = [];
@@ -94,21 +94,21 @@ describe("lists", () => {
   it("creates, renames, deletes, and restores a list", () => {
     const created = apply(
       SAM,
-      op("createList", { listId: LIST, name: "Target" }, T1),
+      op("createList", { listId: LIST, name: "Oasis" }, T1),
     );
     expect(created.results[0]).toMatchObject({
       status: "applied",
       changed: true,
     });
     expect(getList()).toMatchObject({
-      name: "Target",
+      name: "Oasis",
       createdBy: SAM.id,
       updatedBy: SAM.id,
       deletedAt: null,
     });
 
-    apply(ALEX, op("renameList", { listId: LIST, name: "Costco" }, T2));
-    expect(getList()).toMatchObject({ name: "Costco", updatedBy: ALEX.id });
+    apply(ALEX, op("renameList", { listId: LIST, name: "JojaMart" }, T2));
+    expect(getList()).toMatchObject({ name: "JojaMart", updatedBy: ALEX.id });
 
     apply(ALEX, op("deleteList", { listId: LIST }, T3));
     expect(getList()?.deletedAt).toEqual(new Date(T3));
@@ -122,13 +122,13 @@ describe("lists", () => {
       .orderBy(activity.id)
       .all();
     expect(snapshots).toEqual([
-      { type: "createList", snapshot: { listName: "Target" } },
+      { type: "createList", snapshot: { listName: "Oasis" } },
       {
         type: "renameList",
-        snapshot: { listName: "Costco", oldName: "Target" },
+        snapshot: { listName: "JojaMart", oldName: "Oasis" },
       },
-      { type: "deleteList", snapshot: { listName: "Costco" } },
-      { type: "restoreList", snapshot: { listName: "Costco" } },
+      { type: "deleteList", snapshot: { listName: "JojaMart" } },
+      { type: "restoreList", snapshot: { listName: "JojaMart" } },
     ]);
   });
 
@@ -238,7 +238,7 @@ describe("field-level last-writer-wins", () => {
       .orderBy(desc(activity.id))
       .get();
     expect(last?.snapshot).toEqual({
-      listName: "Whole Foods",
+      listName: "Pierre’s General Store",
       itemName: "Milk",
       fields: ["quantity"],
       oldQuantity: 1,
@@ -266,7 +266,7 @@ describe("field-level last-writer-wins", () => {
       .get();
     // The quantity did not change: no values for it.
     expect(last?.snapshot).toEqual({
-      listName: "Whole Foods",
+      listName: "Pierre’s General Store",
       itemName: "Oat milk",
       oldName: "Milk",
       fields: ["name", "notes"],
@@ -283,7 +283,7 @@ describe("item URL (#140)", () => {
   it("adds an item with a URL, or with none", () => {
     apply(
       SAM,
-      op("createList", { listId: LIST, name: "Whole Foods" }, T1),
+      op("createList", { listId: LIST, name: "Pierre’s General Store" }, T1),
       op(
         "addItem",
         { itemId: ITEM, listId: LIST, name: "Milk", url: URL_1 },
@@ -306,7 +306,7 @@ describe("item URL (#140)", () => {
       .orderBy(desc(activity.id))
       .get();
     expect(last?.snapshot).toEqual({
-      listName: "Whole Foods",
+      listName: "Pierre’s General Store",
       itemName: "Milk",
       fields: ["url"],
       oldUrl: "",
@@ -451,7 +451,7 @@ describe("deleted and missing lists", () => {
     seed();
     apply(
       SAM,
-      op("createList", { listId: LIST_2, name: "Target" }, T1),
+      op("createList", { listId: LIST_2, name: "Oasis" }, T1),
       op("deleteList", { listId: LIST_2 }, T2),
     );
     const before = activityTypes().length;
@@ -490,7 +490,7 @@ describe("deleted and missing lists", () => {
 
   it("moves an item to a different list", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "Oasis" }, T1));
     apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T2));
     expect(getItem()?.listId).toBe(LIST_2);
     const row = db
@@ -502,8 +502,8 @@ describe("deleted and missing lists", () => {
       listId: LIST_2,
       itemId: ITEM,
       snapshot: {
-        listName: "Target",
-        fromListName: "Whole Foods",
+        listName: "Oasis",
+        fromListName: "Pierre’s General Store",
         itemName: "Milk",
       },
     });
@@ -517,7 +517,7 @@ describe("a move that does not change the list", () => {
 
   it("writes a restore on the list of the item, not a move", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "Oasis" }, T1));
     apply(SAM, op("deleteItem", { itemId: ITEM }, T2));
     // A device that did not see the delete moves the item to its own list.
     apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST }, T3));
@@ -526,17 +526,17 @@ describe("a move that does not change the list", () => {
       type: "restoreItem",
       listId: LIST,
       itemId: ITEM,
-      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
     });
     expect(lastActivity()?.snapshot).toEqual({
-      listName: "Whole Foods",
+      listName: "Pierre’s General Store",
       itemName: "Milk",
     });
   });
 
   it("writes a restore when the move loses on its list clock", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "Oasis" }, T1));
     // The item is on LIST with a list clock of T3, and deleted with an
     // older clock (T2). Only a clock change in the database gives this
     // state: the server keeps the deleted clock at or after the list clock.
@@ -556,7 +556,7 @@ describe("a move that does not change the list", () => {
     expect(lastActivity()).toMatchObject({
       type: "restoreItem",
       listId: LIST,
-      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
     });
   });
 });
@@ -615,14 +615,14 @@ describe("history (#152)", () => {
     seed();
     apply(
       SAM,
-      op("createList", { listId: LIST_2, name: "Costco" }, T2),
+      op("createList", { listId: LIST_2, name: "JojaMart" }, T2),
       op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3),
     );
     const row = db.select().from(activity).orderBy(activity.id).all().at(-1);
     expect(row).toMatchObject({
       type: "moveItem",
       listId: LIST_2,
-      snapshot: { fromListId: LIST, fromListName: "Whole Foods" },
+      snapshot: { fromListId: LIST, fromListName: "Pierre’s General Store" },
     });
   });
 });
@@ -682,7 +682,11 @@ describe("dedupe on addItem", () => {
     expect(last).toMatchObject({
       type: "addItem",
       itemId: ITEM,
-      snapshot: { listName: "Whole Foods", itemName: "Milk", unchecked: true },
+      snapshot: {
+        listName: "Pierre’s General Store",
+        itemName: "Milk",
+        unchecked: true,
+      },
     });
   });
 
@@ -737,7 +741,7 @@ describe("dedupe on addItem", () => {
 
   it("adds a new row when the match is on a different list", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Target" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "Oasis" }, T1));
     const { results } = apply(
       SAM,
       op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "Milk" }, T2),
@@ -785,7 +789,7 @@ describe("clearChecked, uncheckAll, and checkAll", () => {
     expect(rows.filter((r) => r.type === "clearChecked")).toMatchObject([
       {
         itemId: ITEM,
-        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
       },
     ]);
   });
@@ -820,7 +824,7 @@ describe("clearChecked, uncheckAll, and checkAll", () => {
     expect(rows.filter((r) => r.type === "checkAll")).toMatchObject([
       {
         itemId: ITEM,
-        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
       },
     ]);
   });
@@ -843,12 +847,12 @@ describe("clearChecked, uncheckAll, and checkAll", () => {
       {
         type: "uncheckAll",
         itemId: ITEM,
-        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
       },
       {
         type: "uncheckAll",
         itemId: ITEM_3,
-        snapshot: { listName: "Whole Foods", itemName: "Bread" },
+        snapshot: { listName: "Pierre’s General Store", itemName: "Bread" },
       },
     ]);
   });
@@ -927,7 +931,7 @@ describe("an edit or a move of a checked item (#112)", () => {
     seed();
     apply(
       SAM,
-      op("createList", { listId: LIST_2, name: "Costco" }, T1),
+      op("createList", { listId: LIST_2, name: "JojaMart" }, T1),
       op("check", { itemId: ITEM }, T2),
     );
   }
@@ -991,7 +995,7 @@ describe("out of stock (#131)", () => {
     );
     expect(lastSnapshot()).toMatchObject({
       type: "markOutOfStock",
-      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      snapshot: { listName: "Pierre’s General Store", itemName: "Milk" },
     });
 
     // A second mark changes nothing: no activity row.
@@ -1103,14 +1107,14 @@ describe("out of stock (#131)", () => {
 
   it("a move to another list marks the item in stock", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Costco" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "JojaMart" }, T1));
     apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
     apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3));
     expect(getItem()).toMatchObject({ listId: LIST_2, outOfStockAt: null });
     expect(getItem()?.clocks.outOfStock).toBe(getItem()?.clocks.listId);
     expect(lastSnapshot()).toMatchObject({
       type: "moveItem",
-      snapshot: { inStock: true, fromListName: "Whole Foods" },
+      snapshot: { inStock: true, fromListName: "Pierre’s General Store" },
     });
   });
 
@@ -1136,7 +1140,7 @@ describe("out of stock (#131)", () => {
 
   it("a copy (an add to the other list) starts in stock", () => {
     seed();
-    apply(SAM, op("createList", { listId: LIST_2, name: "Costco" }, T1));
+    apply(SAM, op("createList", { listId: LIST_2, name: "JojaMart" }, T1));
     apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
     apply(
       ALEX,
@@ -1153,7 +1157,7 @@ describe("out of stock (#131)", () => {
     seed();
     apply(
       SAM,
-      op("createList", { listId: LIST_2, name: "Costco" }, T1),
+      op("createList", { listId: LIST_2, name: "JojaMart" }, T1),
       op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "milk" }, T1),
       op("check", { itemId: ITEM_2 }, T2),
     );
@@ -1241,21 +1245,21 @@ describe("activity and pokes", () => {
       .map((r) => r.snapshot);
     expect(rows).toEqual([
       {
-        listName: "Whole Foods",
+        listName: "Pierre’s General Store",
         itemName: "Milk",
         quantity: 1,
         notes: "",
         url: "",
       },
       {
-        listName: "Whole Foods",
+        listName: "Pierre’s General Store",
         itemName: "Eggs",
         quantity: 12,
         notes: "Large",
         url: "",
       },
       {
-        listName: "Whole Foods",
+        listName: "Pierre’s General Store",
         itemName: "Milk",
         quantity: 1,
         notes: "",
@@ -1263,7 +1267,7 @@ describe("activity and pokes", () => {
         outOfStock: true,
       },
       {
-        listName: "Whole Foods",
+        listName: "Pierre’s General Store",
         itemName: "Eggs",
         quantity: 12,
         notes: "Large",

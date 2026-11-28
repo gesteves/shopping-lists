@@ -69,7 +69,9 @@ async function pull(query = ""): Promise<PullResponse & { status: number }> {
 
 describe("list summaries (#143)", () => {
   it("sends the summary key, and if the server makes summaries", async () => {
-    await push([op("createList", { listId: LIST, name: "Whole Foods" })]);
+    await push([
+      op("createList", { listId: LIST, name: "Pierre’s General Store" }),
+    ]);
     setListSummary(LIST, "Milk and eggs", "key-1", { db });
     const res = handlePull(
       new Request("http://localhost/api/sync/pull?since=0"),
@@ -87,7 +89,10 @@ describe("list summaries (#143)", () => {
 
 describe("push then pull", () => {
   it("returns the changes, the users, and the new cursor", async () => {
-    const create = op("createList", { listId: LIST, name: "Whole Foods" });
+    const create = op("createList", {
+      listId: LIST,
+      name: "Pierre’s General Store",
+    });
     const add = op("addItem", {
       itemId: itemId(1),
       listId: LIST,
@@ -122,7 +127,7 @@ describe("push then pull", () => {
     expect(page.lists).toEqual([
       {
         id: LIST,
-        name: "Whole Foods",
+        name: "Pierre’s General Store",
         createdBy: SAM.id,
         createdAt: NOW - 1000,
         updatedBy: SAM.id,
@@ -153,7 +158,7 @@ describe("push then pull", () => {
 
   it("returns only the changes after the cursor, tombstones included", async () => {
     await push([
-      op("createList", { listId: LIST, name: "Target" }),
+      op("createList", { listId: LIST, name: "Oasis" }),
       op("addItem", { itemId: itemId(1), listId: LIST, name: "Milk" }),
       op("addItem", { itemId: itemId(2), listId: LIST, name: "Eggs" }),
     ]);
@@ -184,7 +189,7 @@ describe("push then pull", () => {
 
   it("pages through the changes in seq order", async () => {
     await push([
-      op("createList", { listId: LIST, name: "Costco" }),
+      op("createList", { listId: LIST, name: "JojaMart" }),
       ...[1, 2, 3, 4, 5, 6].map((n) =>
         op("addItem", { itemId: itemId(n), listId: LIST, name: `Item ${n}` }),
       ),
@@ -214,7 +219,7 @@ describe("push then pull", () => {
 describe("push replay", () => {
   it("is safe: the second push applies nothing", async () => {
     const ops = [
-      op("createList", { listId: LIST, name: "Target" }),
+      op("createList", { listId: LIST, name: "Oasis" }),
       op("addItem", { itemId: itemId(1), listId: LIST, name: "Milk" }),
       op("check", { itemId: itemId(1) }),
     ];
@@ -242,7 +247,7 @@ describe("bad input", () => {
   }
 
   it("gets 400 for a bad push body, and nothing is applied", async () => {
-    const good = op("createList", { listId: LIST, name: "Target" });
+    const good = op("createList", { listId: LIST, name: "Oasis" });
     const other = { ...good, clientId: "someone-else" };
     for (const body of [
       "{not json",
@@ -308,7 +313,7 @@ describe("reset", () => {
   it("starts again from 0 when the cursor is before a purge", async () => {
     const old = NOW - 40 * 24 * 60 * 60 * 1000;
     await push([
-      op("createList", { listId: LIST, name: "Target" }, old),
+      op("createList", { listId: LIST, name: "Oasis" }, old),
       op("addItem", { itemId: itemId(1), listId: LIST, name: "Milk" }, old),
       op("addItem", { itemId: itemId(2), listId: LIST, name: "Eggs" }, old),
       op("deleteItem", { itemId: itemId(1) }, old + 1),
@@ -338,7 +343,7 @@ describe("reset", () => {
       ),
     );
     await push([
-      op("createList", { listId: LIST, name: "Target" }, old),
+      op("createList", { listId: LIST, name: "Oasis" }, old),
       ...adds,
       op("deleteItem", { itemId: itemId(6) }, old + 1),
       op("deleteItem", { itemId: itemId(1) }, old + 2),
@@ -370,7 +375,7 @@ describe("reset", () => {
   });
 
   it("starts again from 0 when the cursor is after the last seq", async () => {
-    await push([op("createList", { listId: LIST, name: "Target" })]);
+    await push([op("createList", { listId: LIST, name: "Oasis" })]);
     const page = await pull("?since=99");
     expect(page).toMatchObject({ reset: true, cursor: 1 });
     expect(page.lists).toHaveLength(1);

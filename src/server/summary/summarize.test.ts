@@ -22,7 +22,7 @@ describe("createListSummarizer", () => {
       answer("Milk and a dozen eggs"),
     );
     const summarize = createListSummarizer({ client })!;
-    expect(await summarize("Costco", items)).toBe("Milk and a dozen eggs");
+    expect(await summarize("JojaMart", items)).toBe("Milk and a dozen eggs");
     const [request] = parse.mock.calls[0] as [Record<string, unknown>];
     expect(request).toMatchObject({
       model: MODEL,
@@ -34,7 +34,7 @@ describe("createListSummarizer", () => {
 
   it("cuts a long line", async () => {
     const { client } = fakeClient(async () => answer("word ".repeat(40)));
-    const line = await createListSummarizer({ client })!("Costco", items);
+    const line = await createListSummarizer({ client })!("JojaMart", items);
     expect(line!.length).toBeLessThanOrEqual(MAX_SUMMARY);
     expect(line).toMatch(/…$/);
   });
@@ -49,7 +49,7 @@ describe("createListSummarizer", () => {
     ]) {
       const { client } = fakeClient(parse);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      expect(await createListSummarizer({ client })!("Costco", items)).toBe(
+      expect(await createListSummarizer({ client })!("JojaMart", items)).toBe(
         null,
       );
       warn.mockRestore();
@@ -66,9 +66,9 @@ describe("createListSummarizer", () => {
 describe("summaryInput", () => {
   it("sends names and quantities only", () => {
     expect(
-      summaryInput("Costco", [
+      summaryInput("JojaMart", [
         { name: "Milk", quantity: 2, id: "secret" } as never,
       ]),
-    ).toEqual({ list: "Costco", items: [{ name: "Milk", quantity: 2 }] });
+    ).toEqual({ list: "JojaMart", items: [{ name: "Milk", quantity: 2 }] });
   });
 });

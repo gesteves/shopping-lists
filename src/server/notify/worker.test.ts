@@ -79,11 +79,11 @@ function addItem(name: string, listId = LIST) {
 function seedLists() {
   act(SAM, {
     type: "createList",
-    args: { listId: LIST, name: "Whole Foods" },
+    args: { listId: LIST, name: "Pierre’s General Store" },
   } as never);
   act(SAM, {
     type: "createList",
-    args: { listId: LIST_2, name: "Costco" },
+    args: { listId: LIST_2, name: "JojaMart" },
   } as never);
   // Those are sent and done.
   db.update(activity)
@@ -109,8 +109,8 @@ describe("Notifier", () => {
       {
         userId: ALEX.id,
         payload: {
-          title: "Whole Foods",
-          body: "Sam made 2 changes to the “Whole Foods” list.",
+          title: "Pierre’s General Store",
+          body: "Sam made 2 changes to the “Pierre’s General Store” list.",
           url: `/lists/${LIST}`,
           tag: LIST,
         },
@@ -153,7 +153,7 @@ describe("Notifier", () => {
     now += QUIET_MS;
     await notifier().tick();
     expect(sent[0].payload.body).toBe(
-      "Sam (via Claude) added “Eggs” to the “Whole Foods” list.",
+      "Sam (via Claude) added “Eggs” to the “Pierre’s General Store” list.",
     );
   });
 
@@ -172,12 +172,12 @@ describe("Notifier", () => {
       canPush: () => true,
       summarize: async (events) => {
         seen.push(events.length);
-        return "Sam added eggs to the “Whole Foods” list.";
+        return "Sam added eggs to the “Pierre’s General Store” list.";
       },
     }).tick();
     expect(seen).toEqual([1]);
     expect(sent[0].payload.body).toBe(
-      "Sam added eggs to the “Whole Foods” list.",
+      "Sam added eggs to the “Pierre’s General Store” list.",
     );
   });
 
@@ -290,10 +290,10 @@ describe("Notifier", () => {
       expect(seen.map((events) => summaryInput(events, "Sam").changes)).toEqual(
         [
           [
-            { type: "checkAll", list: "Whole Foods", count: 1 },
+            { type: "checkAll", list: "Pierre’s General Store", count: 1 },
             {
               type: "updateItem",
-              list: "Whole Foods",
+              list: "Pierre’s General Store",
               item: "Milk",
               fields: ["quantity"],
             },
@@ -312,7 +312,7 @@ describe("Notifier", () => {
     await notifier().tick();
     expect(sent).toHaveLength(1);
     expect(sent[0].payload.body).toBe(
-      "Sam added “Paper towels” to the “Costco” list.",
+      "Sam added “Paper towels” to the “JojaMart” list.",
     );
   });
 
@@ -362,14 +362,14 @@ describe("Notifier", () => {
     addItem("Milk");
     act(ALEX, {
       type: "createList",
-      args: { listId: crypto.randomUUID(), name: "Aldi" },
+      args: { listId: crypto.randomUUID(), name: "Adventurer’s Guild" },
     } as never);
     now += QUIET_MS;
     await notifier().tick();
     expect(sent.map((s) => [s.userId, s.payload.body]).sort()).toEqual(
       [
-        [ALEX.id, "Sam added “Milk” to the “Whole Foods” list."],
-        [SAM.id, "Alex created an “Aldi” list."],
+        [ALEX.id, "Sam added “Milk” to the “Pierre’s General Store” list."],
+        [SAM.id, "Alex created an “Adventurer’s Guild” list."],
       ].sort(),
     );
   });

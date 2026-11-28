@@ -41,7 +41,7 @@ describe("readHistory (#152)", () => {
   beforeEach(() => {
     act({
       type: "createList",
-      args: { listId: LIST, name: "Costco" },
+      args: { listId: LIST, name: "JojaMart" },
     } as never);
     act({
       type: "addItem",

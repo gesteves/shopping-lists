@@ -14,7 +14,7 @@ const events = [
   ev("addItem", { itemName: "Eggs" }, { itemId: "b" }),
   ev(
     "check",
-    { itemName: "Bread", listName: "Target" },
+    { itemName: "Bread", listName: "Oasis" },
     { listId: "l2", itemId: "c" },
   ),
 ];
@@ -34,12 +34,12 @@ describe("createSummarizer", () => {
   it("returns the line from Claude", async () => {
     const { client, parse } = fakeClient(async () =>
       answer(
-        "Sam added milk and eggs to the “Whole Foods” list and checked off bread in the “Target” list.",
+        "Sam added milk and eggs to the “Pierre’s General Store” list and checked off bread in the “Oasis” list.",
       ),
     );
     const summarize = createSummarizer({ client });
     expect(await summarize(events, "Sam")).toBe(
-      "Sam added milk and eggs to the “Whole Foods” list and checked off bread in the “Target” list.",
+      "Sam added milk and eggs to the “Pierre’s General Store” list and checked off bread in the “Oasis” list.",
     );
 
     const [request] = parse.mock.calls[0] as [Record<string, unknown>];
@@ -111,14 +111,14 @@ describe("createSummarizer", () => {
   it("writes one change too, with its sentence as the fallback", async () => {
     const one = [ev("addItem", { itemName: "Eggs" })];
     const { client, parse } = fakeClient(async () =>
-      answer("Sam added eggs to the “Whole Foods” list."),
+      answer("Sam added eggs to the “Pierre’s General Store” list."),
     );
     expect(await createSummarizer({ client })(one, "Sam")).toBe(
-      "Sam added eggs to the “Whole Foods” list.",
+      "Sam added eggs to the “Pierre’s General Store” list.",
     );
     expect(parse).toHaveBeenCalledOnce();
     expect(await createSummarizer({ apiKey: "" })(one, "Sam")).toBe(
-      "Sam added “Eggs” to the “Whole Foods” list.",
+      "Sam added “Eggs” to the “Pierre’s General Store” list.",
     );
   });
 });
@@ -150,7 +150,7 @@ describe("summaryInput", () => {
     expect(input.changes).toEqual([
       {
         type: "updateItem",
-        list: "Whole Foods",
+        list: "Pierre’s General Store",
         item: "Eggs",
         fields: ["notes"],
       },
@@ -170,7 +170,7 @@ describe("summaryInput", () => {
       "Sam",
     );
     expect(input.changes).toEqual([
-      { type: "addItem", list: "Whole Foods", item: "Oat milk" },
+      { type: "addItem", list: "Pierre’s General Store", item: "Oat milk" },
     ]);
   });
 });
@@ -182,8 +182,8 @@ describe("cleanBody", () => {
   });
 
   it("adds a period if the sentence has none", () => {
-    expect(cleanBody("Sam added milk to the “Target” list")).toBe(
-      "Sam added milk to the “Target” list.",
+    expect(cleanBody("Sam added milk to the “Oasis” list")).toBe(
+      "Sam added milk to the “Oasis” list.",
     );
     expect(cleanBody("Sam renamed the “A” list to “B”")).toBe(
       "Sam renamed the “A” list to “B”.",

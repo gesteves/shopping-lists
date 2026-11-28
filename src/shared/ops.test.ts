@@ -32,8 +32,8 @@ function op(type: OpType, args: unknown): unknown {
 
 // One valid op for each type.
 const VALID: Record<OpType, unknown> = {
-  createList: { listId: LIST, name: "Whole Foods" },
-  renameList: { listId: LIST, name: "Costco" },
+  createList: { listId: LIST, name: "Pierre’s General Store" },
+  renameList: { listId: LIST, name: "JojaMart" },
   deleteList: { listId: LIST },
   restoreList: { listId: LIST },
   addItem: { itemId: ITEM, listId: LIST, name: "Milk" },
@@ -57,9 +57,9 @@ const INVALID: Record<OpType, unknown[]> = {
     { listId: LIST },
     { listId: LIST, name: "   " },
     { listId: LIST, name: "x".repeat(LIST_NAME_MAX + 1) },
-    { listId: "not-a-uuid", name: "Target" },
+    { listId: "not-a-uuid", name: "Oasis" },
   ],
-  renameList: [{ listId: LIST, name: "" }, { name: "Target" }],
+  renameList: [{ listId: LIST, name: "" }, { name: "Oasis" }],
   deleteList: [{}, { listId: 42 }],
   restoreList: [{ listId: "" }],
   addItem: [

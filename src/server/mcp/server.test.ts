@@ -378,13 +378,15 @@ describe("tools", () => {
 
   it("creates a list, adds items, and reads them back", async () => {
     const created = await callTool(client, "create_list", {
-      name: "Whole Foods",
+      name: "Pierre’s General Store",
     });
-    expect(created.structuredContent).toMatchObject({ name: "Whole Foods" });
+    expect(created.structuredContent).toMatchObject({
+      name: "Pierre’s General Store",
+    });
     const listId = created.structuredContent.list_id as string;
 
     const added = await callTool(client, "add_items", {
-      list: "whole foods",
+      list: "pierre’s general store",
       items: [{ name: "Milk" }, { name: "Eggs", quantity: 12, notes: "Large" }],
     });
     expect(added.structuredContent).toMatchObject({
@@ -398,7 +400,7 @@ describe("tools", () => {
     const lists = await callTool(client, "list_lists", {});
     expect(lists.structuredContent.lists).toContainEqual({
       list_id: listId,
-      name: "Whole Foods",
+      name: "Pierre’s General Store",
       private: false,
       items: 2,
       unchecked: 2,
@@ -423,7 +425,7 @@ describe("tools", () => {
     bus.on("poke", onPoke);
     try {
       await callTool(client, "add_items", {
-        list: "Whole Foods",
+        list: "Pierre’s General Store",
         items: [{ name: "Bread" }],
       });
     } finally {
@@ -441,17 +443,19 @@ describe("tools", () => {
 
   it("does not add a name twice, and unchecks a checked item", async () => {
     await callTool(client, "check_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["MILK"],
     });
     const again = await callTool(client, "add_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: [{ name: "  milk " }],
     });
     expect(again.structuredContent.items).toEqual([
       expect.objectContaining({ name: "Milk", result: "already_on_list" }),
     ]);
-    const got = await callTool(client, "get_list", { list: "Whole Foods" });
+    const got = await callTool(client, "get_list", {
+      list: "Pierre’s General Store",
+    });
     const milk = (got.structuredContent.items as Json[]).filter(
       (i) => i.name === "Milk",
     );
@@ -461,14 +465,14 @@ describe("tools", () => {
 
   it("checks, unchecks, and finds items", async () => {
     const checked = await callTool(client, "check_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["Eggs", "Bread"],
     });
     expect(
       (checked.structuredContent.items as Json[]).map((i) => i.checked),
     ).toEqual([true, true]);
     const unchecked = await callTool(client, "get_list", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       include_checked: false,
     });
     expect(
@@ -476,14 +480,14 @@ describe("tools", () => {
     ).toEqual(["Milk"]);
 
     await callTool(client, "uncheck_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["Bread"],
     });
     const found = await callTool(client, "search_items", { query: "EG" });
     expect(found.structuredContent.items).toEqual([
       expect.objectContaining({
         name: "Eggs",
-        list_name: "Whole Foods",
+        list_name: "Pierre’s General Store",
         checked: true,
       }),
     ]);
@@ -558,9 +562,9 @@ describe("tools", () => {
   });
 
   it("updates, moves, and deletes items", async () => {
-    await callTool(client, "create_list", { name: "Target" });
+    await callTool(client, "create_list", { name: "Oasis" });
     const updated = await callTool(client, "update_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "bread",
       name: "Sourdough",
       quantity: 2,
@@ -570,18 +574,18 @@ describe("tools", () => {
       quantity: 2,
     });
     const moved = await callTool(client, "move_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "Sourdough",
-      to_list: "target",
+      to_list: "oasis",
     });
     expect(moved.isError).toBeFalsy();
-    const target = await callTool(client, "get_list", { list: "Target" });
+    const target = await callTool(client, "get_list", { list: "Oasis" });
     expect(
       (target.structuredContent.items as Json[]).map((i) => i.name),
     ).toEqual(["Sourdough"]);
 
     const deleted = await callTool(client, "delete_items", {
-      list: "Target",
+      list: "Oasis",
       items: ["Sourdough"],
     });
     expect(deleted.structuredContent.deleted).toEqual([
@@ -592,7 +596,7 @@ describe("tools", () => {
   it("marks an item out of stock and in stock (#131)", async () => {
     // Eggs is checked: the mark also unchecks it.
     const marked = await callTool(client, "update_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "eggs",
       out_of_stock: true,
     });
@@ -602,14 +606,16 @@ describe("tools", () => {
       checked: false,
       out_of_stock: true,
     });
-    const got = await callTool(client, "get_list", { list: "Whole Foods" });
+    const got = await callTool(client, "get_list", {
+      list: "Pierre’s General Store",
+    });
     expect(
       (got.structuredContent.items as Json[]).find((i) => i.name === "Eggs"),
     ).toMatchObject({ out_of_stock: true });
 
     // A check marks it in stock.
     const checked = await callTool(client, "check_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["Eggs"],
     });
     expect(checked.structuredContent.items).toEqual([
@@ -618,12 +624,12 @@ describe("tools", () => {
 
     // An unmark with an edit in one call.
     await callTool(client, "update_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "milk",
       out_of_stock: true,
     });
     const both = await callTool(client, "update_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "milk",
       notes: "2%",
       out_of_stock: false,
@@ -634,7 +640,7 @@ describe("tools", () => {
     });
 
     const nothing = await callTool(client, "update_item", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       item: "milk",
     });
     expect(nothing.isError).toBe(true);
@@ -684,22 +690,24 @@ describe("tools", () => {
 
   it("unchecks all and clears checked items", async () => {
     await callTool(client, "check_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["Milk", "Eggs"],
     });
     const unchecked = await callTool(client, "uncheck_all", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
     });
     expect(unchecked.structuredContent.changed_items).toBe(2);
     await callTool(client, "check_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: ["Eggs"],
     });
     const cleared = await callTool(client, "clear_checked", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
     });
     expect(cleared.structuredContent.changed_items).toBe(1);
-    const got = await callTool(client, "get_list", { list: "Whole Foods" });
+    const got = await callTool(client, "get_list", {
+      list: "Pierre’s General Store",
+    });
     expect((got.structuredContent.items as Json[]).map((i) => i.name)).toEqual([
       "Milk",
     ]);
@@ -707,21 +715,21 @@ describe("tools", () => {
 
   it("renames and deletes a list", async () => {
     const renamed = await callTool(client, "rename_list", {
-      list: "Target",
-      name: "Target Run",
+      list: "Oasis",
+      name: "Oasis Run",
     });
-    expect(renamed.structuredContent.name).toBe("Target Run");
+    expect(renamed.structuredContent.name).toBe("Oasis Run");
     const deleted = await callTool(client, "delete_list", {
-      list: "target run",
+      list: "oasis run",
     });
-    expect(deleted.structuredContent).toMatchObject({ name: "Target Run" });
-    const gone = await callTool(client, "get_list", { list: "Target Run" });
+    expect(deleted.structuredContent).toMatchObject({ name: "Oasis Run" });
+    const gone = await callTool(client, "get_list", { list: "Oasis Run" });
     expect(gone.isError).toBe(true);
   });
 
   it("makes the same change once for a repeated idempotency_key", async () => {
     const args = {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: [{ name: "Apples" }, { name: "Pears" }],
       idempotency_key: "retry-1",
     };
@@ -737,11 +745,11 @@ describe("tools", () => {
     expect(apples).toHaveLength(1);
 
     const list1 = await callTool(client, "create_list", {
-      name: "Costco",
+      name: "JojaMart",
       idempotency_key: "k",
     });
     const list2 = await callTool(client, "create_list", {
-      name: "Costco",
+      name: "JojaMart",
       idempotency_key: "k",
     });
     expect(list2.isError).toBeFalsy();
@@ -752,12 +760,12 @@ describe("tools", () => {
 
   it("makes the change when a key comes again with different arguments", async () => {
     const first = await callTool(client, "add_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: [{ name: "Kiwis" }],
       idempotency_key: "same-key",
     });
     const second = await callTool(client, "add_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: [{ name: "Mangos" }],
       idempotency_key: "same-key",
     });
@@ -828,20 +836,22 @@ describe("tools", () => {
 
   describe("business errors", () => {
     it("names the lists when the list is unknown", async () => {
-      const res = await callTool(client, "get_list", { list: "Safeway" });
+      const res = await callTool(client, "get_list", { list: "Casino" });
       expect(res.isError).toBe(true);
-      expect(errorText(res)).toContain("No list matches “Safeway”");
-      expect(errorText(res)).toContain("“Whole Foods”");
+      expect(errorText(res)).toContain("No list matches “Casino”");
+      expect(errorText(res)).toContain("“Pierre’s General Store”");
     });
 
     it("changes nothing when an item is unknown", async () => {
       const res = await callTool(client, "check_items", {
-        list: "Whole Foods",
+        list: "Pierre’s General Store",
         items: ["Milk", "Caviar"],
       });
       expect(res.isError).toBe(true);
       expect(errorText(res)).toContain("“Caviar”");
-      const got = await callTool(client, "get_list", { list: "Whole Foods" });
+      const got = await callTool(client, "get_list", {
+        list: "Pierre’s General Store",
+      });
       const milk = (got.structuredContent.items as Json[]).find(
         (i) => i.name === "Milk",
       );
@@ -850,7 +860,7 @@ describe("tools", () => {
 
     it("refuses a second list with the same name", async () => {
       const res = await callTool(client, "create_list", {
-        name: "whole foods",
+        name: "pierre’s general store",
       });
       expect(res.isError).toBe(true);
       expect(errorText(res)).toContain("exists");
@@ -870,7 +880,10 @@ describe("tools", () => {
 
     it.each([
       ["get_list", { list: "L".repeat(101) }],
-      ["check_items", { list: "Whole Foods", items: ["I".repeat(201)] }],
+      [
+        "check_items",
+        { list: "Pierre’s General Store", items: ["I".repeat(201)] },
+      ],
     ])(
       "refuses a long reference in %s, and does not quote it",
       async (name, args) => {
@@ -883,7 +896,7 @@ describe("tools", () => {
     it("returns schema errors as tool errors", async () => {
       const res = await client.callTool({
         name: "add_items",
-        arguments: { list: "Whole Foods", items: [] },
+        arguments: { list: "Pierre’s General Store", items: [] },
       });
       expect(res.isError).toBe(true);
     });
@@ -896,10 +909,12 @@ describe("tools", () => {
     });
     const samClient = await connect("modern", other.access_token);
     await callTool(samClient, "add_items", {
-      list: "Whole Foods",
+      list: "Pierre’s General Store",
       items: [{ name: "Butter" }],
     });
-    const got = await callTool(client, "get_list", { list: "Whole Foods" });
+    const got = await callTool(client, "get_list", {
+      list: "Pierre’s General Store",
+    });
     expect(
       (got.structuredContent.items as Json[]).find((i) => i.name === "Butter"),
     ).toMatchObject({ added: { by: "Sam" } });
@@ -1124,9 +1139,9 @@ describe("notifications", () => {
     // Earlier tests made activity. It is sent and done.
     h.db.update(activity).set({ notifiedAt: new Date() }).run();
     const client = await connect("modern");
-    await callTool(client, "create_list", { name: "Trader Joe’s" });
+    await callTool(client, "create_list", { name: "Willy’s Fish Shop" });
     await callTool(client, "add_items", {
-      list: "Trader Joe’s",
+      list: "Willy’s Fish Shop",
       items: [{ name: "Milk" }, { name: "Eggs" }],
     });
 
@@ -1146,7 +1161,7 @@ describe("notifications", () => {
       {
         userId: sam.id,
         payload: expect.objectContaining({
-          title: "Trader Joe’s",
+          title: "Willy’s Fish Shop",
           body: expect.stringMatching(/^Emily \(via Claude\) /),
         }),
       },

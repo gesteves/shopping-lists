@@ -73,20 +73,20 @@ function item(
 describe("readLists", () => {
   it("gives the lists that are not deleted, by name", async () => {
     await db.lists.bulkPut([
-      list("a", "target"),
-      list("b", "Costco"),
-      list("c", "Aldi", 5),
+      list("a", "oasis"),
+      list("b", "JojaMart"),
+      list("c", "Adventurer’s Guild", 5),
     ]);
     expect((await readLists(db)).map((l) => l.name)).toEqual([
-      "Costco",
-      "target",
+      "JojaMart",
+      "oasis",
     ]);
   });
 });
 
 describe("readList", () => {
   it("sorts unchecked first, then the last updated first", async () => {
-    await db.lists.put(list("l", "Target"));
+    await db.lists.put(list("l", "Oasis"));
     await db.items.bulkPut([
       item("old", 1),
       item("new", 9),
@@ -104,7 +104,7 @@ describe("readList", () => {
   });
 
   it("gives null for a deleted or missing list", async () => {
-    await db.lists.put(list("l", "Target", 3));
+    await db.lists.put(list("l", "Oasis", 3));
     expect(await readList(db, "l")).toBeNull();
     expect(await readList(db, "missing")).toBeNull();
   });
@@ -112,7 +112,7 @@ describe("readList", () => {
 
 describe("readListSummaries", () => {
   it("counts the items that are not checked and not deleted", async () => {
-    await db.lists.bulkPut([list("l", "Target"), list("m", "Costco")]);
+    await db.lists.bulkPut([list("l", "Oasis"), list("m", "JojaMart")]);
     await db.items.bulkPut([
       item("a", 1),
       item("b", 1),
@@ -122,13 +122,13 @@ describe("readListSummaries", () => {
     expect(
       (await readListSummaries(db)).map((l) => [l.name, l.remaining]),
     ).toEqual([
-      ["Costco", 0],
-      ["Target", 2],
+      ["JojaMart", 0],
+      ["Oasis", 2],
     ]);
   });
 
   it("counts the items that are not deleted, checked or not", async () => {
-    await db.lists.bulkPut([list("l", "Target"), list("m", "Costco")]);
+    await db.lists.bulkPut([list("l", "Oasis"), list("m", "JojaMart")]);
     await db.items.bulkPut([
       item("a", 1),
       item("c", 1, true),
@@ -136,8 +136,8 @@ describe("readListSummaries", () => {
     ]);
     expect((await readListSummaries(db)).map((l) => [l.name, l.total])).toEqual(
       [
-        ["Costco", 0],
-        ["Target", 2],
+        ["JojaMart", 0],
+        ["Oasis", 2],
       ],
     );
   });
@@ -157,7 +157,7 @@ describe("readOtherUserNames", () => {
 
 describe("readListSummaries names", () => {
   it("gives the name of one unchecked item, and none for more", async () => {
-    await db.lists.put(list("l", "Target"));
+    await db.lists.put(list("l", "Oasis"));
     await db.items.bulkPut([item("a", 1), item("c", 2, true)]);
     expect((await readListSummaries(db))[0].names).toEqual(["a"]);
 
@@ -169,7 +169,7 @@ describe("readListSummaries names", () => {
 describe("listLine", () => {
   const NOW = 10 * 60_000;
   const summary = (patch: Partial<ListSummary>): ListSummary => ({
-    ...list("l", "Target"),
+    ...list("l", "Oasis"),
     remaining: 0,
     total: 0,
     names: [],
@@ -233,7 +233,7 @@ describe("readListSummaries summaries (#143)", () => {
   it("knows if the summary is for the unchecked items now", async () => {
     await setMeta(db, "summaries", true);
     await db.lists.put({
-      ...list("l", "Target", null, "A and b"),
+      ...list("l", "Oasis", null, "A and b"),
       summaryKey: await summaryKeyOf(unchecked),
     });
     await db.items.bulkPut([item("a", 1), item("b", 2), item("c", 3, true)]);
@@ -252,7 +252,7 @@ describe("readListSummaries summaries (#143)", () => {
   });
 
   it("is not fresh with no key (a row from an older server)", async () => {
-    await db.lists.put(list("l", "Target", null, "A and b"));
+    await db.lists.put(list("l", "Oasis", null, "A and b"));
     await db.items.bulkPut([item("a", 1), item("b", 2)]);
     const [row] = await readListSummaries(db);
     expect(row).toMatchObject({ summaryFresh: false, summaries: false });
@@ -260,7 +260,7 @@ describe("readListSummaries summaries (#143)", () => {
 
   it("gives the last change of an item, also a delete, in device time", async () => {
     await setMeta(db, "clockOffset", 100);
-    await db.lists.put(list("l", "Target"));
+    await db.lists.put(list("l", "Oasis"));
     await db.items.bulkPut([item("a", 1_000), item("b", 2_000, false, 3_000)]);
     const [row] = await readListSummaries(db);
     expect(row.changedAt).toBe(3_000 - 100);
