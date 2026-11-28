@@ -71,16 +71,22 @@ interface Ctx {
   lastSeq: number | null;
 }
 
-/** What one op did. `activity` is set only if a row changed. */
+/** One activity row of an op. */
+interface ActivityRow {
+  /** The type of the activity row, if it is not the op type. */
+  type?: OpType;
+  listId: string;
+  itemId?: string;
+  snapshot: ActivitySnapshot;
+}
+
+/**
+ * What one op did. `activity` is set only if a row changed. A bulk op gives
+ * one activity row for each item that it changed (#133).
+ */
 interface Outcome {
   result: StoredResult;
-  activity?: {
-    /** The type of the activity row, if it is not the op type. */
-    type?: OpType;
-    listId: string;
-    itemId?: string;
-    snapshot: ActivitySnapshot;
-  };
+  activity?: ActivityRow | ActivityRow[];
 }
 
 /**
@@ -243,17 +249,19 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
     })
     .run();
 
-  if (outcome.activity) {
+  // One insert for each row: one insert of many rows can pass the SQLite
+  // limit of variables.
+  for (const row of [outcome.activity ?? []].flat()) {
     ctx.tx
       .insert(activity)
       .values({
         opId: op.opId,
         actorId: ctx.actor.id,
         via: ctx.via,
-        type: outcome.activity.type ?? op.type,
-        listId: outcome.activity.listId,
-        itemId: outcome.activity.itemId ?? null,
-        snapshot: outcome.activity.snapshot,
+        type: row.type ?? op.type,
+        listId: row.listId,
+        itemId: row.itemId ?? null,
+        snapshot: row.snapshot,
         at: ctx.now,
       })
       .run();
@@ -520,13 +528,19 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
     }
     markAlive(clocks, match.deletedAt, set, op.hlc);
     const changed = saveItem(ctx, op, match, set, clocks);
+    // The add only unchecked the item. Collapse counts it as an uncheck
+    // (#133).
     return {
       result: { opId: op.opId, status: "merged", into: match.id, changed },
       activity: changed
         ? {
             listId,
             itemId: match.id,
-            snapshot: { listName: list.name, itemName: match.name },
+            snapshot: {
+              listName: list.name,
+              itemName: match.name,
+              unchecked: true,
+            },
           }
         : undefined,
     };
@@ -563,7 +577,9 @@ function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
     activity: {
       listId,
       itemId,
-      snapshot: { listName: list.name, itemName: name },
+      // The values let collapse find a delete and an add of the same item
+      // (#133).
+      snapshot: { listName: list.name, itemName: name, quantity, notes },
     },
   };
 }
@@ -740,6 +756,24 @@ function changeItem(
       (field) => set[field] !== undefined,
     );
     if (fields.length > 0) snapshot.fields = fields;
+    // The values before and after, for collapse: an edit back to the first
+    // value is no change (#133).
+    if (set.quantity !== undefined) {
+      snapshot.oldQuantity = row.quantity;
+      snapshot.quantity = set.quantity;
+    }
+    if (set.notes !== undefined) {
+      snapshot.oldNotes = row.notes;
+      snapshot.notes = set.notes;
+    }
+  }
+  // The item before the delete. Collapse compares it with a new add of the
+  // same name (#133).
+  if (op.type === "deleteItem") {
+    snapshot.quantity = row.quantity;
+    snapshot.notes = row.notes;
+    if (row.checked) snapshot.checked = true;
+    if (row.outOfStockAt) snapshot.outOfStock = true;
   }
   return {
     result: applied(op, true),
@@ -776,7 +810,9 @@ function changeAllItems(
     .orderBy(items.id)
     .all();
 
-  let count = 0;
+  // One activity row for each item, thus collapse can cancel the changes
+  // of one item, for example the undo of this op (#133).
+  const changed: ActivityRow[] = [];
   for (const row of rows) {
     if (!newer(op.hlc, row.clocks.checked)) continue;
     const set: ItemSet = {};
@@ -794,12 +830,15 @@ function changeAllItems(
       if (checked) restock(row, set, clocks, op);
       markAlive(clocks, row.deletedAt, set, op.hlc);
     }
-    if (saveItem(ctx, op, row, set, clocks)) count++;
+    if (!saveItem(ctx, op, row, set, clocks)) continue;
+    const snapshot: ActivitySnapshot = {
+      listName: list.name,
+      itemName: row.name,
+    };
+    if (set.outOfStockAt === null) snapshot.inStock = true;
+    changed.push({ listId: list.id, itemId: row.id, snapshot });
   }
 
-  if (count === 0) return { result: applied(op, false, 0) };
-  return {
-    result: applied(op, true, count),
-    activity: { listId: list.id, snapshot: { listName: list.name, count } },
-  };
+  if (changed.length === 0) return { result: applied(op, false, 0) };
+  return { result: applied(op, true, changed.length), activity: changed };
 }

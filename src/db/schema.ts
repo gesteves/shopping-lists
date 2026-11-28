@@ -431,21 +431,43 @@ export const processedOps = sqliteTable(
 export interface ActivitySnapshot {
   listName: string;
   itemName?: string;
-  /** renameList: the name before. */
+  /** renameList and updateItem: the name before. */
   oldName?: string;
   /** moveItem: the name of the list before. */
   fromListName?: string;
-  /** clearChecked, uncheckAll, and checkAll: the number of items they changed. */
+  /**
+   * clearChecked, uncheckAll, and checkAll: the number of items they changed.
+   * Only older rows have it: newer rows have one row for each item (#133).
+   */
   count?: number;
   /** updateItem: the fields that changed (#89). Older rows do not have it. */
   fields?: ItemField[];
   /**
    * updateItem, moveItem, and markOutOfStock: the change also unchecked the
-   * item (#112, #131).
+   * item (#112, #131). addItem: the name was on the list, and the add only
+   * unchecked the item (#133).
    */
   unchecked?: boolean;
-  /** check and moveItem: the change also marked the item in stock (#131). */
+  /**
+   * check, checkAll, and moveItem: the change also marked the item in stock
+   * (#131).
+   */
   inStock?: boolean;
+  // The values below are only for collapse (#133). They do not go to the
+  // push text or to Claude. Older rows do not have them.
+  /**
+   * The quantity and the notes after the change: updateItem (only the
+   * fields that changed), addItem, and deleteItem (the item before the
+   * delete).
+   */
+  quantity?: number;
+  notes?: string;
+  /** updateItem: the quantity and the notes before, if they changed. */
+  oldQuantity?: number;
+  oldNotes?: string;
+  /** deleteItem: the item was checked, or out of stock. */
+  checked?: boolean;
+  outOfStock?: boolean;
 }
 
 /** The fields that updateItem can change. */

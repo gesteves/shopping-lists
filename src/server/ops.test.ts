@@ -241,6 +241,37 @@ describe("field-level last-writer-wins", () => {
       listName: "Whole Foods",
       itemName: "Milk",
       fields: ["quantity"],
+      oldQuantity: 1,
+      quantity: 4,
+    });
+  });
+
+  it("writes the old and new values of the changed fields (#133)", () => {
+    seed();
+    apply(
+      SAM,
+      op(
+        "updateItem",
+        {
+          itemId: ITEM,
+          fields: { name: "Oat milk", quantity: 1, notes: "Oatly" },
+        },
+        T2,
+      ),
+    );
+    const last = db
+      .select({ snapshot: activity.snapshot })
+      .from(activity)
+      .orderBy(desc(activity.id))
+      .get();
+    // The quantity did not change: no values for it.
+    expect(last?.snapshot).toEqual({
+      listName: "Whole Foods",
+      itemName: "Oat milk",
+      oldName: "Milk",
+      fields: ["name", "notes"],
+      oldNotes: "",
+      notes: "Oatly",
     });
   });
 });
@@ -504,7 +535,12 @@ describe("dedupe on addItem", () => {
       updatedBy: ALEX.id,
     });
     const last = db.select().from(activity).orderBy(activity.id).all().at(-1);
-    expect(last).toMatchObject({ type: "addItem", itemId: ITEM });
+    // The add only unchecked: collapse counts it as an uncheck (#133).
+    expect(last).toMatchObject({
+      type: "addItem",
+      itemId: ITEM,
+      snapshot: { listName: "Whole Foods", itemName: "Milk", unchecked: true },
+    });
   });
 
   it("merges into an unchecked item and changes nothing", () => {
@@ -601,12 +637,14 @@ describe("clearChecked, uncheckAll, and checkAll", () => {
     expect(getItem(ITEM)?.deletedAt).toEqual(new Date(T3));
     expect(getItem(ITEM_2)?.deletedAt).toBeNull(); // Not checked.
     expect(getItem(ITEM_3)?.deletedAt).toBeNull(); // Checked later.
-    const last = db.select().from(activity).orderBy(activity.id).all().at(-1);
-    expect(last).toMatchObject({
-      type: "clearChecked",
-      itemId: null,
-      snapshot: { listName: "Whole Foods", count: 1 },
-    });
+    // One activity row for each item (#133).
+    const rows = db.select().from(activity).orderBy(activity.id).all();
+    expect(rows.filter((r) => r.type === "clearChecked")).toMatchObject([
+      {
+        itemId: ITEM,
+        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      },
+    ]);
   });
 
   it("uncheckAll unchecks the items checked before it", () => {
@@ -635,12 +673,41 @@ describe("clearChecked, uncheckAll, and checkAll", () => {
     });
     expect(getItem(ITEM_2)?.checked).toBe(false);
     expect(getItem(ITEM_3)?.checked).toBe(false);
-    const last = db.select().from(activity).orderBy(activity.id).all().at(-1);
-    expect(last).toMatchObject({
-      type: "checkAll",
-      itemId: null,
-      snapshot: { listName: "Whole Foods", count: 1 },
-    });
+    const rows = db.select().from(activity).orderBy(activity.id).all();
+    expect(rows.filter((r) => r.type === "checkAll")).toMatchObject([
+      {
+        itemId: ITEM,
+        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      },
+    ]);
+  });
+
+  it("writes one activity row for each item, with the count in the result (#133)", () => {
+    seedThree();
+    const { results } = apply(ALEX, op("uncheckAll", { listId: LIST }, T4 + 1));
+    expect(results[0]).toMatchObject({ changed: true, count: 2 });
+    const rows = db
+      .select({
+        type: activity.type,
+        itemId: activity.itemId,
+        snapshot: activity.snapshot,
+      })
+      .from(activity)
+      .where(eq(activity.type, "uncheckAll"))
+      .orderBy(activity.id)
+      .all();
+    expect(rows).toEqual([
+      {
+        type: "uncheckAll",
+        itemId: ITEM,
+        snapshot: { listName: "Whole Foods", itemName: "Milk" },
+      },
+      {
+        type: "uncheckAll",
+        itemId: ITEM_3,
+        snapshot: { listName: "Whole Foods", itemName: "Bread" },
+      },
+    ]);
   });
 
   it("checkAll does nothing when all items are checked", () => {
@@ -914,6 +981,12 @@ describe("out of stock (#131)", () => {
     apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
     apply(ALEX, op("checkAll", { listId: LIST }, T3));
     expect(getItem()).toMatchObject({ checked: true, outOfStockAt: null });
+    const last = db.select().from(activity).orderBy(desc(activity.id)).get();
+    expect(last).toMatchObject({
+      type: "checkAll",
+      itemId: ITEM,
+      snapshot: { itemName: "Milk", inStock: true },
+    });
   });
 
   it("a copy (an add to the other list) starts in stock", () => {
@@ -995,6 +1068,61 @@ describe("op IDs", () => {
 });
 
 describe("activity and pokes", () => {
+  it("writes the values of a new item and of a deleted item (#133)", () => {
+    seed();
+    apply(
+      SAM,
+      op(
+        "addItem",
+        {
+          itemId: ITEM_2,
+          listId: LIST,
+          name: "Eggs",
+          quantity: 12,
+          notes: "Large",
+        },
+        T2,
+      ),
+      op("markOutOfStock", { itemId: ITEM }, T2),
+      op("deleteItem", { itemId: ITEM }, T3),
+      op("deleteItem", { itemId: ITEM_2 }, T3),
+    );
+    const rows = db
+      .select({ type: activity.type, snapshot: activity.snapshot })
+      .from(activity)
+      .orderBy(activity.id)
+      .all()
+      .filter((r) => r.type === "addItem" || r.type === "deleteItem")
+      .map((r) => r.snapshot);
+    expect(rows).toEqual([
+      {
+        listName: "Whole Foods",
+        itemName: "Milk",
+        quantity: 1,
+        notes: "",
+      },
+      {
+        listName: "Whole Foods",
+        itemName: "Eggs",
+        quantity: 12,
+        notes: "Large",
+      },
+      {
+        listName: "Whole Foods",
+        itemName: "Milk",
+        quantity: 1,
+        notes: "",
+        outOfStock: true,
+      },
+      {
+        listName: "Whole Foods",
+        itemName: "Eggs",
+        quantity: 12,
+        notes: "Large",
+      },
+    ]);
+  });
+
   it("happen only for ops that changed a row", () => {
     seed();
     apply(SAM, op("check", { itemId: ITEM }, T3));

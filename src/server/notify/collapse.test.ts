@@ -307,4 +307,482 @@ describe("collapse", () => {
     ]);
     expect(types(out)).toEqual(["addItem", "clearChecked", "check"]);
   });
+
+  describe("edits that go back (#133)", () => {
+    const qty = (from: number, to: number) =>
+      ev("updateItem", {
+        itemName: "Milk",
+        fields: ["quantity"],
+        oldQuantity: from,
+        quantity: to,
+      });
+    const notes = (from: string, to: string) =>
+      ev("updateItem", {
+        itemName: "Milk",
+        fields: ["notes"],
+        oldNotes: from,
+        notes: to,
+      });
+    const rename = (from: string, to: string) =>
+      ev("updateItem", { itemName: to, oldName: from, fields: ["name"] });
+
+    it("cancels a quantity, notes, or name that goes back", () => {
+      expect(collapse([qty(1, 2), qty(2, 1)])).toEqual([]);
+      expect(collapse([qty(1, 2), qty(2, 3), qty(3, 1)])).toEqual([]);
+      expect(collapse([notes("a", "b"), notes("b", "a")])).toEqual([]);
+      expect(collapse([notes("", "2%"), notes("2%", "")])).toEqual([]);
+      expect(
+        collapse([rename("Milk", "Oat milk"), rename("Oat milk", "Milk")]),
+      ).toEqual([]);
+    });
+
+    it("keeps only the fields that changed overall", () => {
+      const last = ev("updateItem", {
+        itemName: "Milk",
+        oldName: "Oat milk",
+        fields: ["name"],
+      });
+      const out = collapse([
+        rename("Milk", "Oat milk"),
+        qty(1, 2),
+        notes("", "2%"),
+        notes("2%", ""),
+        last,
+      ]);
+      // The name and the notes went back: no oldName, no name, no notes.
+      expect(out).toEqual([
+        {
+          ...last,
+          snapshot: {
+            listName: "Whole Foods",
+            itemName: "Milk",
+            fields: ["quantity"],
+          },
+        },
+      ]);
+    });
+
+    it("keeps an edit that ends at a new value", () => {
+      const last = qty(2, 3);
+      expect(collapse([qty(1, 2), last])).toEqual([
+        {
+          ...last,
+          snapshot: {
+            listName: "Whole Foods",
+            itemName: "Milk",
+            fields: ["quantity"],
+          },
+        },
+      ]);
+      // The old name is the name before the first rename.
+      const out = collapse([
+        qty(1, 2),
+        rename("Milk", "Oat milk"),
+        rename("Oat milk", "Soy milk"),
+      ]);
+      expect(out.map((e) => e.snapshot)).toEqual([
+        {
+          listName: "Whole Foods",
+          itemName: "Soy milk",
+          oldName: "Milk",
+          fields: ["quantity", "name"],
+        },
+      ]);
+    });
+
+    it("keeps the edits of older rows, which have no values", () => {
+      const old = (fields?: ("quantity" | "notes")[]) =>
+        ev("updateItem", { itemName: "Milk", ...(fields && { fields }) });
+      expect(types(collapse([old(["quantity"]), old(["quantity"])]))).toEqual([
+        "updateItem",
+      ]);
+      expect(types(collapse([qty(1, 2), old(["quantity"])]))).toEqual([
+        "updateItem",
+      ]);
+      expect(types(collapse([old(), old()]))).toEqual(["updateItem"]);
+      // An old rename back: the name is known, thus nothing.
+      expect(
+        collapse([rename("Milk", "Oat milk"), rename("Oat milk", "Milk")]),
+      ).toEqual([]);
+    });
+
+    it("says the uncheck when an edit that unchecked goes back", () => {
+      const first = ev("updateItem", {
+        itemName: "Milk",
+        fields: ["quantity"],
+        oldQuantity: 1,
+        quantity: 2,
+        unchecked: true,
+      });
+      expect(collapse([first, qty(2, 1)])).toEqual([
+        {
+          ...first,
+          type: "uncheck",
+          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        },
+      ]);
+      // A check after it: the item ends checked, as it started.
+      expect(collapse([first, qty(2, 1), ev("check", {})])).toEqual([]);
+      // The edit stays: it tells the uncheck.
+      expect(types(collapse([first, qty(2, 3)]))).toEqual(["updateItem"]);
+    });
+  });
+
+  describe("state changes whose event cancels out (#133)", () => {
+    it("says the uncheck when a move that unchecked goes back", () => {
+      const away = ev(
+        "moveItem",
+        { listName: "B", fromListName: "A", unchecked: true },
+        { listId: "b" },
+      );
+      const back = ev(
+        "moveItem",
+        { listName: "A", fromListName: "B" },
+        { listId: "a" },
+      );
+      // The item is unchecked on the first list.
+      expect(collapse([away, back])).toEqual([
+        { ...away, type: "uncheck", listId: "a", snapshot: { listName: "A" } },
+      ]);
+    });
+
+    it("says in stock when a move that marked it goes back", () => {
+      const away = ev(
+        "moveItem",
+        { listName: "B", fromListName: "A", inStock: true },
+        { listId: "b" },
+      );
+      const back = ev(
+        "moveItem",
+        { listName: "A", fromListName: "B" },
+        { listId: "a" },
+      );
+      expect(types(collapse([away, back]))).toEqual(["markInStock"]);
+    });
+
+    it("says in stock when a check that marked it is unchecked", () => {
+      const check = ev("check", { itemName: "Milk", inStock: true });
+      expect(collapse([check, ev("uncheck", { itemName: "Milk" })])).toEqual([
+        {
+          ...check,
+          type: "markInStock",
+          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        },
+      ]);
+    });
+
+    it("says the uncheck when a mark that unchecked is undone", () => {
+      expect(
+        types(
+          collapse([
+            ev("markOutOfStock", { unchecked: true }),
+            ev("markInStock", {}),
+          ]),
+        ),
+      ).toEqual(["uncheck"]);
+    });
+  });
+
+  describe("an add of a name that is checked on the list (#133)", () => {
+    const merged = () => ev("addItem", { itemName: "Milk", unchecked: true });
+
+    it("counts as an uncheck, and cancels with a check", () => {
+      expect(collapse([merged(), ev("check", {})])).toEqual([]);
+      expect(collapse([ev("check", {}), merged()])).toEqual([]);
+    });
+
+    it("stays an add when the item ends unchecked", () => {
+      const add = merged();
+      expect(collapse([add])).toEqual([
+        { ...add, snapshot: { listName: "Whole Foods", itemName: "Milk" } },
+      ]);
+    });
+
+    it("is not a new item: a delete after it says removed", () => {
+      expect(types(collapse([merged(), ev("deleteItem", {})]))).toEqual([
+        "deleteItem",
+      ]);
+    });
+  });
+
+  describe("bulk ops (#133)", () => {
+    // An item row of a bulk op.
+    const bulk = (
+      type: "checkAll" | "uncheckAll" | "clearChecked",
+      item: string,
+      extra = {},
+    ) => ev(type, { itemName: item, ...extra }, { itemId: item });
+    const item = (type: Parameters<typeof ev>[0], id: string) =>
+      ev(type, { itemName: id }, { itemId: id });
+
+    it("gives one bulk event with the count", () => {
+      const first = bulk("checkAll", "milk");
+      expect(collapse([first, bulk("checkAll", "eggs")])).toEqual([
+        {
+          ...first,
+          type: "checkAll",
+          itemId: null,
+          snapshot: { listName: "Whole Foods", count: 2 },
+        },
+      ]);
+    });
+
+    it("cancels a check all and its undo", () => {
+      expect(
+        collapse([
+          bulk("checkAll", "milk"),
+          bulk("checkAll", "eggs"),
+          item("uncheck", "milk"),
+          item("uncheck", "eggs"),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("cancels an uncheck all and its undo", () => {
+      expect(
+        collapse([
+          bulk("uncheckAll", "milk"),
+          bulk("uncheckAll", "eggs"),
+          item("check", "eggs"),
+          item("check", "milk"),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("cancels a delete checked and its undo", () => {
+      expect(
+        collapse([
+          bulk("clearChecked", "milk"),
+          bulk("clearChecked", "eggs"),
+          item("restoreItem", "milk"),
+          item("restoreItem", "eggs"),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("cancels a check all and an uncheck all, in each order", () => {
+      expect(
+        collapse([bulk("checkAll", "milk"), bulk("uncheckAll", "milk")]),
+      ).toEqual([]);
+      expect(
+        collapse([bulk("uncheckAll", "milk"), bulk("checkAll", "milk")]),
+      ).toEqual([]);
+      // Eggs was checked before the burst: the uncheck all of eggs stays.
+      const eggs = bulk("uncheckAll", "eggs");
+      expect(
+        collapse([bulk("checkAll", "milk"), bulk("uncheckAll", "milk"), eggs]),
+      ).toEqual([
+        {
+          ...eggs,
+          itemId: null,
+          snapshot: { listName: "Whole Foods", count: 1 },
+        },
+      ]);
+    });
+
+    it("nets out item events and bulk events per item", () => {
+      // Check milk, then uncheck all: only eggs is left.
+      const eggs = bulk("uncheckAll", "eggs");
+      expect(
+        collapse([item("check", "milk"), bulk("uncheckAll", "milk"), eggs]),
+      ).toEqual([
+        {
+          ...eggs,
+          itemId: null,
+          snapshot: { listName: "Whole Foods", count: 1 },
+        },
+      ]);
+      // Uncheck milk, then check all of milk only: nothing.
+      expect(
+        collapse([item("uncheck", "milk"), bulk("checkAll", "milk")]),
+      ).toEqual([]);
+      // Add, check, then delete checked: nothing for the new item.
+      expect(
+        collapse([
+          item("addItem", "milk"),
+          item("check", "milk"),
+          bulk("clearChecked", "milk"),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("gives the correct count after a partial cancel", () => {
+      const first = bulk("checkAll", "milk");
+      const out = collapse([
+        first,
+        bulk("checkAll", "eggs"),
+        bulk("checkAll", "bread"),
+        item("uncheck", "eggs"),
+        item("check", "tea"),
+      ]);
+      expect(out).toEqual([
+        {
+          ...first,
+          itemId: null,
+          snapshot: { listName: "Whole Foods", count: 2 },
+        },
+        expect.objectContaining({ type: "check", itemId: "tea" }),
+      ]);
+    });
+
+    it("keeps one bulk event for each type and list, at its first row", () => {
+      const out = collapse([
+        item("addItem", "tea"),
+        bulk("clearChecked", "milk"),
+        ev("clearChecked", { itemName: "x" }, { itemId: "x", listId: "l2" }),
+        bulk("uncheckAll", "eggs"),
+      ]);
+      expect(out.map((e) => [e.type, e.listId, e.snapshot])).toEqual([
+        ["addItem", "list-1", { listName: "Whole Foods", itemName: "tea" }],
+        ["clearChecked", "list-1", { listName: "Whole Foods", count: 1 }],
+        ["clearChecked", "l2", { listName: "Whole Foods", count: 1 }],
+        ["uncheckAll", "list-1", { listName: "Whole Foods", count: 1 }],
+      ]);
+    });
+
+    it("keeps the list of the bulk op when the item moves later", () => {
+      const out = collapse([
+        bulk("checkAll", "milk"),
+        ev(
+          "moveItem",
+          { itemName: "milk", listName: "B", fromListName: "Whole Foods" },
+          { itemId: "milk", listId: "b" },
+        ),
+      ]);
+      expect(out.map((e) => [e.type, e.listId])).toEqual([
+        ["moveItem", "b"],
+        ["checkAll", "list-1"],
+      ]);
+    });
+
+    it("says in stock when a check all of an out of stock item is undone", () => {
+      expect(
+        types(
+          collapse([
+            bulk("checkAll", "milk", { inStock: true }),
+            item("uncheck", "milk"),
+          ]),
+        ),
+      ).toEqual(["markInStock"]);
+      // Out of stock, check all, then undo: nothing.
+      expect(
+        collapse([
+          item("markOutOfStock", "milk"),
+          bulk("checkAll", "milk", { inStock: true }),
+          item("uncheck", "milk"),
+        ]),
+      ).toEqual([]);
+    });
+  });
+
+  describe("delete, then add the same item again (#133)", () => {
+    const del = (extra = {}) =>
+      ev(
+        "deleteItem",
+        { itemName: "Milk", quantity: 1, notes: "", ...extra },
+        { itemId: "old" },
+      );
+    const add = (extra = {}, ids = {}) =>
+      ev(
+        "addItem",
+        { itemName: "Milk", quantity: 1, notes: "", ...extra },
+        { itemId: "new", ...ids },
+      );
+
+    it("cancels when the name, quantity, notes, and list are the same", () => {
+      expect(collapse([del(), add()])).toEqual([]);
+      expect(
+        collapse([
+          del({ quantity: 2, notes: "2%" }),
+          add({ quantity: 2, notes: "2%" }),
+        ]),
+      ).toEqual([]);
+      // An edit of the new item to the same values.
+      expect(
+        collapse([
+          del({ quantity: 2 }),
+          add(),
+          ev(
+            "updateItem",
+            {
+              itemName: "Milk",
+              fields: ["quantity"],
+              oldQuantity: 1,
+              quantity: 2,
+            },
+            { itemId: "new" },
+          ),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("keeps both when the item is not the same", () => {
+      expect(types(collapse([del(), add({ quantity: 2 })]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+      expect(types(collapse([del(), add({ notes: "2%" })]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+      expect(types(collapse([del(), add({ itemName: "milk" })]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+      expect(types(collapse([del(), add({}, { listId: "l2" })]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+    });
+
+    it("keeps both when the state is not the same", () => {
+      // The deleted item was checked or out of stock.
+      expect(types(collapse([del({ checked: true }), add()]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+      expect(types(collapse([del({ outOfStock: true }), add()]))).toEqual([
+        "deleteItem",
+        "addItem",
+      ]);
+      // The new item ends checked.
+      expect(
+        types(collapse([del(), add(), ev("check", {}, { itemId: "new" })])),
+      ).toEqual(["deleteItem", "addItem", "check"]);
+      // The old item changed in the burst before the delete.
+      expect(
+        types(collapse([ev("check", {}, { itemId: "old" }), del(), add()])),
+      ).toEqual(["deleteItem", "addItem"]);
+      // Changes of the old item that cancel out do not count.
+      expect(
+        collapse([
+          ev("check", {}, { itemId: "old" }),
+          ev("uncheck", {}, { itemId: "old" }),
+          del(),
+          add(),
+        ]),
+      ).toEqual([]);
+    });
+
+    it("keeps both for older rows, which have no values", () => {
+      expect(
+        types(
+          collapse([
+            ev("deleteItem", { itemName: "Milk" }, { itemId: "old" }),
+            ev("addItem", { itemName: "Milk" }, { itemId: "new" }),
+          ]),
+        ),
+      ).toEqual(["deleteItem", "addItem"]);
+    });
+
+    it("cancels one pair for each delete", () => {
+      const second = add({}, { itemId: "newer" });
+      expect(collapse([del(), add(), second])).toEqual([
+        {
+          ...second,
+          snapshot: { listName: "Whole Foods", itemName: "Milk" },
+        },
+      ]);
+    });
+  });
 });
