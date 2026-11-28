@@ -60,6 +60,7 @@ async function push(ops: unknown[]) {
 async function pull(query = ""): Promise<PullResponse & { status: number }> {
   const res = handlePull(
     new Request(`http://localhost/api/sync/pull${query}`),
+    SAM.id,
     { db, now: () => NOW },
   );
   expect(res.headers.get("cache-control")).toBe("no-store");
@@ -72,6 +73,7 @@ describe("list summaries (#143)", () => {
     setListSummary(LIST, "Milk and eggs", "key-1", { db });
     const res = handlePull(
       new Request("http://localhost/api/sync/pull?since=0"),
+      SAM.id,
       { db, now: () => NOW, summaries: true },
     );
     const page = (await res.json()) as PullResponse;
@@ -129,6 +131,7 @@ describe("push then pull", () => {
         deletedAt: null,
         summary: null,
         summaryKey: null,
+        private: false,
         seq: 1,
       },
     ]);

@@ -13,7 +13,7 @@ import type { ItemRecord } from "@/shared/sync";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
 import { ItemSheet } from "./item-sheet";
-import { ListPicker, type PickMode } from "./list-picker";
+import { ListPicker, pickTargets, type PickMode } from "./list-picker";
 import { ListHeader } from "./list-menu";
 import { ListSwitches } from "./list-switches";
 
@@ -29,8 +29,9 @@ export function ListView() {
     id: string;
     mode: PickMode;
   } | null>(null);
-  const lists = useLists();
-  const canPick = (lists?.filter((l) => l.id !== id).length ?? 0) > 0;
+  const lists = useLists() ?? [];
+  const canMove = pickTargets(lists, id, "move").length > 0;
+  const canCopy = pickTargets(lists, id, "copy").length > 0;
   // The newest copy of the item. If it left the list, the dialog closes.
   const pickItem = picking && view?.items.find((i) => i.id === picking.id);
   const pickMode = picking?.mode;
@@ -79,7 +80,10 @@ export function ListView() {
       ) : (
         <>
           <ListHeader view={view} />
-          <ListSwitches listId={view.list.id} />
+          <ListSwitches
+            listId={view.list.id}
+            isPrivate={view.list.private === true}
+          />
           {/* Keep the live region in the DOM, so that a screen reader reads the callout when it shows. */}
           <div aria-live="polite">
             {view.items.length === 0 ? (
@@ -104,7 +108,8 @@ export function ListView() {
                 item={item}
                 onEdit={setEditing}
                 onPick={onPick}
-                canPick={canPick}
+                canMove={canMove}
+                canCopy={canCopy}
               />
             ))}
           </ul>
@@ -123,7 +128,8 @@ export function ListView() {
                     item={item}
                     onEdit={setEditing}
                     onPick={onPick}
-                    canPick={canPick}
+                    canMove={canMove}
+                    canCopy={canCopy}
                     expiresInDays={daysLeft(expiresAt(item.checkedAt!), now)}
                   />
                 ))}

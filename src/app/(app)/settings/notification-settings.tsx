@@ -176,10 +176,11 @@ export function NotificationSettings() {
 
 /**
  * A switch for each list: notifications about it, or not. The switches show
- * with the lists, disabled until the mutes are known (#136).
+ * with the lists, disabled until the mutes are known (#136). A private list
+ * sends no push (#154), thus it has no switch.
  */
 function MutedLists() {
-  const lists = useLists();
+  const lists = useLists()?.filter((l) => l.private !== true);
   const { muted, setListMuted } = useMutedLists();
 
   async function toggleList(listId: string, control: HTMLInputElement) {

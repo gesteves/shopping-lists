@@ -35,7 +35,11 @@ export type RejectReason =
   /** The op HLC is too far after the server clock (MAX_DRIFT_MS). */
   | "clock_ahead"
   /** A different user sent an op with this opId first. */
-  | "op_conflict";
+  | "op_conflict"
+  /** Only the creator of the list can change its privacy (#154). */
+  | "not_owner"
+  /** A move between a private list and a shared list (#154). */
+  | "privacy_mismatch";
 
 /** The result of an op, as processed_ops keeps it. */
 export type StoredResult =
@@ -101,6 +105,11 @@ export interface ListRecord {
    * no value: read it as null.
    */
   summaryKey: string | null;
+  /**
+   * Only the creator sees the list (#154). A row from an older server has
+   * no value: read it as false.
+   */
+  private: boolean;
   seq: number;
 }
 
@@ -158,8 +167,9 @@ export interface PullResponse {
   /** True if there are more rows. Pull again now with the new cursor. */
   hasMore: boolean;
   /**
-   * The largest seq that the server purged. The client keeps it, and sends
-   * it as `seen` with each pull.
+   * The largest seq that the server purged, or the seq of the last change
+   * that made a list private (#154): each client then resets one time. The
+   * client keeps it, and sends it as `seen` with each pull.
    */
   purgedSeq: number;
   /** The server time in ms. The client keeps the offset to its own clock. */

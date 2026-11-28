@@ -97,6 +97,11 @@ const url = urlField.describe(
 );
 
 const listOut = z.object({ list_id: z.string(), name: z.string() });
+const privateOut = z
+  .boolean()
+  .describe(
+    "True if the list is private: only the user of this connection sees it, and it sends no notifications",
+  );
 const itemOut = z.object({
   item_id: z.string(),
   name: z.string(),
@@ -182,11 +187,11 @@ function quoteNames(names: string[]): string {
 /** The live list for a reference, or a ToolError. */
 export function resolveList(ctx: ToolContext, ref: string): ListRecord {
   if (UUID.test(ref)) {
-    const list = readListById(ref.toLowerCase(), ctx.db);
+    const list = readListById(ref.toLowerCase(), ctx.userId, ctx.db);
     if (list && list.deletedAt === null) return list;
     if (list) throw new ToolError(`The list “${list.name}” was deleted.`);
   }
-  const live = readLiveLists(ctx.db).map((l) => l.list);
+  const live = readLiveLists(ctx.userId, ctx.db).map((l) => l.list);
   const key = nameKey(ref);
   const matches = live.filter((l) => nameKey(l.name) === key);
   if (matches.length === 1) return matches[0];
@@ -262,18 +267,19 @@ function resolveHistoryList(
   ctx: ToolContext,
   ref: string,
 ): { id: string; name: string } {
-  const old = historyListNames(ctx.db);
+  const old = historyListNames(ctx.userId, ctx.db);
   if (UUID.test(ref)) {
     const id = ref.toLowerCase();
     const name =
-      readListById(id, ctx.db)?.name ?? old.find((l) => l.listId === id)?.name;
+      readListById(id, ctx.userId, ctx.db)?.name ??
+      old.find((l) => l.listId === id)?.name;
     if (name !== undefined) return { id, name };
     throw new ToolError(
       `No list, now or in the history, has the list_id ${id}.`,
     );
   }
   const key = nameKey(ref);
-  const live = readLiveLists(ctx.db).map((l) => l.list);
+  const live = readLiveLists(ctx.userId, ctx.db).map((l) => l.list);
   const liveMatches = live.filter((l) => nameKey(l.name) === key);
   const matches =
     liveMatches.length > 0
@@ -308,7 +314,7 @@ function resolveHistoryItems(
   list: { id: string; name: string },
   ref: string,
 ): string[] {
-  const old = historyItemNames(list.id, ctx.db);
+  const old = historyItemNames(list.id, ctx.userId, ctx.db);
   const live = readListItems(list.id, ctx.db);
   if (UUID.test(ref)) {
     const id = ref.toLowerCase();
@@ -490,6 +496,9 @@ const REJECTED: Record<RejectReason, string> = {
   clock_ahead: "The server clock is not ready. Try again in a minute.",
   op_conflict:
     "This change has the ID of a change of another user. Try again with a new idempotency_key.",
+  not_owner: "Only the person who made the list can make it private or shared.",
+  privacy_mismatch:
+    "An item cannot move between a private list and a shared list. Add it to the other list with add_items instead, and delete it here if the user wants.",
 };
 
 function iso(ms: number): string {
@@ -546,17 +555,24 @@ export const TOOLS = [
     name: "list_lists",
     title: "List the shopping lists",
     description:
-      "All shopping lists, by name, with the number of items and of unchecked items.",
+      "All shopping lists, by name, with the number of items and of unchecked items. It includes the private lists of the user.",
     scope: "lists:read",
     annotations: READ,
     input: z.object({}),
     output: z.object({
-      lists: z.array(listOut.extend({ items: z.int(), unchecked: z.int() })),
+      lists: z.array(
+        listOut.extend({
+          private: privateOut,
+          items: z.int(),
+          unchecked: z.int(),
+        }),
+      ),
     }),
     run: (ctx) => ({
-      lists: readLiveLists(ctx.db).map((l) => ({
+      lists: readLiveLists(ctx.userId, ctx.db).map((l) => ({
         list_id: l.list.id,
         name: l.list.name,
+        private: l.list.private,
         items: l.itemCount,
         unchecked: l.uncheckedCount,
       })),
@@ -578,6 +594,7 @@ export const TOOLS = [
         .describe("False to get only the unchecked items"),
     }),
     output: listOut.extend({
+      private: privateOut,
       items: z.array(
         itemOut.extend({ added: addedOut, last_changed: changedOut }),
       ),
@@ -592,6 +609,7 @@ export const TOOLS = [
       return {
         list_id: list.id,
         name: list.name,
+        private: list.private,
         items: items.map((item) => ({
           ...toItemOut(item),
           added: { by: who(item.createdBy), at: iso(item.createdAt) },
@@ -619,11 +637,13 @@ export const TOOLS = [
       ),
     }),
     run: (ctx, { query }) => ({
-      items: searchLiveItems(nameKey(query), 50, ctx.db).map((r) => ({
-        ...toItemOut(r.item),
-        list_id: r.item.listId,
-        list_name: r.listName,
-      })),
+      items: searchLiveItems(nameKey(query), 50, ctx.userId, ctx.db).map(
+        (r) => ({
+          ...toItemOut(r.item),
+          list_id: r.item.listId,
+          list_name: r.listName,
+        }),
+      ),
     }),
   }),
 
@@ -691,6 +711,7 @@ export const TOOLS = [
           : resolveHistoryList(ctx, input.list);
       const rows = readHistory(
         {
+          userId: ctx.userId,
           listId: list?.id,
           itemIds:
             list && input.item !== undefined
@@ -724,20 +745,27 @@ export const TOOLS = [
     name: "create_list",
     title: "Create a list",
     description:
-      "Make a new shopping list. Returns its list_id. Fails if a list with the same name exists.",
+      "Make a new shopping list. Returns its list_id. Fails if a list with the same name exists. A private list is only for the user: the other person does not see it, and it sends no notifications. Use it for a surprise, such as gifts.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
     },
-    input: z.object({ name: listName, idempotency_key: idempotencyKey }),
-    output: listOut,
+    input: z.object({
+      name: listName,
+      private: z
+        .boolean()
+        .default(false)
+        .describe("True to make a private list. Default false (shared)"),
+      idempotency_key: idempotencyKey,
+    }),
+    output: listOut.extend({ private: privateOut }),
     run: (ctx, input) => {
       const { name } = input;
       const ids = idMaker(ctx, "create_list", input);
       const listId = ids("list");
-      const same = readLiveLists(ctx.db).find(
+      const same = readLiveLists(ctx.userId, ctx.db).find(
         (l) => nameKey(l.list.name) === nameKey(name) && l.list.id !== listId,
       );
       if (same) {
@@ -745,8 +773,14 @@ export const TOOLS = [
           `A list named “${same.list.name}” exists (list_id ${same.list.id}). Use it, or pick another name.`,
         );
       }
-      apply(ctx, ids, [{ type: "createList", args: { listId, name } }]);
-      return { list_id: listId, name: readListById(listId, ctx.db)!.name };
+      apply(ctx, ids, [
+        {
+          type: "createList",
+          args: { listId, name, private: input.private },
+        },
+      ]);
+      const list = readListById(listId, ctx.userId, ctx.db)!;
+      return { list_id: listId, name: list.name, private: list.private };
     },
   }),
 
@@ -772,7 +806,40 @@ export const TOOLS = [
       apply(ctx, idMaker(ctx, "rename_list", input), [
         { type: "renameList", args: { listId: list.id, name } },
       ]);
-      return { list_id: list.id, name: readListById(list.id, ctx.db)!.name };
+      return {
+        list_id: list.id,
+        name: readListById(list.id, ctx.userId, ctx.db)!.name,
+      };
+    },
+  }),
+
+  defineTool({
+    name: "set_list_private",
+    title: "Make a list private or shared",
+    description:
+      "Make a list private (only the user sees it and its items, and it sends no notifications), or share it again. Only the person who made the list can. When a list becomes private, it goes away at once for the other person, also the items that they added: confirm with the user first. When it is shared again, the other person sees it with all its items and its history, and gets a notification.",
+    scope: "lists:write",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+    input: z.object({
+      list: listRef,
+      private: z.boolean().describe("True for private, false for shared"),
+      idempotency_key: idempotencyKey,
+    }),
+    output: listOut.extend({ private: privateOut }),
+    run: (ctx, input) => {
+      const list = resolveList(ctx, input.list);
+      apply(ctx, idMaker(ctx, "set_list_private", input), [
+        {
+          type: "setListPrivate",
+          args: { listId: list.id, private: input.private },
+        },
+      ]);
+      const after = readListById(list.id, ctx.userId, ctx.db)!;
+      return { list_id: list.id, name: after.name, private: after.private };
     },
   }),
 
@@ -780,7 +847,7 @@ export const TOOLS = [
     name: "delete_list",
     title: "Delete a list",
     description:
-      "Delete a list and all its items, for both people. Confirm with the user first.",
+      "Delete a list and all its items, for both people (only for the user, if the list is private). Confirm with the user first.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -1032,7 +1099,7 @@ export const TOOLS = [
     name: "move_item",
     title: "Move an item",
     description:
-      "Move an item from one list to another list. The move unchecks a checked item, and marks an out-of-stock item in stock.",
+      "Move an item from one list to another list. The move unchecks a checked item, and marks an out-of-stock item in stock. Both lists must be private, or both shared: to get an item across, use add_items on the other list.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,

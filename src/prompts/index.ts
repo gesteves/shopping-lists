@@ -23,7 +23,7 @@ const LIST_SUMMARY_LENGTH = 60;
 
 const NOTIFICATION_SYSTEM = `You write the text of a push notification for a shared shopping list app used by two people.
 
-The input is JSON: the person who made the changes ("actor"), and the changes ("changes"), in order. Each change has a type and the names of the list and the item. An updateItem change can have "fields": the fields of the item that changed. The "url" field is a link to a web page for the item, such as a product page. A markOutOfStock change means that the item was not in the store; a markInStock change means that it is available again. If there are too many changes, "more" gives the count of the changes that are not in "changes", and the count of each type.
+The input is JSON: the person who made the changes ("actor"), and the changes ("changes"), in order. Each change has a type and the names of the list and the item. An updateItem change can have "fields": the fields of the item that changed. The "url" field is a link to a web page for the item, such as a product page. A markOutOfStock change means that the item was not in the store; a markInStock change means that it is available again. A shareList change means that the actor shared a list that only they could see before: the other person can see it now. If there are too many changes, "more" gives the count of the changes that are not in "changes", and the count of each type.
 
 Write one complete sentence of at most ${NOTIFICATION_LENGTH} characters that tells the other person what the actor did. Examples:
 - Sam added eggs to the “Whole Foods” list.
@@ -41,6 +41,7 @@ Write one complete sentence of at most ${NOTIFICATION_LENGTH} characters that te
 - Sam created the “Taco night” list.
 - Sam deleted the “Taco night” list.
 - Sam renamed the “Costco” list to “Sam’s Club”.
+- Sam shared the “Gifts” list.
 - Sam cleared the checked items from the “Target” list.
 - Sam checked off everything in the “Target” list.
 - Sam checked off 12 items in the “Costco” list.
@@ -75,9 +76,10 @@ const MCP_INSTRUCTIONS = `Shared shopping lists for two people. Each list has it
 - get_history gives the history of changes: who added, checked, edited, moved, or deleted what, and when, also for deleted lists and items. Use it for questions about the past, such as "what did I buy last week?" (actions ["checked"], person "me") or "who deleted the eggs?". "me" is the user of this connection.
 - Adding an item whose name is already on the list does not add a second one. If it was checked off, it becomes unchecked again ("buy it again"). To change its quantity, notes, or url, use update_item.
 - The other person sees each change at once, and gets a notification. Changes are shown as "<user> (via Claude)".
+- A list can be private (private: true): only the user sees it and its items, and it sends no notifications. Use one for a surprise, such as gifts: create_list with private true. Only the person who made a list can make it private or shared again (set_list_private). Making a shared list private removes it at once for the other person, also the items that they added: confirm with the user first. Sharing it again shows it to the other person with all its items, and notifies them. An item cannot move between a private list and a shared list: add it to the other list with add_items. Never tell the other person about a private list.
 - A checked item that nobody unchecks for 30 days is deleted automatically. An edit or a move of a checked item unchecks it.
 - An item can be out of stock: the store did not have it. Set it with update_item (out_of_stock). Marking an item out of stock also unchecks it. Checking it off, or moving it to another list, marks it in stock again.
-- delete_list, delete_items, and clear_checked remove things for both people. Ask the user to confirm before you call them.
+- delete_list, delete_items, and clear_checked remove things for both people (on a private list, only for the user). Ask the user to confirm before you call them.
 - Write tools accept an optional idempotency_key. When you retry a call after an error or a timeout, send the same key: the retry then changes nothing.`;
 
 export const prompts = {

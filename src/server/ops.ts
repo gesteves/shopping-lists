@@ -21,6 +21,7 @@ import {
   items,
   lists,
   processedOps,
+  serverSeq,
   type ActivitySnapshot,
 } from "@/db/schema";
 import { DAY_MS, EXPIRE_AFTER_DAYS } from "@/shared/expiry";
@@ -169,6 +170,8 @@ export function expireCheckedItems(
         listId: items.listId,
         name: items.name,
         listName: lists.name,
+        listPrivate: lists.private,
+        listOwner: lists.createdBy,
       })
       .from(items)
       .innerJoin(lists, eq(lists.id, items.listId))
@@ -192,6 +195,7 @@ export function expireCheckedItems(
           at: now,
           opAt: now,
           notifiedAt: now,
+          privateTo: row.listPrivate ? row.listOwner : null,
         })
         .run();
     }
@@ -274,7 +278,12 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
 
   // One insert for each row: one insert of many rows can pass the SQLite
   // limit of variables.
+  const owners = new Map<string, string | null>();
   for (const row of [outcome.activity ?? []].flat()) {
+    if (!owners.has(row.listId)) {
+      owners.set(row.listId, privateOwner(ctx.tx, row.listId));
+    }
+    const privateTo = owners.get(row.listId) ?? null;
     ctx.tx
       .insert(activity)
       .values({
@@ -287,10 +296,27 @@ function applyOne(ctx: Ctx, clock: HlcClock, op: Op): OpResult {
         snapshot: row.snapshot,
         at: ctx.now,
         opAt: opTime(op),
+        privateTo,
+        // A change on a private list sends no push (#154), also after a
+        // later share.
+        notifiedAt: privateTo ? ctx.now : null,
       })
       .run();
   }
   return outcome.result;
+}
+
+/**
+ * The creator of the list if the list is private, else null (#154). The
+ * activity rows of the list get it in `private_to`.
+ */
+export function privateOwner(tx: Tx, listId: string): string | null {
+  const row = tx
+    .select({ private: lists.private, createdBy: lists.createdBy })
+    .from(lists)
+    .where(eq(lists.id, listId))
+    .get();
+  return row?.private ? row.createdBy : null;
 }
 
 function dispatch(ctx: Ctx, op: Op): Outcome {
@@ -301,6 +327,8 @@ function dispatch(ctx: Ctx, op: Op): Outcome {
     case "deleteList":
     case "restoreList":
       return changeList(ctx, op);
+    case "setListPrivate":
+      return setListPrivate(ctx, op);
     case "addItem":
       return addItem(ctx, op);
     case "updateItem":
@@ -387,6 +415,24 @@ function getList(ctx: Ctx, id: string): ListRow | undefined {
   return ctx.tx.select().from(lists).where(eq(lists.id, id)).get();
 }
 
+/**
+ * The list, if the actor can see it (#154): a shared list, or a private
+ * list of the actor. A private list of another user is "not found", the
+ * same as a list that does not exist.
+ */
+function getVisibleList(ctx: Ctx, id: string): ListRow | undefined {
+  const row = getList(ctx, id);
+  return row && canSee(ctx.actor.id, row) ? row : undefined;
+}
+
+/** True if the user can see the list (#154). */
+export function canSee(
+  userId: string,
+  list: Pick<ListRow, "private" | "createdBy">,
+): boolean {
+  return !list.private || list.createdBy === userId;
+}
+
 function getItem(ctx: Ctx, id: string): ItemRow | undefined {
   return ctx.tx.select().from(items).where(eq(items.id, id)).get();
 }
@@ -459,9 +505,10 @@ function createList(ctx: Ctx, op: OpOf<"createList">): Outcome {
     .values({
       id: listId,
       name,
+      private: op.args.private,
       createdBy: ctx.actor.id,
       createdAt: time,
-      clocks: { name: op.hlc, deleted: op.hlc },
+      clocks: { name: op.hlc, deleted: op.hlc, private: op.hlc },
       ...stamp(ctx, op, time),
     })
     .run();
@@ -475,7 +522,7 @@ function changeList(
   ctx: Ctx,
   op: OpOf<"renameList" | "deleteList" | "restoreList">,
 ): Outcome {
-  const row = getList(ctx, op.args.listId);
+  const row = getVisibleList(ctx, op.args.listId);
   if (!row) return reject(op, "list_not_found");
 
   const set: ListSet = {};
@@ -519,11 +566,73 @@ function changeList(
   };
 }
 
+/**
+ * Make a list private, or share it again (#154). Only the creator can.
+ *
+ * - Private: the other users must lose the list and its items, also on a
+ *   device that has them. Thus `purged_seq` goes to the seq of this write,
+ *   and each client resets one time: the reset deletes each row that it
+ *   does not get.
+ * - Shared: each item gets a new seq, thus the other users pull them.
+ *
+ * Each activity row of the list gets the new `private_to`: the history
+ * follows the privacy now.
+ */
+function setListPrivate(ctx: Ctx, op: OpOf<"setListPrivate">): Outcome {
+  const row = getVisibleList(ctx, op.args.listId);
+  if (!row) return reject(op, "list_not_found");
+  if (row.createdBy !== ctx.actor.id) return reject(op, "not_owner");
+
+  const set: ListSet = {};
+  const clocks: ListClocks = { ...row.clocks };
+  if (newer(op.hlc, clocks.private)) {
+    clocks.private = op.hlc;
+    if (row.private !== op.args.private) set.private = op.args.private;
+  }
+  const changed = saveList(ctx, op, row, set, clocks);
+  if (!changed) return { result: applied(op, false) };
+
+  if (op.args.private) {
+    const seq = ctx.lastSeq!;
+    ctx.tx
+      .update(serverSeq)
+      .set({ purgedSeq: sql`max(${serverSeq.purgedSeq}, ${seq})` })
+      .where(eq(serverSeq.id, 1))
+      .run();
+  } else {
+    const rows = ctx.tx
+      .select({ id: items.id })
+      .from(items)
+      .where(eq(items.listId, row.id))
+      .all();
+    for (const item of rows) {
+      ctx.tx
+        .update(items)
+        .set({ seq: nextSeq(ctx) })
+        .where(eq(items.id, item.id))
+        .run();
+    }
+  }
+  ctx.tx
+    .update(activity)
+    .set({ privateTo: op.args.private ? row.createdBy : null })
+    .where(eq(activity.listId, row.id))
+    .run();
+
+  return {
+    result: applied(op, true),
+    activity: {
+      listId: row.id,
+      snapshot: { listName: row.name, private: op.args.private },
+    },
+  };
+}
+
 // Items
 
 function addItem(ctx: Ctx, op: OpOf<"addItem">): Outcome {
   const { itemId, listId, name, quantity, notes, url } = op.args;
-  const list = getList(ctx, listId);
+  const list = getVisibleList(ctx, listId);
   if (!list) return reject(op, "list_not_found");
   if (list.deletedAt) return reject(op, "list_deleted");
   if (getItem(ctx, itemId)) return reject(op, "item_exists");
@@ -657,13 +766,19 @@ function changeItem(
   >,
 ): Outcome {
   const row = getItem(ctx, op.args.itemId);
-  if (!row) return reject(op, "item_not_found");
+  // An item on a list that the actor cannot see is "not found" (#154).
+  const source = row && getVisibleList(ctx, row.listId);
+  if (!row || !source) return reject(op, "item_not_found");
 
   let target: ListRow | undefined;
   if (op.type === "moveItem") {
-    target = getList(ctx, op.args.toListId);
+    target = getVisibleList(ctx, op.args.toListId);
     if (!target) return reject(op, "list_not_found");
     if (target.deletedAt) return reject(op, "list_deleted");
+    // A move never takes an item across the privacy line (#154): copy it.
+    if (target.private !== source.private) {
+      return reject(op, "privacy_mismatch");
+    }
   }
 
   const set: ItemSet = {};
@@ -833,7 +948,7 @@ function changeAllItems(
   ctx: Ctx,
   op: OpOf<"clearChecked" | "uncheckAll" | "checkAll">,
 ): Outcome {
-  const list = getList(ctx, op.args.listId);
+  const list = getVisibleList(ctx, op.args.listId);
   if (!list) return reject(op, "list_not_found");
   if (list.deletedAt) return reject(op, "list_deleted");
 

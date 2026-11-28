@@ -3,6 +3,7 @@
 // comment every PING_MS. The comments keep the connection
 // open: Cloudflare closes a connection that sends nothing for 100 s.
 import "server-only";
+import type { PresenceSnapshot } from "@/shared/presence";
 import { bus, type BusEvents } from "./bus";
 import { getPresence } from "./presence";
 
@@ -31,12 +32,18 @@ export function sseMessage(event: string, data: unknown): string {
 
 /**
  * A stream of events until `signal` aborts or the client cancels. It
- * removes its bus listener and its timer at the end.
+ * removes its bus listener and its timer at the end. `presence` changes
+ * each snapshot for the reader of the stream (#154).
  */
 export function createEventStream(
   signal: AbortSignal,
-  options: { pingMs?: number; maxAgeMs?: number } = {},
+  options: {
+    pingMs?: number;
+    maxAgeMs?: number;
+    presence?: (snapshot: PresenceSnapshot) => PresenceSnapshot;
+  } = {},
 ): ReadableStream<Uint8Array> {
+  const view = options.presence ?? ((snapshot) => snapshot);
   const encoder = new TextEncoder();
   let cleanup = () => {};
 
@@ -52,7 +59,7 @@ export function createEventStream(
       const onPoke = (...[payload]: BusEvents["poke"]) =>
         send(sseMessage("poke", payload));
       const onPresence = (...[payload]: BusEvents["presence"]) =>
-        send(sseMessage("presence", payload));
+        send(sseMessage("presence", view(payload)));
       const timer = setInterval(
         () => send(": ping\n\n"),
         options.pingMs ?? PING_MS,
@@ -87,7 +94,7 @@ export function createEventStream(
       // before it shows streamed content, but EventSource reads each event.
       send(`retry: ${RETRY_MS}\n: connected\n\n`);
       // A new connection gets who is present now.
-      send(sseMessage("presence", getPresence().snapshot()));
+      send(sseMessage("presence", view(getPresence().snapshot())));
       if (signal.aborted) onAbort();
     },
     cancel() {

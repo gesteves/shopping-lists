@@ -83,6 +83,7 @@ function ListRow({ list, now }: { list: ListSummary; now: number | null }) {
         >
           <span className="text-xl leading-tight font-semibold text-balance wrap-anywhere">
             {list.name}
+            {list.private === true && <PrivateIcon className="ms-2" />}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
             <SummaryLine list={list} now={now} />
@@ -148,6 +149,20 @@ function SummaryLine({ list, now }: { list: ListSummary; now: number | null }) {
   );
 }
 
+/**
+ * The lock of a private list (#154). It has a label for a screen reader,
+ * and it is muted: the name stays the main text.
+ */
+export function PrivateIcon({ className = "" }: { className?: string }) {
+  return (
+    <wa-icon
+      name="lock"
+      label={copy.lists.private}
+      className={`align-[-0.1em] text-[0.8em] text-ink-muted ${className}`}
+    ></wa-icon>
+  );
+}
+
 /** Asks before a list delete, then offers Undo. */
 export function DeleteDialog({
   open,
@@ -156,11 +171,13 @@ export function DeleteDialog({
   onDeleted,
 }: {
   open: boolean;
-  list: Pick<ListSummary, "id" | "name" | "total">;
+  list: Pick<ListSummary, "id" | "name" | "total" | "private">;
   onClose: () => void;
   onDeleted?: () => void;
 }) {
+  // A private list is gone only for its creator (#154).
   const others = useOtherUserNames() ?? [];
+  const affected = list.private === true ? [] : others;
   async function confirm() {
     onClose();
     await mutate({ type: "deleteList", args: { listId: list.id } });
@@ -183,7 +200,7 @@ export function DeleteDialog({
       onConfirm={confirm}
       onClose={onClose}
     >
-      {copy.lists.deleteBody(list.total, others)}
+      {copy.lists.deleteBody(list.total, affected)}
     </ConfirmDialog>
   );
 }
@@ -237,8 +254,14 @@ export function RenameForm({
   );
 }
 
+/**
+ * The name of a new list, and a "Private list" switch (#154). A gift list
+ * is private from the first second: the other person never sees it. The
+ * switch goes back to off after each create.
+ */
 function CreateListForm() {
   const [name, setName] = useState("");
+  const [isPrivate, setPrivate] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -246,29 +269,53 @@ function CreateListForm() {
     if (!trimmed) return;
     // Clear first: text typed while the write runs must stay.
     setName("");
+    setPrivate(false);
     await mutate({
       type: "createList",
-      args: { listId: crypto.randomUUID(), name: trimmed },
+      args: {
+        listId: crypto.randomUUID(),
+        name: trimmed,
+        private: isPrivate,
+      },
     });
   }
 
   return (
-    <form onSubmit={submit} className="flex items-end gap-2">
-      <wa-input
-        className="wa-sr-label min-w-0 flex-1"
-        label={copy.lists.newName}
-        placeholder={copy.lists.newPlaceholder}
-        value={name}
-        onInput={(e) => setName((e.target as HTMLInputElement).value)}
-        maxlength={LIST_NAME_MAX}
-        enterkeyhint="go"
-        autocomplete="off"
-        size="l"
-      ></wa-input>
-      <wa-button type="submit" variant="brand" size="l" disabled={!name.trim()}>
-        <wa-icon slot="start" name="plus"></wa-icon>
-        {copy.lists.create}
-      </wa-button>
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <div className="flex items-end gap-2">
+        <wa-input
+          className="wa-sr-label min-w-0 flex-1"
+          label={copy.lists.newName}
+          placeholder={copy.lists.newPlaceholder}
+          value={name}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          maxlength={LIST_NAME_MAX}
+          enterkeyhint="go"
+          autocomplete="off"
+          size="l"
+        ></wa-input>
+        <wa-button
+          type="submit"
+          variant="brand"
+          size="l"
+          disabled={!name.trim()}
+        >
+          <wa-icon slot="start" name="plus"></wa-icon>
+          {copy.lists.create}
+        </wa-button>
+      </div>
+      <wa-switch
+        className="px-1"
+        checked={isPrivate}
+        hint={copy.lists.newPrivateHint}
+        onChange={(event) =>
+          setPrivate(
+            (event.currentTarget as unknown as HTMLInputElement).checked,
+          )
+        }
+      >
+        {copy.lists.newPrivate}
+      </wa-switch>
     </form>
   );
 }

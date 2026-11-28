@@ -12,6 +12,7 @@ import {
   eq,
   gte,
   inArray,
+  isNull,
   lt,
   or,
   sql,
@@ -39,14 +40,20 @@ export const HISTORY_ACTIONS = [
   "list_renamed",
   "list_deleted",
   "list_restored",
+  "list_made_private",
+  "list_shared",
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
 /**
  * The action of each row type. addItem is "added", or "unchecked" if the
- * add only unchecked the item (historyAction, actionWhere).
+ * add only unchecked the item. setListPrivate is "list_made_private" or
+ * "list_shared" (#154). See historyAction and actionWhere.
  */
-const ACTION: Record<Exclude<ActivityType, "addItem">, HistoryAction> = {
+const ACTION: Record<
+  Exclude<ActivityType, "addItem" | "setListPrivate">,
+  HistoryAction
+> = {
   updateItem: "edited",
   check: "checked",
   checkAll: "checked",
@@ -71,10 +78,14 @@ export function historyAction(
   snapshot: ActivitySnapshot,
 ): HistoryAction {
   if (type === "addItem") return snapshot.unchecked ? "unchecked" : "added";
+  if (type === "setListPrivate") {
+    return snapshot.private ? "list_made_private" : "list_shared";
+  }
   return ACTION[type];
 }
 
 const reAdd = sql`coalesce(json_extract(${activity.snapshot}, '$.unchecked'), 0) = 1`;
+const madePrivate = sql`coalesce(json_extract(${activity.snapshot}, '$.private'), 0) = 1`;
 
 /** The rows of the actions. */
 function actionWhere(actions: readonly HistoryAction[]): SQL | undefined {
@@ -89,6 +100,16 @@ function actionWhere(actions: readonly HistoryAction[]): SQL | undefined {
   else if (added)
     parts.push(and(eq(activity.type, "addItem"), sql`not ${reAdd}`)!);
   else if (unchecked) parts.push(and(eq(activity.type, "addItem"), reAdd)!);
+  const priv = actions.includes("list_made_private");
+  const shared = actions.includes("list_shared");
+  if (priv && shared) parts.push(eq(activity.type, "setListPrivate"));
+  else if (priv) {
+    parts.push(and(eq(activity.type, "setListPrivate"), madePrivate)!);
+  } else if (shared) {
+    parts.push(
+      and(eq(activity.type, "setListPrivate"), sql`not ${madePrivate}`)!,
+    );
+  }
   return or(...parts);
 }
 
@@ -99,6 +120,8 @@ export interface HistoryCursor {
 }
 
 export interface HistoryQuery {
+  /** The reader. The rows of private lists of other users stay out (#154). */
+  userId: string;
   /** The rows of this list, also the moves out of it. */
   listId?: string;
   /** The rows of these items. */
@@ -120,7 +143,7 @@ export function readHistory(
   query: HistoryQuery,
   db: Reader = getDb(),
 ): HistoryRow[] {
-  const where: (SQL | undefined)[] = [];
+  const where: (SQL | undefined)[] = [readableBy(query.userId)];
   if (query.listId !== undefined) {
     where.push(
       or(
@@ -163,10 +186,20 @@ export function readHistory(
 }
 
 /**
- * The IDs and names of the lists in the history, also of deleted and
- * purged lists. The last name of each list is first.
+ * The rows that the user can read (#154): `private_to` is null or the user.
+ * The column stays after the purge of the list, thus the history of a
+ * purged private list stays private.
+ */
+function readableBy(userId: string): SQL {
+  return or(isNull(activity.privateTo), eq(activity.privateTo, userId))!;
+}
+
+/**
+ * The IDs and names of the lists in the history that the user can read,
+ * also of deleted and purged lists. The last name of each list is first.
  */
 export function historyListNames(
+  userId: string,
   db: Reader = getDb(),
 ): { listId: string; name: string }[] {
   return db
@@ -175,17 +208,19 @@ export function historyListNames(
       name: sql<string>`json_extract(${activity.snapshot}, '$.listName')`,
     })
     .from(activity)
+    .where(readableBy(userId))
     .groupBy(activity.listId, sql`2`)
     .orderBy(desc(sql`max(${activity.id})`))
     .all();
 }
 
 /**
- * The IDs and names of the items in the history of a list, also of
- * deleted and purged items.
+ * The IDs and names of the items in the history of a list that the user
+ * can read, also of deleted and purged items.
  */
 export function historyItemNames(
   listId: string,
+  userId: string,
   db: Reader = getDb(),
 ): { itemId: string; name: string }[] {
   return db
@@ -197,6 +232,7 @@ export function historyItemNames(
     .where(
       and(
         sql`${activity.itemId} is not null`,
+        readableBy(userId),
         or(
           eq(activity.listId, listId),
           sql`json_extract(${activity.snapshot}, '$.fromListId') = ${listId}`,

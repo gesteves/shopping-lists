@@ -133,6 +133,11 @@ export const en = {
     newName: "New list name",
     newPlaceholder: "New list",
     create: "Create",
+    /** The create form: a private list (#154). */
+    newPrivate: "Private list",
+    newPrivateHint: "Only you can see it, and it sends no notifications.",
+    /** The label of the lock icon of a private list (#154). */
+    private: "Private",
     renameLabel: (name: string) => `New name for ${q(name)}`,
     deleteTitle: (name: string) => `Delete the ${q(name)} list?`,
     deleteConfirm: "Delete list",
@@ -152,6 +157,34 @@ export const en = {
         : `It’ll be deleted${who}.`;
     },
     deleted: (name: string) => `Deleted the ${q(name)} list.`,
+  },
+
+  /** Private lists (#154). `others` are the names of the other users. */
+  privacy: {
+    makePrivate: "Make private",
+    share: (others: string[]) =>
+      others.length === 0 ? "Share" : `Share with ${andList.format(others)}`,
+    makePrivateTitle: (name: string) => `Make the ${q(name)} list private?`,
+    /** `added`: the items of the list that the other users added. */
+    makePrivateBody: (others: string[], added: number) => {
+      const only = "Only you will see it, and it won’t send notifications.";
+      if (others.length === 0) return only;
+      const who = andList.format(others);
+      const theirs =
+        added > 0
+          ? ` That includes the ${items(added)} that ${who} added.`
+          : "";
+      return `${only} ${who} won’t see it anymore.${theirs}`;
+    },
+    makePrivateConfirm: "Make private",
+    shareTitle: (name: string) => `Share the ${q(name)} list?`,
+    shareBody: (others: string[]) =>
+      others.length === 0
+        ? "Everyone will see this list and all its items."
+        : `${andList.format(others)} will see this list, all its items, and its history, and will get a notification.`,
+    shareConfirm: "Share list",
+    madePrivate: (name: string) => `The ${q(name)} list is private now.`,
+    shared: (name: string) => `Shared the ${q(name)} list.`,
   },
 
   list: {
@@ -321,6 +354,8 @@ export const en = {
       item_exists: "that item already exists",
       clock_ahead: "this device’s clock is wrong",
       op_conflict: "it conflicts with a change from another person",
+      not_owner: "only the person who made the list can change that",
+      privacy_mismatch: "items can’t move between private and shared lists",
       invalid: "the change wasn’t valid",
     },
     mergedUnchecked: (name: string) =>
@@ -485,6 +520,9 @@ export const en = {
         `${e.who} marked ${q(e.item)} as out of stock in the ${q(e.list)} list.`,
       markInStock: (e: PushEvent) =>
         `${e.who} marked ${q(e.item)} as in stock in the ${q(e.list)} list.`,
+      // Only a share sends a push: a private list sends none (#154).
+      setListPrivate: (e: PushEvent) =>
+        `${e.who} shared the ${q(e.list)} list.`,
     },
     /**
      * More than one event, when Claude gives no summary: "Sam made 3

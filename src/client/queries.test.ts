@@ -45,6 +45,7 @@ function list(
     deletedAt,
     summary,
     summaryKey: null,
+    private: false,
   } satisfies ListRecord;
 }
 

@@ -348,6 +348,11 @@ export const lists = sqliteTable(
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     /** The server time of the delete. The purge uses it (#101). */
     tombstonedAt: integer("tombstoned_at", { mode: "timestamp_ms" }),
+    /**
+     * Only the creator (`created_by`) sees a private list and its items, and
+     * it sends no push (#154). Only the creator can change it.
+     */
+    private: integer("private", { mode: "boolean" }).notNull().default(false),
     clocks: text("clocks", { mode: "json" })
       .$type<ListClocks>()
       .notNull()
@@ -481,6 +486,8 @@ export interface ActivitySnapshot {
   /** deleteItem: the item was checked, or out of stock. */
   checked?: boolean;
   outOfStock?: boolean;
+  /** setListPrivate: the new value (#154). */
+  private?: boolean;
 }
 
 /** The fields that updateItem can change. */
@@ -529,6 +536,12 @@ export const activity = sqliteTable(
      */
     opAt: integer("op_at", { mode: "timestamp_ms" }).notNull(),
     notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),
+    /**
+     * The user who can read the row in the history, if the list is private
+     * (#154). Null: all users. A change of the list privacy changes it on
+     * each row of the list. It is not a foreign key, as `list_id`.
+     */
+    privateTo: text("private_to"),
   },
   (t) => [
     // The notifier reads only the rows that it did not send.

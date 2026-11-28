@@ -38,6 +38,7 @@ The fallback text, when Claude gives none (#89). Each sentence ends with a perio
 - “[Name] unchecked everything in the “[list]” list”
 - “[Name] marked “[item]” as out of stock in the “[list]” list” (#131)
 - “[Name] marked “[item]” as in stock in the “[list]” list” (#131)
+- “[Name] shared the “[list]” list” (#154: only a share of a private list sends a push)
 
 When the change came over MCP, "[Name]" becomes "[Name] (via Claude)".
 
@@ -78,10 +79,10 @@ Schema in `src/db/schema.ts`.
 | Table | Columns / purpose |
 |---|---|
 | `users` | id, email, name (Google given name), avatar_url |
-| `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, tombstoned_at (server time of the delete, #101), clocks (JSON), summary and summary_key (see List summaries), seq |
+| `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, tombstoned_at (server time of the delete, #101), private (#154, see Private lists), clocks (JSON), summary and summary_key (see List summaries), seq |
 | `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, url (an http or https URL, or empty, #140), checked, checked_at, unchecked_at (the op time of the last uncheck, or null; only MCP reads it, #150), out_of_stock_at (the op time of the mark, or null, #131), created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at (server time). It makes pushes idempotent: a retry gets the stored result. The purge keeps the rows for 180 days (#119). |
-| `activity` | The history of all changes (#152), and the input of the notifications. id, op_id, actor_id (null for a change of the server itself), via (`app`, `mcp`, or `system`), type (the op type, or `expireItem`; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed (`name`, `quantity`, `notes`, `url`); `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131; an add of a name that is checked on the list has `unchecked`, #133; the values for collapse, #133: see Notifications; a move has `fromListId` and `fromListName`, #152), at (the server time when the server got the change), op_at (the op time, the HLC wall time: the time on the device, #152; older rows have `at`), notified_at. A bulk op (`clearChecked`, `uncheckAll`, `checkAll`) writes one row for each item that it changed, with the op type and the item (#133; older rows: one row with `count` and no item). Drives notifications. A partial index covers the rows with no `notified_at`. The rows stay forever (#152): the purge does not delete them, and `list_id` and `item_id` are not foreign keys (migration `0011` rebuilt the table), thus the history of a purged list or item stays. `actor_id` is still a foreign key. Indexes on `op_at`, `(list_id, op_at)`, and `(item_id, op_at)` serve `get_history`. The history starts about 30 days before #152: the purge deleted the older rows. |
+| `activity` | The history of all changes (#152), and the input of the notifications. id, op_id, actor_id (null for a change of the server itself), via (`app`, `mcp`, or `system`), type (the op type, or `expireItem`; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed (`name`, `quantity`, `notes`, `url`); `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131; an add of a name that is checked on the list has `unchecked`, #133; the values for collapse, #133: see Notifications; a move has `fromListId` and `fromListName`, #152), at (the server time when the server got the change), op_at (the op time, the HLC wall time: the time on the device, #152; older rows have `at`), notified_at, private_to (#154: the creator of the list if the list is private, else null; see Private lists). A bulk op (`clearChecked`, `uncheckAll`, `checkAll`) writes one row for each item that it changed, with the op type and the item (#133; older rows: one row with `count` and no item). Drives notifications. A partial index covers the rows with no `notified_at`. The rows stay forever (#152): the purge does not delete them, and `list_id` and `item_id` are not foreign keys (migration `0011` rebuilt the table), thus the history of a purged list or item stays. `actor_id` is still a foreign key. Indexes on `op_at`, `(list_id, op_at)`, and `(item_id, op_at)` serve `get_history`. The history starts about 30 days before #152: the purge deleted the older rows. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at, failure_count, failing_since, last_failure_at (#118) |
 | `list_mutes` | user_id, list_id |
 | `server_seq` | one global counter and `purged_seq` (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
@@ -106,9 +107,9 @@ Indexes: `seq` on `lists` and `items`, `(list_id, name_key)` and `name_key` on `
 
 Because of this, realtime updates, notifications and attribution behave the same whether a change comes from the app or from Claude. There are three exceptions, all with no actor: `setListSummary` (List summaries: the server makes the summary from the items), `expireCheckedItems` (Checked-item expiry, #112), and `purgeTombstones` (the purge: it deletes old rows, and makes the live items of an old deleted list tombstones, #119).
 
-**`applyOps` results** (#5): each op gets `applied { changed }`, `merged { into, changed }`, `rejected { reason }`, or `duplicate { original }`. The reasons are `list_not_found`, `list_deleted`, `list_exists`, `item_not_found`, `item_exists`, `clock_ahead` (the op HLC is more than 5 minutes after the server clock), and `op_conflict` (#101: a `processed_ops` row with this opId belongs to a different user; the first result stays, and nothing is stored for the second user). `clearChecked`, `uncheckAll`, and `checkAll` put the number of items that they changed in `applied.count`, and `deleteList` the number of live items of the list. The MCP tools report these counts, also on a retry. `processed_ops` keeps the first result, also for a rejection, so a retry gets the same answer. An op that writes only clocks is `applied { changed: false }`: it gets no seq, no activity row and no poke. Each changed row gets its own seq, so a page of a pull never splits one seq. `updated_at` is the op time (the HLC wall time), not the server time. `activity.at` is the server time. An unexpected error rolls back the whole call.
+**`applyOps` results** (#5): each op gets `applied { changed }`, `merged { into, changed }`, `rejected { reason }`, or `duplicate { original }`. The reasons are `list_not_found`, `list_deleted`, `list_exists`, `item_not_found`, `item_exists`, `clock_ahead` (the op HLC is more than 5 minutes after the server clock), `op_conflict` (#101: a `processed_ops` row with this opId belongs to a different user; the first result stays, and nothing is stored for the second user), `not_owner` (#154: a `setListPrivate` from a user who did not make the list), and `privacy_mismatch` (#154: a `moveItem` between a private list and a shared list). `clearChecked`, `uncheckAll`, and `checkAll` put the number of items that they changed in `applied.count`, and `deleteList` the number of live items of the list. The MCP tools report these counts, also on a retry. `processed_ops` keeps the first result, also for a rejection, so a retry gets the same answer. An op that writes only clocks is `applied { changed: false }`: it gets no seq, no activity row and no poke. Each changed row gets its own seq, so a page of a pull never splits one seq. `updated_at` is the op time (the HLC wall time), not the server time. `activity.at` is the server time. An unexpected error rolls back the whole call.
 
-**Op types:** createList, renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll, checkAll (#67), markOutOfStock, markInStock (#131).
+**Op types:** createList (with `private`, default false, #154), renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll, checkAll (#67), markOutOfStock, markInStock (#131), setListPrivate (#154).
 
 **Op format** (`src/shared/ops.ts`, zod): `{ opId, clientId, hlc, type, args }`. `opId` is a UUID. The node of `hlc` must be the `clientId`. Strings are trimmed. `addItem` sets `quantity: 1`, `notes: ""`, and `url: ""` by default. `updateItem` takes `fields` (name, quantity, notes, url) with at least one field. Limits: list name 100, item name 200, notes 2000, URL 2000, quantity 1–999. A URL must be `http` or `https` with a host (`isWebUrl()` in `src/shared/url.ts`, #140), or empty (no link): the app opens it in a new tab, thus a `javascript:` URL must never get in. It has no whitespace, and its host is labels of letters, digits, `_`, and `-`, or an IPv6 address: Chromium accepts a space in a host ("https://not a url") and Node does not, and the server must accept each URL that the client accepts. `clearChecked`, `uncheckAll`, and `checkAll` take only `listId`: #5 sets which items they change.
 
@@ -134,8 +135,9 @@ Because of this, realtime updates, notifications and attribution behave the same
 **Endpoints** (#6; wire types in `src/shared/sync.ts`, logic in `src/server/sync.ts`):
 - `POST /api/sync/push` takes `{ clientId, ops }`, with at most 200 ops and 1 MB. Each op must have the `clientId` of the push. Any bad input gets 400 and nothing is applied, so the client checks each op with `opSchema` before it goes in the outbox. A body that is not JSON gets 415, and a body that is too large gets 413. It returns `{ results, seq, now }` (`now` is the server time).
 - `GET /api/sync/pull?since=<seq>&seen=<purgedSeq>&limit=<n>` (default 500, max 1000) returns `{ reset, lists, items, users, hlc, cursor, hasMore, purgedSeq, now }` (`now` is the server time, #115). Rows are in seq order, with tombstones. There are no clocks or emails. `hlc` is the largest field clock in the page: the client gives it to its `HlcClock`, so its next edit sorts after what it saw. After the last page, `cursor` is the last seq of the server.
-- `reset: true` when `since` is below `purged_seq` and `seen` is below `purged_seq` too, or when `since` is above the last seq (the server database came from an older backup). The page then starts from seq 0. The client does not clear its server layer at the reset page (#115): if page 2 failed, `rebuildView()` then removed each row that page 1 did not have, and the rows stayed gone offline. A `resetting` entry in `meta` keeps the IDs of the rows that the pages of the reset gave. After the last page, the client deletes the server rows that are not in it, and deletes the entry. A failed page keeps the entry, and the next pull continues the reset (it sends `seen`, thus it gets no new reset). The outbox stays. The client keeps `purgedSeq` of each page in `meta` and sends it as `seen` (#99). Thus page 2 of a reset, whose `since` is still below `purged_seq`, does not reset again. A client that sends no `seen` resets as before.
+- `reset: true` when `since` is below `purged_seq` and `seen` is below `purged_seq` too (a purge, or a list that became private, #154), or when `since` is above the last seq (the server database came from an older backup). The page then starts from seq 0. The client does not clear its server layer at the reset page (#115): if page 2 failed, `rebuildView()` then removed each row that page 1 did not have, and the rows stayed gone offline. A `resetting` entry in `meta` keeps the IDs of the rows that the pages of the reset gave. After the last page, the client deletes the server rows that are not in it, and deletes the entry. A failed page keeps the entry, and the next pull continues the reset (it sends `seen`, thus it gets no new reset). The outbox stays. The client keeps `purgedSeq` of each page in `meta` and sends it as `seen` (#99). Thus page 2 of a reset, whose `since` is still below `purged_seq`, does not reset again. A client that sends no `seen` resets as before.
 - Reads go through `src/server/queries.ts`.
+- The pull sends only the rows that the user can see (#154, `handlePull(request, userId)`). The filter is in SQL (`visibleTo()`), before the limit: a filter after it can give an empty page with `hasMore`.
 
 **Conflict rules:**
 - Concurrent edits to different fields both survive (e.g. one person checks an item while the other edits its notes).
@@ -176,6 +178,39 @@ Because of this, realtime updates, notifications and attribution behave the same
 
 **Sorting:** unchecked first, then `updated_at` descending.
 
+## Private lists
+Built in #154. A private list is for one person, for example a list of gifts. Only its creator (`created_by`) sees the list and its items, and it sends no push. Only the creator can make a list private, or share it again. The owner's decisions:
+- A shared list can become private, also when the other person added items to it. The confirm dialog tells the owner which items of the other person go away for them.
+- A move goes only between lists of the same kind (`privacy_mismatch`). Copy works between all lists. Thus an activity row never has a private list and a shared list.
+- A share sends a push ("Ana shared the “Gifts” list."), and the history then shows all the changes of the list, also the changes from the private time.
+
+**Server rules:**
+- `lists.private` has its own field clock (`private`). `canSee()` in `src/server/ops.ts`: a shared list, or a private list of the actor. Each op finds its list (directly, or through the item) with `getVisibleList()`. A private list of another user gives `list_not_found`, and its items give `item_not_found`: the same result as a row that does not exist.
+- **Make private:** `setListPrivate` sets `server_seq.purged_seq` to the seq of the write (with `max()`; the purge also uses `max()`). Thus each client resets one time at its next pull, and the reset deletes each row that it does not get (#115). The other person's device then has no row of the list. This needs no new client code, and it works on an older version of the app. Each make-private makes every client of every user pull all its rows one time. The data is small, and the change is rare. `purged_seq` thus also means "a forced reset".
+- **Share:** each item of the list gets a new seq, thus the other person's cursor gets them.
+- `activity.private_to`: `applyOps` (and `expireCheckedItems`) set it on each row of a private list. `setListPrivate` changes it on all the rows of the list. The column stays after the purge of a list, thus the history of a purged private list stays private. `readHistory`, `historyListNames`, and `historyItemNames` take the reader and read only the rows with no `private_to` or with the reader.
+- `applyOps` sets `notified_at` at insert on each row of a private list: no push, also after a later share. At the send, the notifier drops the rows of a list that is private now (the rows from before the change, in the burst window). A share then a make-private in one burst sends nothing.
+- Presence: each SSE stream changes the snapshot for its reader (`presenceFor()`): an entry on a private list of another user has no `listId` and no `editingItemId`. Pokes stay the same for all (`{seq}` only).
+- `PUT /api/push/mutes` gives 404 for a private list of another user.
+
+**MCP:** each read takes the token owner (`readLiveLists`, `readListById`, `searchLiveItems`, the history). The error texts name only the lists that the caller can see. `create_list` takes `private`, and checks the name only against the lists that the caller can see: else a refusal tells the other person that a private list with that name exists. The owner can then see two lists with the same name; the "more than one list" error gives their IDs. `set_list_private` changes the privacy. The list outputs of `list_lists`, `get_list`, `create_list`, and `set_list_private` have `private`. `get_history` has the actions `list_made_private` and `list_shared`.
+
+**UI:**
+- The create form has a "Private list" switch. It goes back to off after each create. A list made private from the start is never on the other person's device. A list made private later goes away from their device.
+- A lock icon (label "Private") shows after the name of a private list, in the list index and in the `h1` of the list page.
+- The "List actions" menu of the creator has "Make private" or "Share with <names>". Both open a confirm dialog. There is no Undo: the other device can get the list at once.
+- A private list page has no Notifications switch, and Settings shows no switch for a private list.
+- Autocomplete on a shared list leaves out the names from private lists (`useSuggestionCandidates(listId)`). Else a tap on a suggestion adds a gift to a list that the other person sees, and it sends a push.
+- The Move dialog shows only the lists of the same kind (`pickTargets()` in `list-picker.tsx`). The Copy dialog shows all lists, with the lock on the private ones.
+- The delete dialog of a private list does not say that the list goes for the other people too. Re-create (#104) keeps the privacy of the deleted list.
+
+**Known limits:**
+- When a list becomes private, the other person sees that it went away. Only a list that is private from the start stays fully hidden.
+- A push that went before the change stays on the other person's device.
+- An older version of the app on the owner's device shows no lock and does not filter the autocomplete until it updates. The server rules still apply.
+- A move made before the change, from the list to a shared list, keeps `fromListName` in a row that the other person can read. They saw the list at that time.
+- If the owner leaves `ALLOWED_EMAILS`, no one sees their private lists.
+
 ## Realtime and presence
 - **`GET /api/events`:** an SSE stream.
   - A comment heartbeat every 20s keeps it under Cloudflare's 100s idle timeout.
@@ -194,7 +229,7 @@ Code in `src/server/notify/`.
 
 **Worker:** an in-process interval (~10s) scans for `activity` rows with no `notified_at`. It groups the rows per actor and `via` (`app` or `mcp`), because "(via Claude)" is for all of the text. It sends a group once it has had no new row for 60s, or 3 minutes after its first row at most. It marks the rows as sent, then makes one push for each recipient from the rows of the group (see Recipients), after `collapse()`. Pending state lives in the database, so a restart loses nothing.
 
-**Recipients:** every user except the actor who is still in `ALLOWED_EMAILS` (#100). Muted lists are left out per recipient, and so are disabled devices. A recipient with no enabled device, or a server with no VAPID keys, gets no text and thus no Claude call (`canPushTo()`, #118).
+**Recipients:** every user except the actor who is still in `ALLOWED_EMAILS` (#100). A private list sends no push (#154, see Private lists). Muted lists are left out per recipient, and so are disabled devices. A recipient with no enabled device, or a server with no VAPID keys, gets no text and thus no Claude call (`canPushTo()`, #118).
 
 **`collapse.ts`:** cancels out changes that add up to nothing.
 - Check then uncheck → nothing. An edit or a move that unchecked (#112) counts as the uncheck, and so does a mark out of stock that unchecked (#131) and an add of a name that is checked on the list (#133).
@@ -365,7 +400,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
   - `list`: a live list, or a deleted or purged list from the history (by ID, or by a name in the snapshots). It also gives the moves out of the list (`snapshot.fromListId`).
   - `item` (needs `list`): the live items and the items in the history of the list with that name or ID. One name can be more than one item (deleted and added again).
   - `person`: "me" (the token owner), a full name, or the first word of a name.
-  - `actions`: `added`, `edited`, `checked` (check, check all), `unchecked` (uncheck, uncheck all, and an add of a checked name, `added_again`), `moved`, `out_of_stock`, `in_stock`, `deleted` (delete, clear checked), `restored`, `expired`, `list_created`, `list_renamed`, `list_deleted`, `list_restored`. `historyAction()` maps each row type; the map is a `Record` of all types, thus a new op type fails `tsc` until it has an action.
+  - `actions`: `added`, `edited`, `checked` (check, check all), `unchecked` (uncheck, uncheck all, and an add of a checked name, `added_again`), `moved`, `out_of_stock`, `in_stock`, `deleted` (delete, clear checked), `restored`, `expired`, `list_created`, `list_renamed`, `list_deleted`, `list_restored`, `list_made_private`, `list_shared` (#154). `historyAction()` maps each row type; the map is a `Record` of all types, thus a new op type fails `tsc` until it has an action.
   - `since` (at or after) and `until` (before): ISO times with an offset. They compare with `op_at`.
   - `limit` (default 50, max 200) and `cursor` (`<op_at>.<id>` of the last entry; `next_cursor` is null on the last page).
   - Each entry has `at` (the op time), `by` (the name; null for an automatic change), `via_claude`, `action`, the list and item IDs and names at the time, and when they apply: `changes` (`{ from, to }` for an edit or a rename; `from` is null when an old row has no value), `from_list_id` and `from_list_name`, `added_again`, `also_unchecked`, `also_in_stock`, and `count` (old bulk rows).
@@ -376,12 +411,13 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 
 | Tool | Annotations | Notes |
 |---|---|---|
-| `list_lists` | readOnly | |
+| `list_lists` | readOnly | with `private` (#154) |
 | `get_list` | readOnly | items, with who added and updated each one, and when; when each was checked and unchecked |
 | `search_items` | readOnly | across all lists |
 | `get_history` | readOnly | who did what, and when (#152); also deleted lists and items; pages |
 | `create_list` | | returns `list_id` |
 | `rename_list` | idempotent, non-destructive | |
+| `set_list_private` | idempotent, non-destructive | creator only (#154) |
 | `delete_list` | **destructive** | |
 | `add_items` | non-destructive | batch; dedupes |
 | `update_item` | idempotent | `out_of_stock` marks the item out of stock or in stock (#131) |

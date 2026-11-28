@@ -1,7 +1,7 @@
 // The read module. The sync pull (#6) and the MCP tools (#19) read through
 // it. Writes go through applyOps (src/server/ops.ts).
 import "server-only";
-import { and, asc, desc, eq, gt, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, like, ne, or, sql } from "drizzle-orm";
 import { getDb, type Reader } from "@/db/client";
 import { items, lists, serverSeq, users } from "@/db/schema";
 import type { ItemRecord, ListRecord, UserRecord } from "@/shared/sync";
@@ -23,8 +23,35 @@ export function toListRecord(row: ListRow): ListRecord {
     deletedAt: ms(row.deletedAt),
     summary: row.summary,
     summaryKey: row.summaryKey,
+    private: row.private,
     seq: row.seq,
   };
+}
+
+/**
+ * The SQL condition for the lists that the user can see (#154): the shared
+ * lists, and the private lists of the user.
+ */
+export function visibleTo(userId: string) {
+  return or(eq(lists.private, false), eq(lists.createdBy, userId));
+}
+
+/**
+ * The IDs of the private lists of other users (#154), tombstones included.
+ * Presence leaves them out.
+ */
+export function readHiddenListIds(
+  userId: string,
+  db: Reader = getDb(),
+): Set<string> {
+  return new Set(
+    db
+      .select({ id: lists.id })
+      .from(lists)
+      .where(and(eq(lists.private, true), ne(lists.createdBy, userId)))
+      .all()
+      .map((r) => r.id),
+  );
 }
 
 export function toItemRecord(row: ItemRow): ItemRecord {
@@ -91,29 +118,36 @@ export interface Changes {
 }
 
 /**
- * The lists and items with a seq after `since`, tombstones included, in seq
- * order. At most `limit` rows. Lists and items share one seq counter, thus a
- * page ends between two rows and never in one seq.
+ * The lists and items with a seq after `since` that the user can see,
+ * tombstones included, in seq order. At most `limit` rows. Lists and items
+ * share one seq counter, thus a page ends between two rows and never in one
+ * seq.
+ *
+ * The SQL filters the private lists of other users and their items (#154).
+ * A filter after `limit` can give an empty page with `hasMore`.
  */
 export function readChanges(
   since: number,
   limit: number,
+  userId: string,
   db: Reader = getDb(),
 ): Changes {
   const listRows = db
     .select()
     .from(lists)
-    .where(gt(lists.seq, since))
+    .where(and(gt(lists.seq, since), visibleTo(userId)))
     .orderBy(asc(lists.seq))
     .limit(limit + 1)
     .all();
   const itemRows = db
-    .select()
+    .select({ item: items })
     .from(items)
-    .where(gt(items.seq, since))
+    .innerJoin(lists, eq(lists.id, items.listId))
+    .where(and(gt(items.seq, since), visibleTo(userId)))
     .orderBy(asc(items.seq))
     .limit(limit + 1)
-    .all();
+    .all()
+    .map((r) => r.item);
 
   const rows = [
     ...listRows.map((row) => ({ kind: "list" as const, row })),
@@ -143,8 +177,11 @@ export function readChanges(
 // Reads for the MCP tools (#19). They return live rows only: no tombstones.
 // The order is the order of the app (src/client/queries.ts).
 
-/** The lists that are not deleted, by name, with their item counts. */
-export function readLiveLists(db: Reader = getDb()) {
+/**
+ * The lists that are not deleted and that the user can see, by name, with
+ * their item counts.
+ */
+export function readLiveLists(userId: string, db: Reader = getDb()) {
   const rows = db
     .select({
       list: lists,
@@ -153,7 +190,7 @@ export function readLiveLists(db: Reader = getDb()) {
     })
     .from(lists)
     .leftJoin(items, and(eq(items.listId, lists.id), isNull(items.deletedAt)))
-    .where(isNull(lists.deletedAt))
+    .where(and(isNull(lists.deletedAt), visibleTo(userId)))
     .groupBy(lists.id)
     .orderBy(sql`${lists.name} collate nocase`, asc(lists.createdAt))
     .all();
@@ -164,9 +201,16 @@ export function readLiveLists(db: Reader = getDb()) {
   }));
 }
 
-/** A list by ID, tombstone included, or undefined. */
-export function readListById(id: string, db: Reader = getDb()) {
-  const row = db.select().from(lists).where(eq(lists.id, id)).get();
+/**
+ * A list by ID that the user can see, tombstone included, or undefined. A
+ * private list of another user is undefined (#154).
+ */
+export function readListById(id: string, userId: string, db: Reader = getDb()) {
+  const row = db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.id, id), visibleTo(userId)))
+    .get();
   return row && toListRecord(row);
 }
 
@@ -182,12 +226,13 @@ export function readListItems(listId: string, db: Reader = getDb()) {
 }
 
 /**
- * The live items on live lists whose name contains `key` (a nameKey of
- * the query), with their list. At most `limit` rows.
+ * The live items on live lists that the user can see, whose name contains
+ * `key` (a nameKey of the query), with their list. At most `limit` rows.
  */
 export function searchLiveItems(
   key: string,
   limit: number,
+  userId: string,
   db: Reader = getDb(),
 ) {
   const pattern = `%${key.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -199,6 +244,7 @@ export function searchLiveItems(
       and(
         isNull(items.deletedAt),
         isNull(lists.deletedAt),
+        visibleTo(userId),
         like(items.nameKey, sql`${pattern} escape '\\'`),
       ),
     )

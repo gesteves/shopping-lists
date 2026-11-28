@@ -43,6 +43,8 @@ export const SNAPSHOT_KEYS: Record<OpType, readonly SnapshotKey[]> = {
   // The uncheck of a mark is not in the text: "out of stock" tells it.
   markOutOfStock: ["listName", "itemName"],
   markInStock: ["listName", "itemName"],
+  // Only a share sends a push: a private list sends none (#154).
+  setListPrivate: ["listName"],
 };
 
 /** The snapshot with only the keys of the type, and no undefined values. */

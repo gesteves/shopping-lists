@@ -56,7 +56,7 @@ describe("readHistory (#152)", () => {
   });
 
   it("calls an add of a checked name an uncheck", () => {
-    expect(actions(readHistory({ limit: 10 }, db))).toEqual([
+    expect(actions(readHistory({ userId: SAM.id, limit: 10 }, db))).toEqual([
       "unchecked",
       "checked",
       "added",
@@ -65,20 +65,29 @@ describe("readHistory (#152)", () => {
   });
 
   it("filters added and unchecked apart", () => {
-    expect(actions(readHistory({ actions: ["added"], limit: 10 }, db))).toEqual(
-      ["added"],
-    );
     expect(
-      actions(readHistory({ actions: ["unchecked"], limit: 10 }, db)),
+      actions(
+        readHistory({ userId: SAM.id, actions: ["added"], limit: 10 }, db),
+      ),
+    ).toEqual(["added"]);
+    expect(
+      actions(
+        readHistory({ userId: SAM.id, actions: ["unchecked"], limit: 10 }, db),
+      ),
     ).toEqual(["unchecked"]);
     expect(
-      actions(readHistory({ actions: ["added", "unchecked"], limit: 10 }, db)),
+      actions(
+        readHistory(
+          { userId: SAM.id, actions: ["added", "unchecked"], limit: 10 },
+          db,
+        ),
+      ),
     ).toEqual(["unchecked", "added"]);
   });
 
   it("orders by the op time, not by the time the server got it", () => {
     // All rows came at NOW. The op times are one second apart.
-    const rows = readHistory({ limit: 10 }, db);
+    const rows = readHistory({ userId: SAM.id, limit: 10 }, db);
     const times = rows.map((r) => r.opAt.getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
     expect(new Set(rows.map((r) => r.at.getTime()))).toEqual(new Set([NOW]));

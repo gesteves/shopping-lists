@@ -104,6 +104,25 @@ export class PresenceStore {
   }
 }
 
+/**
+ * The snapshot for one reader (#154): an entry on a list in `hidden` (a
+ * private list of another user) shows no list and no item. The person
+ * still shows as present.
+ */
+export function presenceFor(
+  snapshot: PresenceSnapshot,
+  hidden: ReadonlySet<string>,
+): PresenceSnapshot {
+  if (hidden.size === 0) return snapshot;
+  return {
+    entries: snapshot.entries.map((e) =>
+      e.listId !== null && hidden.has(e.listId)
+        ? { ...e, listId: null, editingItemId: null }
+        : e,
+    ),
+  };
+}
+
 const KEY = Symbol.for("shopping-lists.presence");
 const store = globalThis as typeof globalThis & { [KEY]?: PresenceStore };
 

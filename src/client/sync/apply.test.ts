@@ -34,6 +34,7 @@ function list(patch: Partial<ListRecord> = {}): ListRecord {
     deletedAt: null,
     summary: null,
     summaryKey: null,
+    private: false,
     seq: 1,
     ...patch,
   };
@@ -360,5 +361,42 @@ describe("applyLocal", () => {
       const changed = applyLocal(s, op("check", { itemId: ITEM }), ME);
       expect(changed.items.size).toBe(0);
     });
+  });
+});
+
+describe("private lists (#154)", () => {
+  it("creates a private list", () => {
+    const s = state([]);
+    applyLocal(
+      s,
+      op("createList", { listId: LIST, name: "Gifts", private: true }),
+      ME,
+    );
+    expect(s.lists.get(LIST)).toMatchObject({ private: true, createdBy: ME });
+  });
+
+  it("changes the privacy only for the creator", () => {
+    const s = state([
+      list({ createdBy: ME }),
+      list({ id: LIST_2, createdBy: "other" }),
+    ]);
+    applyLocal(s, op("setListPrivate", { listId: LIST, private: true }), ME);
+    applyLocal(s, op("setListPrivate", { listId: LIST_2, private: true }), ME);
+    expect(s.lists.get(LIST)?.private).toBe(true);
+    expect(s.lists.get(LIST_2)?.private).toBe(false);
+  });
+
+  it("does not move an item between a private and a shared list", () => {
+    const s = state(
+      [list(), list({ id: LIST_2, private: true, createdBy: ME })],
+      [item()],
+    );
+    const changed = applyLocal(
+      s,
+      op("moveItem", { itemId: ITEM, toListId: LIST_2 }),
+      ME,
+    );
+    expect(s.items.get(ITEM)?.listId).toBe(LIST);
+    expect(changed.items.size).toBe(0);
   });
 });

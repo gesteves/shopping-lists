@@ -33,6 +33,7 @@ const base = {
   deletedAt: null,
   summary: null,
   summaryKey: null,
+  private: false,
   seq: 1,
 };
 
@@ -93,7 +94,7 @@ describe("recreateFor", () => {
     expect(requests).toHaveLength(4);
     expect(requests[0]).toEqual({
       type: "createList",
-      args: { listId, name: "Camping" },
+      args: { listId, name: "Camping", private: false },
     });
     expect(requests.slice(1).map((r) => r.type)).toEqual([
       "addItem",

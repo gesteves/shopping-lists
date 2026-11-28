@@ -90,7 +90,7 @@ const fakeFetch: typeof fetch = async (input, init) => {
     if (net.failPull || net.pulls === net.failPullAt) {
       return new Response(null, { status: 500 });
     }
-    return handlePull(request, { db: serverDb, now: realNow });
+    return handlePull(request, SAM.id, { db: serverDb, now: realNow });
   }
   return new Response(null, { status: 404 });
 };
@@ -245,6 +245,7 @@ describe("sync", () => {
     // A pull without a push: the check is still pending.
     const res = handlePull(
       new Request("http://localhost/api/sync/pull?since=2"),
+      SAM.id,
       { db: serverDb },
     );
     await savePullPage(db, await res.json());

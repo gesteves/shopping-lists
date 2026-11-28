@@ -14,9 +14,17 @@ import { KeepScreenOnSwitch } from "../../_components/keep-screen-on";
  * device gets pushes and the list is not muted. It is always in the page,
  * thus it does not pop in (#136). It is disabled until the device and the
  * mutes are known, and where push cannot work. On turns on push here (one
- * tap) and unmutes the list. Off mutes the list on all devices.
+ * tap) and unmutes the list. Off mutes the list on all devices. A private
+ * list has no Notifications switch (#154).
  */
-export function ListSwitches({ listId }: { listId: string }) {
+export function ListSwitches({
+  listId,
+  isPrivate,
+}: {
+  listId: string;
+  /** A private list sends no push (#154): no Notifications switch. */
+  isPrivate: boolean;
+}) {
   const { muted, setListMuted } = useMutedLists();
   const push = usePushDevice();
   const ready =
@@ -58,16 +66,18 @@ export function ListSwitches({ listId }: { listId: string }) {
   return (
     <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
       <KeepScreenOnSwitch />
-      <wa-switch
-        disabled={!ready}
-        checked={push.status === "on" && muted?.has(listId) === false}
-        onChange={(event) => {
-          const control = event.currentTarget as unknown as HTMLInputElement;
-          void (control.checked ? turnOn(control) : turnOff(control));
-        }}
-      >
-        {copy.list.notifications}
-      </wa-switch>
+      {!isPrivate && (
+        <wa-switch
+          disabled={!ready}
+          checked={push.status === "on" && muted?.has(listId) === false}
+          onChange={(event) => {
+            const control = event.currentTarget as unknown as HTMLInputElement;
+            void (control.checked ? turnOn(control) : turnOff(control));
+          }}
+        >
+          {copy.list.notifications}
+        </wa-switch>
+      )}
     </div>
   );
 }
