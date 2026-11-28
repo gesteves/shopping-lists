@@ -1,8 +1,8 @@
 # Shopping Lists
 
-A private shopping list app for two people. It is a mobile-first web app that you install on the iPhone Home Screen and use in the store, with a two-pane layout for planning on a laptop. It works offline, shows changes from the other person in real time, sends push notifications, and lets Claude read and edit the lists through an MCP server.
+A private household shopping list app. It is a mobile-first web app that you install on the iPhone Home Screen and use in the store, with a two-pane layout for planning on a laptop. It works offline, shows changes from the other person in real time, sends push notifications, and lets Claude read and edit the lists through an MCP server.
 
-Only the Google accounts on an allowlist can sign in.
+<img width="2880" height="1800" alt="Screen Shot 2026-11-28 at 09 28 33" src="https://github.com/user-attachments/assets/892ecf8b-09e1-45b9-b1df-553f3fb8da96" />
 
 ## Features
 
@@ -15,6 +15,7 @@ Only the Google accounts on an allowlist can sign in.
 - Move an item to a different list.
 - Each item shows who added it, who changed it last, and when.
 - Undo each delete, move, and bulk action from the toast.
+- Set up private lists for holiday shopping.
 
 **Offline and sync**
 
@@ -30,7 +31,7 @@ Only the Google accounts on an allowlist can sign in.
 **Notifications**
 
 - Push notifications when the other person changes a list, on the installed iPhone app and on desktop browsers.
-- The app waits until the other person stops for a minute, then sends one notification. Claude writes it as one sentence, such as "Sam added eggs and checked off milk in the “Whole Foods” list."
+- The app waits until the other person stops for a minute, then sends one notification.
 - Turn notifications on or off for each device, and mute each list from the list page or from Settings.
 
 **Claude**
