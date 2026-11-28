@@ -9,6 +9,7 @@ import {
   dialog,
   itemAction,
   openList,
+  pickList,
   signIn,
   synced,
 } from "./helpers";
@@ -105,9 +106,7 @@ test("move and copy an item to another list", async ({ page }) => {
 
   // Move: the item goes to the other list.
   await itemAction(page, "Eggs", copy.item.move);
-  const move = dialog(page, copy.item.moveTitle("Eggs"));
-  await move.getByRole("button", { name: to }).click();
-  await expect(move).toBeHidden();
+  await pickList(page, "move", "Eggs", to);
   await expect(item(page, "Eggs")).toHaveCount(0);
   await expect(toast(page, copy.item.moved("Eggs", to))).toBeVisible();
 
@@ -118,17 +117,13 @@ test("move and copy an item to another list", async ({ page }) => {
   await sheet.getByRole("button", { name: copy.common.save }).click();
   await expect(sheet).toBeHidden();
   await itemAction(page, "Bread", copy.item.copy);
-  await dialog(page, copy.item.copyTitle("Bread"))
-    .getByRole("button", { name: to })
-    .click();
+  await pickList(page, "copy", "Bread", to);
   await expect(toast(page, copy.item.copied("Bread", to))).toBeVisible();
   await expect(item(page, "Bread")).toBeVisible();
 
   // A second copy finds the name on the list: no second item.
   await itemAction(page, "Bread", copy.item.copy);
-  await dialog(page, copy.item.copyTitle("Bread"))
-    .getByRole("button", { name: to })
-    .click();
+  await pickList(page, "copy", "Bread", to);
   await expect(toast(page, copy.item.copyOnList("Bread", to))).toBeVisible();
   await synced(page);
 
@@ -137,6 +132,43 @@ test("move and copy an item to another list", async ({ page }) => {
   await expect(item(page, "Eggs")).toBeVisible();
   await expect(item(page, "Bread")).toHaveCount(1);
   await expect(item(page, "Bread")).toContainText("Sourdough");
+});
+
+test("the Move dialog: a select, then Move; Cancel changes nothing", async ({
+  page,
+}) => {
+  await signIn(page);
+  const { to } = await twoLists(page);
+  await add(page, "Rice");
+
+  // The select has the focus, and Move is disabled until a list is
+  // selected.
+  await itemAction(page, "Rice", copy.item.move);
+  const picker = dialog(page, copy.item.moveTitle("Rice"));
+  const select = picker.getByRole("combobox", { name: copy.item.targets });
+  const confirm = picker.getByRole("button", {
+    name: copy.item.move,
+    exact: true,
+  });
+  await expect(select).toBeFocused();
+  await expect(confirm).toBeDisabled();
+  await select.click();
+  await picker.getByRole("option", { name: to, exact: true }).click();
+  await expect(select).toHaveValue(to);
+  await expect(confirm).toBeEnabled();
+
+  // Cancel: no change.
+  await picker.getByRole("button", { name: copy.common.cancel }).click();
+  await expect(picker).toBeHidden();
+  await expect(item(page, "Rice")).toBeVisible();
+
+  // The dialog opens again with no list selected.
+  await itemAction(page, "Rice", copy.item.move);
+  await expect(select).toHaveValue("");
+  await expect(confirm).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(item(page, "Rice")).toBeVisible();
 });
 
 test("out of stock: the badge, the offer, in stock, and a check", async ({
@@ -195,9 +227,7 @@ test("out of stock, then move from the offer: no badge on the other list", async
   await toast(page, copy.item.markedOutOfStock("Basil"))
     .getByRole("button", { name: copy.item.move })
     .click();
-  await dialog(page, copy.item.moveTitle("Basil"))
-    .getByRole("button", { name: to })
-    .click();
+  await pickList(page, "move", "Basil", to);
   await expect(item(page, "Basil")).toHaveCount(0);
   await synced(page);
 
@@ -217,9 +247,7 @@ test("out of stock, then copy from the offer: the copy is in stock", async ({
   await toast(page, copy.item.markedOutOfStock("Limes"))
     .getByRole("button", { name: copy.item.copy })
     .click();
-  await dialog(page, copy.item.copyTitle("Limes"))
-    .getByRole("button", { name: to })
-    .click();
+  await pickList(page, "copy", "Limes", to);
   await expect(toast(page, copy.item.copied("Limes", to))).toBeVisible();
   // The item stays out of stock on this list.
   await expect(badge(page, "Limes")).toBeVisible();

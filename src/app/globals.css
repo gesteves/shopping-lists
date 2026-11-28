@@ -141,11 +141,13 @@
   }
 }
 
-/* Titles and toasts can show list and item names. A long word must wrap
-   (#129): else it pushes the close button off a narrow screen. */
+/* Titles, toasts, and options can show list and item names. A long word
+   must wrap (#129): else it pushes the close button off a narrow screen,
+   or goes past the edge of the listbox (#134). */
 wa-dialog::part(title),
 wa-drawer::part(title),
-wa-toast-item::part(content) {
+wa-toast-item::part(content),
+wa-option::part(label) {
   min-width: 0;
   overflow-wrap: anywhere;
 }

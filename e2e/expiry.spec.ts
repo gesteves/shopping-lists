@@ -8,7 +8,7 @@ import {
   expiryVariant,
 } from "../src/shared/expiry";
 import { serialize } from "../src/shared/hlc";
-import { dialog, scan, signIn, synced, itemAction } from "./helpers";
+import { dialog, itemAction, pickList, scan, signIn, synced } from "./helpers";
 
 // Days are local calendar days (#112). The browser and this test use the
 // same time zone, so that the expected badges are the same on each machine.
@@ -123,9 +123,7 @@ test("old checked items show in Older items with a badge, and leave it on a chan
 
   // Move: it goes to the other list, unchecked.
   await itemAction(page, "Tape", copy.item.move);
-  await dialog(page, copy.item.moveTitle("Tape"))
-    .getByRole("button", { name: other })
-    .click();
+  await pickList(page, "move", "Tape", other);
   await expect(row(page, "Tape")).toHaveCount(0);
   await expect(section.getByRole("checkbox")).toHaveCount(1);
 

@@ -262,3 +262,107 @@ for (const colorScheme of ["light", "dark"] as const) {
     }
   });
 }
+
+/** 20 lists with long names, and an item on the first one (#134). */
+async function seedManyLists(page: Page) {
+  const clientId = randomUUID();
+  let counter = 0;
+  const now = Date.now();
+  const op = (type: string, args: object) => ({
+    opId: randomUUID(),
+    clientId,
+    hlc: serialize({ wall: now, counter: counter++, node: clientId }),
+    type,
+    args,
+  });
+  const lists = Array.from({ length: 20 }, (_, i) => ({
+    id: randomUUID(),
+    name: `${word(`Store${String(i + 1).padStart(2, "0")}`, 60)}`,
+  }));
+  const itemName = `Crackers ${randomUUID().slice(0, 8)}`;
+  const ops = [
+    ...lists.map((l) => op("createList", { listId: l.id, name: l.name })),
+    op("addItem", {
+      itemId: randomUUID(),
+      listId: lists[0].id,
+      name: itemName,
+    }),
+  ];
+  const res = await page.request.post("/api/sync/push", {
+    data: { clientId, ops },
+  });
+  expect(res.status()).toBe(200);
+  return { lists, itemName };
+}
+
+/** The box of an element in the shadow root of the first match. */
+function shadowBox(page: Page, host: string, selector: string) {
+  return page
+    .locator(host)
+    .first()
+    .evaluate((el, selector) => {
+      const part = el.shadowRoot!.querySelector(selector)!;
+      const rect = part.getBoundingClientRect();
+      return {
+        top: rect.top,
+        bottom: rect.bottom,
+        scrolls: part.scrollHeight > part.clientHeight,
+      };
+    }, selector);
+}
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`the Move dialog fits a small phone with 20 lists (${colorScheme})`, async ({
+    browser,
+  }, testInfo) => {
+    const height = 640;
+    const context = await browser.newContext({
+      ...testInfo.project.use,
+      colorScheme,
+      viewport: { width: 360, height },
+    });
+    const page = await context.newPage();
+    try {
+      await signIn(page);
+      const { lists, itemName } = await seedManyLists(page);
+      await page.goto(`/lists/${lists[0].id}`);
+      await itemAction(page, itemName, copy.item.move);
+      const picker = dialog(page, copy.item.moveTitle(itemName));
+      const select = picker.getByRole("combobox", { name: copy.item.targets });
+      // The select has the focus when the dialog opens.
+      await expect(select).toBeFocused();
+      await noOverflow(page, `move dialog, many lists (${colorScheme})`);
+      // The dialog is short: no list buttons, and it is in the screen.
+      const box = await shadowBox(page, "wa-dialog[open]", "dialog");
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(box.bottom).toBeLessThanOrEqual(height);
+
+      // The listbox opens in the screen, and scrolls to each list.
+      await select.click();
+      const last = lists.at(-1)!.name;
+      const option = picker.getByRole("option", { name: last, exact: true });
+      await expect(
+        picker.getByRole("option", { name: lists[1].name, exact: true }),
+      ).toBeVisible();
+      await noOverflow(page, `move select, many lists (${colorScheme})`);
+      const listbox = await shadowBox(page, "wa-select[open]", ".listbox");
+      expect(listbox.top).toBeGreaterThanOrEqual(0);
+      expect(listbox.bottom).toBeLessThanOrEqual(height);
+      expect(listbox.scrolls).toBe(true);
+      await expect(
+        picker.getByRole("option", { name: lists[0].name, exact: true }),
+      ).toHaveCount(0);
+      await option.click();
+      await expect(select).toHaveValue(last);
+      await picker.getByRole("button", { name: copy.item.move }).click();
+      await expect(picker).toBeHidden();
+      await expect(
+        page
+          .locator("wa-toast-item")
+          .filter({ hasText: copy.item.moved(itemName, last) }),
+      ).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+}

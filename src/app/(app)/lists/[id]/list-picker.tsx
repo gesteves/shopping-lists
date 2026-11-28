@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { copyPlan } from "@/client/copy-item";
 import { getClientDb } from "@/client/db";
 import { useLists } from "@/client/hooks";
@@ -18,9 +18,10 @@ export interface PickRequest {
 }
 
 /**
- * The Move and Copy dialog (#131): one button for each other list. A tap
- * moves or copies the item at once, and a toast tells the result. Cancel,
- * Escape, and a tap outside close it.
+ * The Move and Copy dialog (#131): a select of the other lists, and a Move
+ * or Copy button (#134). The select keeps the dialog short when there are
+ * many lists. The button is disabled until the user selects a list. A toast
+ * tells the result. Cancel, Escape, and a tap outside close it.
  */
 export function ListPicker({
   request,
@@ -31,19 +32,41 @@ export function ListPicker({
 }) {
   // Keep the last request while the dialog closes, so its content stays.
   const [shown, setShown] = useState(request);
-  if (request && request !== shown) setShown(request);
+  // The ID of the selected list. Each new request starts with none.
+  const [targetId, setTargetId] = useState("");
+  if (request && request !== shown) {
+    setShown(request);
+    setTargetId("");
+  }
   const lists = useLists();
   const targets = lists?.filter((l) => l.id !== shown?.item.listId) ?? [];
+  const target = targets.find((l) => l.id === targetId);
+  const mode = shown?.mode ?? "move";
 
   const ref = useWaEvents<HTMLElement>({
+    // Only this dialog: the events of the select in it bubble too.
     "wa-after-hide": (event) => {
       if (event.target === event.currentTarget) onClose();
     },
   });
+  const selectEvents = useWaEvents<HTMLElement>({
+    change: (event) =>
+      setTargetId((event.currentTarget as HTMLSelectElement).value),
+  });
+  // The dialog focuses the element with "autofocus" when it opens. The JSX
+  // types of wa-select do not have it, thus set it here. The display field
+  // of the select is read-only: the on-screen keyboard does not open.
+  const selectRef = useCallback(
+    (el: HTMLElement | null) => {
+      el?.setAttribute("autofocus", "");
+      return selectEvents(el);
+    },
+    [selectEvents],
+  );
 
-  async function pick(target: ListRecord) {
-    if (!shown) return;
-    const { item, mode } = shown;
+  async function confirm() {
+    if (!shown || !target) return;
+    const { item } = shown;
     // Close before the write. Then the list view does not take the move
     // for a change from another device.
     onClose();
@@ -57,32 +80,39 @@ export function ListPicker({
       open={request !== null}
       label={
         shown
-          ? (shown.mode === "move" ? copy.item.moveTitle : copy.item.copyTitle)(
+          ? (mode === "move" ? copy.item.moveTitle : copy.item.copyTitle)(
               shown.item.name,
             )
           : ""
       }
       light-dismiss
     >
-      <ul aria-label={copy.item.targets} className="flex flex-col gap-2">
+      <wa-select
+        ref={selectRef}
+        label={copy.item.targets}
+        placeholder={copy.item.pickList}
+        value={targetId}
+      >
         {targets.map((list) => (
-          <li key={list.id}>
-            <button
-              type="button"
-              onClick={() => void pick(list)}
-              className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-2 text-left font-medium wrap-anywhere"
-            >
-              <wa-icon
-                name={shown?.mode === "copy" ? "copy" : "swap"}
-                className="shrink-0 text-ink-muted"
-              ></wa-icon>
-              {list.name}
-            </button>
-          </li>
+          <wa-option key={list.id} value={list.id}>
+            {list.name}
+          </wa-option>
         ))}
-      </ul>
+      </wa-select>
       <wa-button slot="footer" appearance="plain" onClick={onClose}>
         {copy.common.cancel}
+      </wa-button>
+      <wa-button
+        slot="footer"
+        variant="brand"
+        disabled={!target}
+        onClick={() => void confirm()}
+      >
+        <wa-icon
+          slot="start"
+          name={mode === "copy" ? "copy" : "swap"}
+        ></wa-icon>
+        {mode === "move" ? copy.item.move : copy.item.copy}
       </wa-button>
     </wa-dialog>
   );

@@ -8,6 +8,7 @@ import {
   listAction,
   listIndex,
   openList,
+  pickList,
   signIn,
   synced,
   itemAction,
@@ -85,9 +86,7 @@ test("move an item to a different list", async ({ page }) => {
   await add(page, "Tortillas");
 
   await itemAction(page, "Tortillas", copy.item.move);
-  await dialog(page, copy.item.moveTitle("Tortillas"))
-    .getByRole("button", { name: to })
-    .click();
+  await pickList(page, "move", "Tortillas", to);
   await expect(item(page, "Tortillas")).toHaveCount(0);
   await expect(toast(page, copy.item.moved("Tortillas", to))).toBeVisible();
   await synced(page);

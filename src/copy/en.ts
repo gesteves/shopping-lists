@@ -190,8 +190,9 @@ export const en = {
       `${q(name)} is out of stock. Get it at another store?`,
     moveTitle: (name: string) => `Move ${q(name)} to another list`,
     copyTitle: (name: string) => `Copy ${q(name)} to another list`,
-    /** The list of target lists in the Move and Copy dialogs. */
-    targets: "Lists",
+    /** The select of target lists in the Move and Copy dialogs (#134). */
+    targets: "List",
+    pickList: "Select a list",
     /** Screen reader text before the quantity badge. */
     quantityPrefix: "quantity ",
     quantity: (n: number) => `×${n}`,
