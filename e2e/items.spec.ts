@@ -258,6 +258,32 @@ test("the sheet keeps the edits of the other person", async ({
   }
 });
 
+test("the sync status does not make the header wrap", async ({
+  page,
+  context,
+}) => {
+  await signIn(page);
+  await openNewList(page);
+  await add(page, "Apples");
+  await synced(page);
+  const title = page.getByRole("banner").getByRole("link", {
+    name: copy.app.name,
+  });
+  const before = (await title.boundingBox())?.height;
+
+  await context.setOffline(true);
+  await add(page, "Plums");
+  const status = page.getByRole("status").filter({
+    hasText: copy.sync.offlineWithChanges(1),
+  });
+  await expect(status).toBeVisible();
+  // The app name and the status each stay on one line.
+  expect((await title.boundingBox())?.height).toBe(before);
+  expect((await status.boundingBox())?.height).toBeLessThanOrEqual(before!);
+  await context.setOffline(false);
+  await synced(page);
+});
+
 test.describe("sync errors", () => {
   // page.route does not see the requests that go through a service worker.
   test.use({ serviceWorkers: "block" });

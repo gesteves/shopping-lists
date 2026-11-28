@@ -31,7 +31,10 @@ export function HeaderFrame({ children }: { children?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="flex min-h-14 items-center justify-between gap-4 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]">
-        <Link href="/" className="rounded-sm text-lg font-bold tracking-tight">
+        <Link
+          href="/"
+          className="rounded-sm text-lg font-bold tracking-tight whitespace-nowrap"
+        >
           {copy.app.name}
         </Link>
         <div className="flex items-center gap-3">{children}</div>
