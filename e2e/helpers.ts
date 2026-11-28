@@ -57,6 +57,23 @@ export async function listAction(page: Page, name: string, action: string) {
   await item.dispatchEvent("click");
 }
 
+/**
+ * Open the "…" menu of an item on the list page, then select an action
+ * (#131). Next.js keeps the last page hidden in the DOM, thus find only a
+ * visible one.
+ */
+export async function itemAction(page: Page, name: string, action: string) {
+  await page
+    .getByRole("button", { name: copy.item.more(name), exact: true })
+    .filter({ visible: true })
+    .click();
+  const item = page
+    .getByRole("menuitem", { name: action, exact: true })
+    .filter({ visible: true });
+  await expect(item).toBeVisible();
+  await item.click();
+}
+
 /** The number of ops in the local outbox (Dexie database "shopping-lists"). */
 export function outboxCount(page: Page): Promise<number> {
   return page.evaluate(

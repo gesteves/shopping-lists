@@ -93,6 +93,9 @@ const itemOut = z.object({
   quantity: z.int(),
   notes: z.string(),
   checked: z.boolean(),
+  out_of_stock: z
+    .boolean()
+    .describe("True if someone marked the item out of stock at the store"),
 });
 const addedOut = z.object({ by: z.string(), at: z.iso.datetime() });
 const changedOut = addedOut.extend({
@@ -271,6 +274,7 @@ function toItemOut(item: ItemRecord) {
     quantity: item.quantity,
     notes: item.notes,
     checked: item.checked,
+    out_of_stock: item.outOfStockAt !== null,
   };
 }
 
@@ -548,7 +552,7 @@ export const TOOLS = [
     name: "update_item",
     title: "Update an item",
     description:
-      "Change the name, the quantity, or the notes of an item. A change to a checked item also unchecks it, because the person is going to buy it again.",
+      "Change the name, the quantity, or the notes of an item, or mark it out of stock or in stock. A change to a checked item also unchecks it, because the person is going to buy it again. Marking an item out of stock also unchecks it.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,
@@ -561,23 +565,48 @@ export const TOOLS = [
       name: itemName.optional(),
       quantity: quantity.optional(),
       notes: notes.optional(),
+      out_of_stock: z
+        .boolean()
+        .optional()
+        .describe(
+          "True if the store did not have the item, false when it is available again",
+        ),
       idempotency_key: idempotencyKey,
     }),
     output: itemOut,
     run: (ctx, input) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- not a field
-      const { list: ref, item: itemArg, idempotency_key, ...fields } = input;
+      const {
+        list: ref,
+        item: itemArg,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- not a field
+        idempotency_key,
+        out_of_stock,
+        ...fields
+      } = input;
       const list = resolveList(ctx, ref);
       const [item] = resolveItems(ctx, list, [itemArg]);
       const set = Object.fromEntries(
         Object.entries(fields).filter(([, v]) => v !== undefined),
       );
-      if (Object.keys(set).length === 0) {
-        throw new ToolError("Give a name, a quantity, or notes to change.");
+      const specs: OpSpec[] = [];
+      if (Object.keys(set).length > 0) {
+        specs.push({
+          type: "updateItem",
+          args: { itemId: item.id, fields: set },
+        });
       }
-      apply(ctx, idMaker(ctx, "update_item", input), [
-        { type: "updateItem", args: { itemId: item.id, fields: set } },
-      ]);
+      if (out_of_stock !== undefined) {
+        specs.push({
+          type: out_of_stock ? "markOutOfStock" : "markInStock",
+          args: { itemId: item.id },
+        });
+      }
+      if (specs.length === 0) {
+        throw new ToolError(
+          "Give a name, a quantity, notes, or out_of_stock to change.",
+        );
+      }
+      apply(ctx, idMaker(ctx, "update_item", input), specs);
       const after = readListItems(list.id, ctx.db).find(
         (i) => i.id === item.id,
       );
@@ -591,7 +620,7 @@ export const TOOLS = [
       title: name === "check_items" ? "Check off items" : "Uncheck items",
       description:
         name === "check_items"
-          ? "Check items off a list, as when they are in the cart."
+          ? "Check items off a list, as when they are in the cart. This also marks them in stock."
           : "Uncheck items, so they are to buy again.",
       scope: "lists:write",
       annotations: {
@@ -675,7 +704,7 @@ export const TOOLS = [
     name: "move_item",
     title: "Move an item",
     description:
-      "Move an item from one list to another list. A checked item is unchecked by the move.",
+      "Move an item from one list to another list. The move unchecks a checked item, and marks an out-of-stock item in stock.",
     scope: "lists:write",
     annotations: {
       readOnlyHint: false,

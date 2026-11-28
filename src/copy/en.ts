@@ -167,7 +167,31 @@ export const en = {
   },
 
   item: {
-    edit: (name: string) => `Edit ${name}`,
+    /** The "…" menu of an item row (#131). */
+    more: (name: string) => `More for ${name}`,
+    edit: "Edit",
+    move: "Move",
+    copy: "Copy",
+    /** The menu item, and the badge on the row. */
+    outOfStock: "Out of stock",
+    inStock: "In stock",
+    deleted: (name: string) => `Deleted ${q(name)}.`,
+    moved: (name: string, list: string) =>
+      `Moved ${q(name)} to the ${q(list)} list.`,
+    copied: (name: string, list: string) =>
+      `Copied ${q(name)} to the ${q(list)} list.`,
+    /** A copy to a list that has the name already. */
+    copyOnList: (name: string, list: string) =>
+      `${q(name)} is already on the ${q(list)} list.`,
+    copyUnchecked: (name: string, list: string) =>
+      `${q(name)} was already on the ${q(list)} list. It’s unchecked now.`,
+    /** After "Out of stock": the toast offers Move and Copy. */
+    markedOutOfStock: (name: string) =>
+      `${q(name)} is out of stock. Get it at another store?`,
+    moveTitle: (name: string) => `Move ${q(name)} to another list`,
+    copyTitle: (name: string) => `Copy ${q(name)} to another list`,
+    /** The list of target lists in the Move and Copy dialogs. */
+    targets: "Lists",
     /** Screen reader text before the quantity badge. */
     quantityPrefix: "quantity ",
     quantity: (n: number) => `×${n}`,
@@ -215,11 +239,6 @@ export const en = {
     name: "Name",
     quantity: "Quantity",
     notes: "Notes",
-    moveTo: "Move to",
-    pickList: "Pick a list",
-    deleted: (name: string) => `Deleted ${q(name)}.`,
-    moved: (name: string, list: string) =>
-      `Moved ${q(name)} to the ${q(list)} list.`,
     /** The item went from the list (a delete or a move on another device). */
     gone: (name: string) => `${q(name)} isn’t on this list anymore.`,
   },
@@ -424,6 +443,10 @@ export const en = {
         `${e.who} unchecked everything in the ${q(e.list)} list.`,
       checkAll: (e: PushEvent) =>
         `${e.who} checked everything off the ${q(e.list)} list.`,
+      markOutOfStock: (e: PushEvent) =>
+        `${e.who} marked ${q(e.item)} as out of stock in the ${q(e.list)} list.`,
+      markInStock: (e: PushEvent) =>
+        `${e.who} marked ${q(e.item)} as in stock in the ${q(e.list)} list.`,
     },
     /**
      * More than one event, when Claude gives no summary: "Sam made 3

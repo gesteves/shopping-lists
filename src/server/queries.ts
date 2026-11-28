@@ -35,6 +35,7 @@ export function toItemRecord(row: ItemRow): ItemRecord {
     notes: row.notes,
     checked: row.checked,
     checkedAt: ms(row.checkedAt),
+    outOfStockAt: ms(row.outOfStockAt),
     createdBy: row.createdBy,
     createdAt: row.createdAt.getTime(),
     updatedBy: row.updatedBy,

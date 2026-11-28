@@ -47,6 +47,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     notes: "",
     checked: false,
     checkedAt: null,
+    outOfStockAt: null,
     createdBy: "other",
     createdAt: T - 100,
     updatedBy: "other",
@@ -238,5 +239,109 @@ describe("applyLocal", () => {
     });
     applyLocal(s, op("restoreList", { listId: LIST }, T + 2), ME);
     expect(s.lists.get(LIST)?.deletedAt).toBeNull();
+  });
+
+  describe("out of stock (#131)", () => {
+    const OUT = T - 40;
+
+    it("marks an item out of stock and unchecks it", () => {
+      const s = state([list()], [item({ checked: true, checkedAt: T - 50 })]);
+      const changed = applyLocal(s, op("markOutOfStock", { itemId: ITEM }), ME);
+      expect([...changed.items]).toEqual([ITEM]);
+      expect(s.items.get(ITEM)).toMatchObject({
+        outOfStockAt: T,
+        checked: false,
+        checkedAt: null,
+        updatedBy: ME,
+      });
+    });
+
+    it("keeps the first time on a second mark, and changes nothing", () => {
+      const s = state([list()], [item({ outOfStockAt: OUT })]);
+      const changed = applyLocal(s, op("markOutOfStock", { itemId: ITEM }), ME);
+      expect(changed.items.size).toBe(0);
+      expect(s.items.get(ITEM)?.outOfStockAt).toBe(OUT);
+    });
+
+    it("never ends checked and out of stock, in each order", () => {
+      let s = state([list()], [item()]);
+      applyLocal(s, op("check", { itemId: ITEM }), ME);
+      applyLocal(s, op("markOutOfStock", { itemId: ITEM }, T + 1), ME);
+      expect(s.items.get(ITEM)).toMatchObject({
+        checked: false,
+        outOfStockAt: T + 1,
+      });
+
+      s = state([list()], [item()]);
+      applyLocal(s, op("markOutOfStock", { itemId: ITEM }), ME);
+      applyLocal(s, op("check", { itemId: ITEM }, T + 1), ME);
+      expect(s.items.get(ITEM)).toMatchObject({
+        checked: true,
+        outOfStockAt: null,
+      });
+    });
+
+    it("marks an item in stock", () => {
+      const s = state([list()], [item({ outOfStockAt: OUT })]);
+      applyLocal(s, op("markInStock", { itemId: ITEM }), ME);
+      expect(s.items.get(ITEM)?.outOfStockAt).toBeNull();
+    });
+
+    it("a check, a check all, and a move mark it in stock", () => {
+      let s = state([list()], [item({ outOfStockAt: OUT })]);
+      applyLocal(s, op("check", { itemId: ITEM }), ME);
+      expect(s.items.get(ITEM)).toMatchObject({
+        checked: true,
+        outOfStockAt: null,
+      });
+
+      s = state([list()], [item({ outOfStockAt: OUT })]);
+      applyLocal(s, op("checkAll", { listId: LIST }), ME);
+      expect(s.items.get(ITEM)?.outOfStockAt).toBeNull();
+
+      s = state(
+        [list(), list({ id: LIST_2, name: "Costco" })],
+        [item({ outOfStockAt: OUT })],
+      );
+      applyLocal(s, op("moveItem", { itemId: ITEM, toListId: LIST_2 }), ME);
+      expect(s.items.get(ITEM)).toMatchObject({
+        listId: LIST_2,
+        outOfStockAt: null,
+      });
+    });
+
+    it("an edit and a move to the same list keep it", () => {
+      const s = state([list()], [item({ outOfStockAt: OUT })]);
+      applyLocal(
+        s,
+        op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }),
+        ME,
+      );
+      applyLocal(s, op("moveItem", { itemId: ITEM, toListId: LIST }), ME);
+      expect(s.items.get(ITEM)?.outOfStockAt).toBe(OUT);
+    });
+
+    it("a copy (an add) starts in stock", () => {
+      const s = state(
+        [list(), list({ id: LIST_2, name: "Costco" })],
+        [item({ outOfStockAt: OUT })],
+      );
+      applyLocal(
+        s,
+        op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "Milk" }),
+        ME,
+      );
+      expect(s.items.get(ITEM_2)?.outOfStockAt).toBeNull();
+    });
+
+    it("does not change a row from an older server on a check", () => {
+      // An older pull gave no outOfStockAt. A check of a checked item
+      // changes nothing, thus it does not stamp the row (#115).
+      const old = item({ checked: true, checkedAt: T - 50 });
+      delete (old as Partial<ItemRecord>).outOfStockAt;
+      const s = state([list()], [old]);
+      const changed = applyLocal(s, op("check", { itemId: ITEM }), ME);
+      expect(changed.items.size).toBe(0);
+    });
   });
 });

@@ -30,6 +30,78 @@ describe("collapse", () => {
     expect(types(collapse([ev("check", {}), move]))).toEqual(["moveItem"]);
   });
 
+  describe("out of stock (#131)", () => {
+    const mark = () => ev("markOutOfStock", {});
+    const unmark = () => ev("markInStock", {});
+
+    it("keeps one mark or one unmark", () => {
+      expect(types(collapse([mark()]))).toEqual(["markOutOfStock"]);
+      expect(types(collapse([unmark()]))).toEqual(["markInStock"]);
+    });
+
+    it("cancels a mark and an unmark, in each order", () => {
+      expect(collapse([mark(), unmark()])).toEqual([]);
+      expect(collapse([unmark(), mark()])).toEqual([]);
+      expect(types(collapse([mark(), unmark(), mark()]))).toEqual([
+        "markOutOfStock",
+      ]);
+    });
+
+    it("treats a check or a move that marked in stock as an unmark", () => {
+      // Out of stock, then checked off: only the check.
+      expect(types(collapse([mark(), ev("check", { inStock: true })]))).toEqual(
+        ["check"],
+      );
+      // Out of stock, then moved to another store: only the move.
+      const move = ev("moveItem", {
+        inStock: true,
+        listName: "B",
+        fromListName: "A",
+      });
+      expect(types(collapse([mark(), move]))).toEqual(["moveItem"]);
+      // A check of an item that was out of stock before the burst.
+      expect(types(collapse([ev("check", { inStock: true })]))).toEqual([
+        "check",
+      ]);
+    });
+
+    it("treats a mark that unchecked as an uncheck", () => {
+      // Checked off, then out of stock: only the mark.
+      expect(
+        types(
+          collapse([
+            ev("check", {}),
+            ev("markOutOfStock", { unchecked: true }),
+          ]),
+        ),
+      ).toEqual(["markOutOfStock"]);
+      // A checked item from before the burst: the mark, no uncheck.
+      expect(
+        types(collapse([ev("markOutOfStock", { unchecked: true })])),
+      ).toEqual(["markOutOfStock"]);
+    });
+
+    it("keeps a mark after an add only if the item ends out of stock", () => {
+      expect(types(collapse([ev("addItem", {}), mark()]))).toEqual([
+        "addItem",
+        "markOutOfStock",
+      ]);
+      expect(types(collapse([ev("addItem", {}), mark(), unmark()]))).toEqual([
+        "addItem",
+      ]);
+    });
+
+    it("keeps only the names in the snapshot", () => {
+      const [out] = collapse([
+        ev("markOutOfStock", { itemName: "Milk", unchecked: true }),
+      ]);
+      expect(out.snapshot).toStrictEqual({
+        listName: "Whole Foods",
+        itemName: "Milk",
+      });
+    });
+  });
+
   it("cancels an add and a delete, also with changes between them", () => {
     expect(
       collapse([

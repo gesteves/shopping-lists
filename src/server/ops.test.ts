@@ -762,6 +762,207 @@ describe("an edit or a move of a checked item (#112)", () => {
   });
 });
 
+describe("out of stock (#131)", () => {
+  function lastSnapshot() {
+    return db.select().from(activity).orderBy(desc(activity.id)).get();
+  }
+
+  it("marks an item out of stock and in stock, with the stock clock", () => {
+    seed();
+    const out = apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    expect(out.results[0]).toMatchObject({ status: "applied", changed: true });
+    expect(getItem()).toMatchObject({
+      outOfStockAt: new Date(T2),
+      updatedBy: ALEX.id,
+    });
+    expect(getItem()?.clocks.outOfStock).toBe(
+      serialize({ wall: T2, counter: 0, node: PHONE }),
+    );
+    expect(lastSnapshot()).toMatchObject({
+      type: "markOutOfStock",
+      snapshot: { listName: "Whole Foods", itemName: "Milk" },
+    });
+
+    // A second mark changes nothing: no activity row.
+    const again = apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T3));
+    expect(again.results[0]).toMatchObject({ changed: false });
+    expect(getItem()?.outOfStockAt).toEqual(new Date(T2));
+
+    apply(ALEX, op("markInStock", { itemId: ITEM }, T4));
+    expect(getItem()?.outOfStockAt).toBeNull();
+    expect(lastSnapshot()?.type).toBe("markInStock");
+    expect(activityTypes().slice(-2)).toEqual([
+      "markOutOfStock",
+      "markInStock",
+    ]);
+  });
+
+  it("starts a new item in stock, with a stock clock", () => {
+    seed();
+    expect(getItem()?.outOfStockAt).toBeNull();
+    expect(getItem()?.clocks.outOfStock).toBeDefined();
+  });
+
+  it("keeps the newer of a mark and an unmark, in each order", () => {
+    for (const order of ["newer last", "newer first"]) {
+      db.$client.close();
+      db = createTestDb();
+      seed();
+      const mark = op("markOutOfStock", { itemId: ITEM }, T3, LAPTOP);
+      const unmark = op("markInStock", { itemId: ITEM }, T2);
+      if (order === "newer last") apply(SAM, unmark, mark);
+      else apply(SAM, mark, unmark);
+      expect(getItem()?.outOfStockAt).toEqual(new Date(T3));
+    }
+  });
+
+  it("unchecks a checked item", () => {
+    seed();
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T3));
+    expect(getItem()).toMatchObject({
+      checked: false,
+      checkedAt: null,
+      outOfStockAt: new Date(T3),
+    });
+    expect(lastSnapshot()?.snapshot).toMatchObject({ unchecked: true });
+  });
+
+  it("a check marks the item in stock", () => {
+    seed();
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(SAM, op("check", { itemId: ITEM }, T3));
+    expect(getItem()).toMatchObject({ checked: true, outOfStockAt: null });
+    expect(getItem()?.clocks.outOfStock).toBe(getItem()?.clocks.checked);
+    expect(lastSnapshot()).toMatchObject({
+      type: "check",
+      snapshot: { inStock: true },
+    });
+  });
+
+  it("never ends checked and out of stock, in each order", () => {
+    // The check is newer than the mark: the item ends checked and in stock.
+    for (const order of ["check last", "check first"]) {
+      db.$client.close();
+      db = createTestDb();
+      seed();
+      const mark = op("markOutOfStock", { itemId: ITEM }, T2);
+      const check = op("check", { itemId: ITEM }, T3, LAPTOP);
+      if (order === "check last") apply(SAM, mark, check);
+      else apply(SAM, check, mark);
+      expect(getItem()).toMatchObject({ checked: true, outOfStockAt: null });
+    }
+  });
+
+  it("gives the same result for a check and a mark in each order", () => {
+    // The check is older than the mark: the item ends out of stock and
+    // unchecked, also when the check arrives last.
+    for (const order of ["check last", "check first"]) {
+      db.$client.close();
+      db = createTestDb();
+      seed();
+      const check = op("check", { itemId: ITEM }, T2);
+      const mark = op("markOutOfStock", { itemId: ITEM }, T3, LAPTOP);
+      if (order === "check last") apply(SAM, mark, check);
+      else apply(SAM, check, mark);
+      expect(getItem()).toMatchObject({
+        checked: false,
+        outOfStockAt: new Date(T3),
+      });
+    }
+  });
+
+  it("an older check does not mark the item in stock", () => {
+    seed();
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T3));
+    apply(SAM, op("check", { itemId: ITEM }, T2));
+    expect(getItem()?.outOfStockAt).toEqual(new Date(T3));
+  });
+
+  it("an edit keeps the item out of stock", () => {
+    seed();
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(
+      ALEX,
+      op("updateItem", { itemId: ITEM, fields: { notes: "2%" } }, T3),
+    );
+    expect(getItem()?.outOfStockAt).toEqual(new Date(T2));
+  });
+
+  it("a move to another list marks the item in stock", () => {
+    seed();
+    apply(SAM, op("createList", { listId: LIST_2, name: "Costco" }, T1));
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST_2 }, T3));
+    expect(getItem()).toMatchObject({ listId: LIST_2, outOfStockAt: null });
+    expect(getItem()?.clocks.outOfStock).toBe(getItem()?.clocks.listId);
+    expect(lastSnapshot()).toMatchObject({
+      type: "moveItem",
+      snapshot: { inStock: true, fromListName: "Whole Foods" },
+    });
+  });
+
+  it("a move that does not change the list keeps the item out of stock", () => {
+    seed();
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(ALEX, op("moveItem", { itemId: ITEM, toListId: LIST }, T3));
+    expect(getItem()?.outOfStockAt).toEqual(new Date(T2));
+  });
+
+  it("checkAll marks the items that it checks in stock", () => {
+    seed();
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(ALEX, op("checkAll", { listId: LIST }, T3));
+    expect(getItem()).toMatchObject({ checked: true, outOfStockAt: null });
+  });
+
+  it("a copy (an add to the other list) starts in stock", () => {
+    seed();
+    apply(SAM, op("createList", { listId: LIST_2, name: "Costco" }, T1));
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T2));
+    apply(
+      ALEX,
+      op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "Milk" }, T3),
+    );
+    expect(getItem(ITEM_2)).toMatchObject({
+      listId: LIST_2,
+      outOfStockAt: null,
+    });
+    expect(getItem()?.outOfStockAt).toEqual(new Date(T2));
+  });
+
+  it("a copy to a list that has the name merges, and unchecks the match", () => {
+    seed();
+    apply(
+      SAM,
+      op("createList", { listId: LIST_2, name: "Costco" }, T1),
+      op("addItem", { itemId: ITEM_2, listId: LIST_2, name: "milk" }, T1),
+      op("check", { itemId: ITEM_2 }, T2),
+    );
+    const { results } = apply(
+      ALEX,
+      op("addItem", { itemId: ITEM_3, listId: LIST_2, name: "Milk" }, T3),
+    );
+    expect(results[0]).toMatchObject({
+      status: "merged",
+      into: ITEM_2,
+      changed: true,
+    });
+    expect(getItem(ITEM_2)?.checked).toBe(false);
+    expect(getItem(ITEM_3)).toBeUndefined();
+  });
+
+  it("brings back a deleted item, as each edit does", () => {
+    seed();
+    apply(SAM, op("deleteItem", { itemId: ITEM }, T2));
+    apply(ALEX, op("markOutOfStock", { itemId: ITEM }, T3));
+    expect(getItem()).toMatchObject({
+      deletedAt: null,
+      outOfStockAt: new Date(T3),
+    });
+  });
+});
+
 describe("op IDs", () => {
   it("refuses an op ID of a different user, and keeps the first result", () => {
     seed();

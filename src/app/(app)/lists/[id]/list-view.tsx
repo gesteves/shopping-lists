@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState } from "react";
-import { useList, useReportPresence } from "@/client/hooks";
+import { useEffect, useId, useMemo, useState } from "react";
+import { useList, useLists, useReportPresence } from "@/client/hooks";
 import { splitOlder } from "@/client/queries";
 import { useNow } from "@/client/use-now";
 import { showToast } from "@/client/toasts";
@@ -13,6 +13,7 @@ import type { ItemRecord } from "@/shared/sync";
 import { AddBar } from "./add-bar";
 import { ItemRow } from "./item-row";
 import { ItemSheet } from "./item-sheet";
+import { ListPicker, type PickMode } from "./list-picker";
 import { ListHeader } from "./list-menu";
 import { ListSwitches } from "./list-switches";
 
@@ -24,6 +25,22 @@ export function ListView() {
   const id = decodeURIComponent(usePathname().split("/")[2] ?? "");
   const view = useList(id);
   const [editing, setEditing] = useState<ItemRecord | null>(null);
+  const [picking, setPicking] = useState<{
+    id: string;
+    mode: PickMode;
+  } | null>(null);
+  const lists = useLists();
+  const canPick = (lists?.filter((l) => l.id !== id).length ?? 0) > 0;
+  // The newest copy of the item. If it left the list, the dialog closes.
+  const pickItem = picking && view?.items.find((i) => i.id === picking.id);
+  const pickMode = picking?.mode;
+  // A stable object: the dialog keeps the last request in its state.
+  const pickRequest = useMemo(
+    () => (pickItem && pickMode ? { item: pickItem, mode: pickMode } : null),
+    [pickItem, pickMode],
+  );
+  const onPick = (item: ItemRecord, mode: PickMode) =>
+    setPicking({ id: item.id, mode });
 
   // Keep the sheet on the newest copy of the item (sync can change it).
   const live = editing && view?.items.find((i) => i.id === editing.id);
@@ -82,7 +99,13 @@ export function ListView() {
             className="mt-5 mb-4 flex flex-col gap-2"
           >
             {shownItems.map((item) => (
-              <ItemRow key={item.id} item={item} onEdit={setEditing} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                onEdit={setEditing}
+                onPick={onPick}
+                canPick={canPick}
+              />
             ))}
           </ul>
           {older.length > 0 && now !== null && (
@@ -99,6 +122,8 @@ export function ListView() {
                     key={item.id}
                     item={item}
                     onEdit={setEditing}
+                    onPick={onPick}
+                    canPick={canPick}
                     expiresInDays={daysLeft(expiresAt(item.checkedAt!), now)}
                   />
                 ))}
@@ -107,6 +132,7 @@ export function ListView() {
           )}
           <AddBar listId={view.list.id} items={view.items} />
           <ItemSheet item={current} onClose={() => setEditing(null)} />
+          <ListPicker request={pickRequest} onClose={() => setPicking(null)} />
         </>
       )}
     </div>

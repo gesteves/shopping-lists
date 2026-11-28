@@ -10,6 +10,7 @@ import {
   saveFakeSubscription,
   settled,
   signIn,
+  itemAction,
 } from "./helpers";
 
 // Long names and notes wrap (#129). No element goes past the right edge of
@@ -220,19 +221,29 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBeHidden();
 
       // The item sheet.
-      await page
-        .getByRole("button", { name: copy.item.edit(names.url) })
-        .click();
+      await itemAction(page, names.url, copy.item.edit);
       const sheet = dialog(page, copy.itemSheet.title);
       await expect(sheet.getByLabel(copy.itemSheet.notes)).toBeVisible();
       await noOverflow(page, `item sheet (${colorScheme})`);
+      await sheet.getByRole("button", { name: copy.common.cancel }).click();
+      await expect(sheet).toBeHidden();
+
+      // The Move dialog: its title has the long name (#131).
+      await itemAction(page, names.url, copy.item.move);
+      const picker = page.getByRole("dialog", {
+        name: copy.item.moveTitle(names.url),
+      });
+      await expect(picker).toBeVisible();
+      await noOverflow(page, `move dialog (${colorScheme})`);
+      await page.keyboard.press("Escape");
+      await expect(picker).toBeHidden();
 
       // The toast after a delete.
-      await sheet.getByRole("button", { name: copy.common.delete }).click();
+      await itemAction(page, names.url, copy.common.delete);
       await expect(
         page
           .locator("wa-toast-item")
-          .filter({ hasText: copy.itemSheet.deleted(names.url) }),
+          .filter({ hasText: copy.item.deleted(names.url) }),
       ).toBeVisible();
       await noOverflow(page, `toast (${colorScheme})`);
 

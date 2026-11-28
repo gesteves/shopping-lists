@@ -6,7 +6,11 @@
 // Rules, for each item and each list:
 //   - Check, then uncheck (or the other way) → nothing. An edit or a move
 //     that also unchecked the item (#112) counts as an uncheck too; the edit
-//     or the move stays.
+//     or the move stays. A mark out of stock that unchecked (#131) counts
+//     as an uncheck too.
+//   - Out of stock, then in stock (or the other way) → nothing. A check or a
+//     move that marked the item in stock counts as "in stock"; the check or
+//     the move stays (#131).
 //   - Add, then delete → nothing. Delete, then undo (restore) → nothing.
 //   - An item or a list that is not there at the start and at the end (new
 //     or deleted before, and deleted at the end) → nothing, also for the
@@ -28,6 +32,8 @@ const ITEM_TYPES = new Set([
   "deleteItem",
   "restoreItem",
   "moveItem",
+  "markOutOfStock",
+  "markInStock",
 ]);
 const LIST_TYPES = new Set([
   "createList",
@@ -44,6 +50,16 @@ function unchecks(e: ActivityEvent): boolean {
 /** The check and uncheck events, with the edits that unchecked. */
 function checkEvents(events: ActivityEvent[]): ActivityEvent[] {
   return events.filter((e) => e.type === "check" || unchecks(e));
+}
+
+/** True for a mark in stock, also a check or a move that did it (#131). */
+function restocks(e: ActivityEvent): boolean {
+  return e.type === "markInStock" || e.snapshot.inStock === true;
+}
+
+/** The out of stock and in stock events, with the checks and moves. */
+function stockEvents(events: ActivityEvent[]): ActivityEvent[] {
+  return events.filter((e) => e.type === "markOutOfStock" || restocks(e));
 }
 
 /** The last event of a group, with the names of the last event. */
@@ -100,6 +116,10 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
     const checks = checkEvents(events);
     if (checks.at(-1)?.type === "check")
       out.push(withLastNames(checks.at(-1)!, last));
+    // A new item starts in stock.
+    const stock = stockEvents(events);
+    if (stock.at(-1)?.type === "markOutOfStock")
+      out.push(withLastNames(stock.at(-1)!, last));
     return out;
   }
 
@@ -141,6 +161,19 @@ function collapseItem(events: ActivityEvent[]): ActivityEvent[] {
     if (
       startedChecked !== endsChecked &&
       (final.type === "check" || final.type === "uncheck")
+    )
+      out.push(withLastNames(final, last));
+  }
+
+  const stock = stockEvents(events);
+  if (stock.length > 0) {
+    const startedOut = restocks(stock[0]);
+    const final = stock.at(-1)!;
+    const endsOut = final.type === "markOutOfStock";
+    // A check or a move that marked it in stock is in `out` already.
+    if (
+      startedOut !== endsOut &&
+      (final.type === "markOutOfStock" || final.type === "markInStock")
     )
       out.push(withLastNames(final, last));
   }

@@ -10,6 +10,7 @@ import {
   openList,
   signIn,
   synced,
+  itemAction,
 } from "./helpers";
 
 async function add(page: Page, ...names: string[]) {
@@ -44,14 +45,11 @@ test("delete then undo brings the item back for both people", async ({
     await openList(b, name);
     await expect(item(b, "Lemons")).toBeVisible();
 
-    await a.getByRole("button", { name: copy.item.edit("Lemons") }).click();
-    await dialog(a, copy.itemSheet.title)
-      .getByRole("button", { name: copy.common.delete })
-      .click();
+    await itemAction(a, "Lemons", copy.common.delete);
     await expect(item(a, "Lemons")).toHaveCount(0);
     await expect(item(b, "Lemons")).toHaveCount(0);
 
-    await toast(a, copy.itemSheet.deleted("Lemons"))
+    await toast(a, copy.item.deleted("Lemons"))
       .getByRole("button", { name: copy.common.undo })
       .click();
     await expect(item(a, "Lemons")).toBeVisible();
@@ -86,14 +84,12 @@ test("move an item to a different list", async ({ page }) => {
   await openList(page, from);
   await add(page, "Tortillas");
 
-  await page.getByRole("button", { name: copy.item.edit("Tortillas") }).click();
-  const sheet = dialog(page, copy.itemSheet.title);
-  await sheet.getByRole("combobox", { name: copy.itemSheet.moveTo }).click();
-  await sheet.getByRole("option", { name: to }).click();
+  await itemAction(page, "Tortillas", copy.item.move);
+  await dialog(page, copy.item.moveTitle("Tortillas"))
+    .getByRole("button", { name: to })
+    .click();
   await expect(item(page, "Tortillas")).toHaveCount(0);
-  await expect(
-    toast(page, copy.itemSheet.moved("Tortillas", to)),
-  ).toBeVisible();
+  await expect(toast(page, copy.item.moved("Tortillas", to))).toBeVisible();
   await synced(page);
 
   await page.reload();

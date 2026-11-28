@@ -105,6 +105,11 @@ export interface ItemRecord {
   notes: string;
   checked: boolean;
   checkedAt: number | null;
+  /**
+   * When someone marked the item out of stock (#131), or null. A row that
+   * the client got from an older server has no value: read it as null.
+   */
+  outOfStockAt: number | null;
   createdBy: string;
   createdAt: number;
   updatedBy: string;

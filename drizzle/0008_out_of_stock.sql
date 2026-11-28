@@ -1,0 +1,1 @@
+ALTER TABLE `items` ADD `out_of_stock_at` integer;

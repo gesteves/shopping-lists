@@ -33,7 +33,7 @@ describe("the dictionary", () => {
 
   it("puts values in the text", () => {
     expect(copy.lists.deleted("Costco")).toBe("Deleted the “Costco” list.");
-    expect(copy.itemSheet.moved("Milk", "Target")).toBe(
+    expect(copy.item.moved("Milk", "Target")).toBe(
       "Moved “Milk” to the “Target” list.",
     );
     expect(copy.item.editing(["Sam", "Alex"])).toBe("Sam, Alex is editing…");
@@ -44,7 +44,7 @@ describe("the dictionary", () => {
   });
 
   it("keeps the names as they are", () => {
-    expect(copy.itemSheet.deleted("“Big” ${x} <b>")).toBe(
+    expect(copy.item.deleted("“Big” ${x} <b>")).toBe(
       "Deleted ““Big” ${x} <b>”.",
     );
   });

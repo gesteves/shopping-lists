@@ -11,6 +11,7 @@ import {
   signIn,
   switchControl,
   synced,
+  itemAction,
 } from "./helpers";
 
 for (const colorScheme of ["light", "dark"] as const) {
@@ -28,6 +29,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await scan(page, "home");
 
       const name = `A11y ${randomUUID().slice(0, 8)}`;
+      // A second list: the Move and Copy dialogs need one.
+      await createList(page, `A11y other ${randomUUID().slice(0, 8)}`);
       await createList(page, name);
       await openList(page, name);
       for (const item of ["Milk", "Eggs"]) {
@@ -40,7 +43,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await synced(page);
       await scan(page, "list");
 
-      await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
+      await itemAction(page, "Milk", copy.item.edit);
       await expect(
         page.getByLabel(copy.itemSheet.name, { exact: true }),
       ).toBeVisible();
@@ -53,6 +56,36 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBeVisible();
       await scan(page, "list menu");
       await page.keyboard.press("Escape");
+
+      // The item menu, the out-of-stock badge and toast, and the dialogs
+      // (#131).
+      await page
+        .getByRole("button", { name: copy.item.more("Milk"), exact: true })
+        .click();
+      await expect(
+        page.getByRole("menuitem", { name: copy.item.outOfStock }),
+      ).toBeVisible();
+      await scan(page, "item menu");
+      await page.getByRole("menuitem", { name: copy.item.outOfStock }).click();
+      await expect(
+        page.getByRole("checkbox", { name: /^Milk\b/ }),
+      ).toContainText(copy.item.outOfStock);
+      await expect(
+        page.locator("wa-toast-item", {
+          hasText: copy.item.markedOutOfStock("Milk"),
+        }),
+      ).toBeVisible();
+      await scan(page, "out of stock");
+      for (const [action, title] of [
+        [copy.item.move, copy.item.moveTitle("Milk")],
+        [copy.item.copy, copy.item.copyTitle("Milk")],
+      ] as const) {
+        await itemAction(page, "Milk", action);
+        await expect(page.getByRole("dialog", { name: title })).toBeVisible();
+        await scan(page, `${action} dialog`);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("dialog", { name: title })).toBeHidden();
+      }
 
       await page.goto("/settings");
       await expect(
@@ -85,12 +118,24 @@ test("the item sheet opens at once with reduced motion", async ({
     await page
       .getByRole("button", { name: copy.addBar.add, exact: true })
       .click();
-    await page.getByRole("button", { name: copy.item.edit("Milk") }).click();
-    // No transition: the sheet runs no animations.
+    await itemAction(page, "Milk", copy.item.edit);
+    // The sheet opens after the item menu closes (#131): wait for it.
+    await expect(
+      page.getByLabel(copy.itemSheet.name, { exact: true }),
+    ).toBeVisible();
+    // No transition: the sheet runs no animations. The items of the menu
+    // have a short hover transition: they do not count.
     const running = await page.evaluate(
       () =>
-        document.getAnimations().filter((a) => a.playState === "running")
-          .length,
+        document
+          .getAnimations()
+          .filter(
+            (a) =>
+              a.playState === "running" &&
+              !(
+                (a.effect as KeyframeEffect | null)?.target as Element | null
+              )?.closest("wa-dropdown"),
+          ).length,
     );
     expect(running).toBe(0);
   } finally {

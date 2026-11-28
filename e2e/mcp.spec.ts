@@ -9,7 +9,14 @@ import {
 } from "@playwright/test";
 import { E2E_SECOND_EMAIL } from "../playwright.config";
 import { copy } from "../src/copy";
-import { createList, mcpCall, openList, signIn, synced } from "./helpers";
+import {
+  createList,
+  mcpCall,
+  openList,
+  signIn,
+  synced,
+  itemAction,
+} from "./helpers";
 
 const REDIRECT = "http://127.0.0.1:59999/callback";
 
@@ -115,7 +122,7 @@ test("a change through Claude appears live, marked via Claude", async ({
   const oat = page.getByRole("checkbox", { name: /^Oat milk\b/ });
   await expect(oat).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("checkbox", { name: /^Eggs\b/ })).toBeVisible();
-  await page.getByRole("button", { name: copy.item.edit("Oat milk") }).click();
+  await itemAction(page, "Oat milk", copy.item.edit);
   await expect(
     page.getByText(
       copy.item.updated(copy.people.viaClaude("Ben"), copy.time.justNow),

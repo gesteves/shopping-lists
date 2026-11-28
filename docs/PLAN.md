@@ -36,6 +36,8 @@ The fallback text, when Claude gives none (#89). Each sentence ends with a perio
 - “[Name] moved “[item]” from the “[A]” list to the “[B]” list”
 - “[Name] cleared checked items from the “[list]” list”
 - “[Name] unchecked everything in the “[list]” list”
+- “[Name] marked “[item]” as out of stock in the “[list]” list” (#131)
+- “[Name] marked “[item]” as in stock in the “[list]” list” (#131)
 
 When the change came over MCP, "[Name]" becomes "[Name] (via Claude)".
 
@@ -77,9 +79,9 @@ Schema in `src/db/schema.ts`.
 |---|---|
 | `users` | id, email, name (Google given name), avatar_url |
 | `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, tombstoned_at (server time of the delete, #101), clocks (JSON), summary and summary_key (see List summaries), seq |
-| `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
+| `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, checked, checked_at, out_of_stock_at (the op time of the mark, or null, #131), created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at (server time). It makes pushes idempotent: a retry gets the stored result. The purge keeps the rows for 180 days (#119). |
-| `activity` | id, op_id, actor_id, via, type (the op type; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
+| `activity` | id, op_id, actor_id, via, type (the op type; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed; `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131), at, notified_at. Drives notifications. A partial index covers the rows with no `notified_at`. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at, failure_count, failing_since, last_failure_at (#118) |
 | `list_mutes` | user_id, list_id |
 | `server_seq` | one global counter and `purged_seq` (one row, id 1, no seed row). Every write gets the next seq with `INSERT … ON CONFLICT (id) DO UPDATE SET value = value + 1 RETURNING value`. |
@@ -106,7 +108,7 @@ Because of this, realtime updates, notifications and attribution behave the same
 
 **`applyOps` results** (#5): each op gets `applied { changed }`, `merged { into, changed }`, `rejected { reason }`, or `duplicate { original }`. The reasons are `list_not_found`, `list_deleted`, `list_exists`, `item_not_found`, `item_exists`, `clock_ahead` (the op HLC is more than 5 minutes after the server clock), and `op_conflict` (#101: a `processed_ops` row with this opId belongs to a different user; the first result stays, and nothing is stored for the second user). `clearChecked`, `uncheckAll`, and `checkAll` put the number of items that they changed in `applied.count`, and `deleteList` the number of live items of the list. The MCP tools report these counts, also on a retry. `processed_ops` keeps the first result, also for a rejection, so a retry gets the same answer. An op that writes only clocks is `applied { changed: false }`: it gets no seq, no activity row and no poke. Each changed row gets its own seq, so a page of a pull never splits one seq. `updated_at` is the op time (the HLC wall time), not the server time. `activity.at` is the server time. An unexpected error rolls back the whole call.
 
-**Op types:** createList, renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll, checkAll (#67).
+**Op types:** createList, renameList, deleteList, restoreList, addItem, updateItem(fields), check, uncheck, deleteItem, restoreItem, moveItem, clearChecked, uncheckAll, checkAll (#67), markOutOfStock, markInStock (#131).
 
 **Op format** (`src/shared/ops.ts`, zod): `{ opId, clientId, hlc, type, args }`. `opId` is a UUID. The node of `hlc` must be the `clientId`. Strings are trimmed. `addItem` sets `quantity: 1` and `notes: ""` by default. `updateItem` takes `fields` (name, quantity, notes) with at least one field. Limits: list name 100, item name 200, notes 2000, quantity 1–999. `clearChecked`, `uncheckAll`, and `checkAll` take only `listId`: #5 sets which items they change.
 
@@ -146,6 +148,12 @@ Because of this, realtime updates, notifications and attribution behave the same
   - An uncheck made offline in the last hours can arrive after the job. Its HLC is older than the delete, thus the item stays deleted.
   - The Undo of a move does not check the item again.
   - `checkedAt` is the op time (the client clock). A check made offline arrives with its own time, thus an item checked offline 25 days ago expires about 5 days after it arrives. A device with a clock that is far behind gives an old `checkedAt`, and the item can expire early (#99 refuses only a clock that is ahead). The clock offset of #115 corrects this after the first push or pull of the device.
+- **Out of stock (#131):** the store did not have the item. `out_of_stock_at` has its own field clock (`outOfStock`), as the other fields. `markOutOfStock` sets it (it keeps the first time), and `markInStock` clears it. Each one is an edit: it brings a deleted item back. Rules (the owner's decisions):
+  - A checked item is never out of stock. A `check` writes "in stock" at its HLC when the HLC is newer than the stock clock, also when the check changes nothing else. `markOutOfStock` writes "unchecked" at its HLC when the HLC is newer than the check clock (the item is still to buy). Each op writes both fields at one HLC, thus the merge is per-field last-writer-wins, and the result is the same in each order of arrival: never "checked and out of stock". `checkAll` marks each item that it checks in stock.
+  - A move to another list marks the item in stock (only when it changed the list, as the uncheck of #112): the person moves it to get it at a different store, and does not know if that store has it. A copy is a new `addItem`, thus it starts in stock. A merge into an item on the target list does not change its stock state.
+  - An edit (name, quantity, notes) does not change it.
+  - The activity snapshot of a check or a move that marked the item in stock has `inStock: true`; a mark that unchecked has `unchecked: true`.
+  - The client (`apply.ts`) does the same without clocks. A row from an older server has no `outOfStockAt`: the client reads it as null.
 - Tombstones are purged 30 days after the server wrote the delete (`purgeTombstones` in `src/server/purge.ts`). The server runs it 5 minutes after boot, then each day (#20). `deleted_at` is the op time (the client clock), thus #101 added `tombstoned_at` to `lists` and `items`: the server time of the delete, cleared by a restore. Thus a delete that comes late stays for the full 30 days. Migration `0006` set it to the migration time for the tombstones that were there. It also deletes sent `activity` rows older than the limit. It sets `server_seq.purged_seq` to the largest seq that it deleted. A pull with a cursor below `purged_seq` must start again from 0 (#6).
   - A deleted list goes only when each of its items is an old tombstone too (#119). The items of a deleted list can change (Conflict rules), thus they can have a recent seq, and a purge that deleted them moved `purged_seq` to that seq: each client then reset. Thus the purge makes each live item of an old deleted list a tombstone, as `expireCheckedItems` does (`tombstoneItems` in `src/server/ops.ts`: the server HLC as the delete clock, the server time in `deleted_at` and `tombstoned_at`, a new seq, and a poke; no `processed_ops`, no `activity`). A run 30 days later deletes the items and the list.
   - `processed_ops` rows stay for 180 days (`KEEP_OPS_DAYS`, #119), not 30. The client keeps an op in its outbox until the server answers (no status drops it, #115), also for a long time offline. If the response of a push was lost and the device sent the op again after the purge of its row, the server applied it again: an old `addItem` made an item again that someone had deleted. `processed_at` is the server time of `applyOps`. Known limit: a retry after more than 180 days is applied again.
@@ -188,7 +196,8 @@ Code in `src/server/notify/`.
 **Recipients:** every user except the actor who is still in `ALLOWED_EMAILS` (#100). Muted lists are left out per recipient, and so are disabled devices. A recipient with no enabled device, or a server with no VAPID keys, gets no text and thus no Claude call (`canPushTo()`, #118).
 
 **`collapse.ts`:** cancels out changes that add up to nothing.
-- Check then uncheck → nothing. An edit or a move that unchecked (#112) counts as the uncheck.
+- Check then uncheck → nothing. An edit or a move that unchecked (#112) counts as the uncheck, and so does a mark out of stock that unchecked (#131).
+- Out of stock then in stock (or the other way) → nothing (#131). A check or a move that marked the item in stock counts as the "in stock"; the check or the move stays. Add then out of stock → "added" and "marked out of stock".
 - Add then delete, including an undone delete → nothing.
 - Add then update → "added".
 - Several updates → one update.
@@ -320,6 +329,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 - An unexpected error gives a general `isError` text to the client; the detail goes to the server log (#101).
 - Every write calls `applyOps` with `via: "mcp"`. Reads use `src/server/queries.ts`.
 - Scopes: read tools need `lists:read`, write tools `lists:write`. A missing scope gets 403 `insufficient_scope` before the tool runs (the SDK `scopeChallenge`). `tools/list` shows all the tools.
+- Each item output has `out_of_stock` (#131). `update_item` takes `out_of_stock` (a boolean) with or without the other fields: it sends a `markOutOfStock` or `markInStock` op after the `updateItem`. Its description says that a mark also unchecks the item; `check_items` and `move_item` say that they mark it in stock.
 - `create_list` refuses a name that a live list has, because names are references. `add_items` does not change the quantity or the notes of an item that is already on the list: use `update_item`.
 - Every tool sets `openWorldHint: false`.
 
@@ -332,7 +342,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 | `rename_list` | idempotent, non-destructive | |
 | `delete_list` | **destructive** | |
 | `add_items` | non-destructive | batch; dedupes |
-| `update_item` | idempotent | |
+| `update_item` | idempotent | `out_of_stock` marks the item out of stock or in stock (#131) |
 | `check_items`, `uncheck_items` | idempotent, non-destructive | |
 | `delete_items` | **destructive**, idempotent | |
 | `move_item` | idempotent | |
@@ -357,13 +367,16 @@ Mobile-first. Routes under `src/app/(app)/`.
 - **`/lists/[id]`:**
   - an add bar fixed to the bottom, with autocomplete and dedupe;
   - large tap targets to check items;
-  - delete by swipe or menu, with an undo toast;
+  - delete from the item menu, with an undo toast;
   - an item sheet: name, quantity stepper (at the end of an edit, it shows the clamped value: `clampQuantity()` in `src/shared/quantity.ts`, #104), notes, "Added by X · time" and "Updated by Y (via Claude) · time";
   - move to another list, and a "Clear checked / Uncheck all" menu;
-  - built in #13: a "List actions" menu beside the `h1` (rename, uncheck all, clear checked items with a confirmation, delete list) and "Move to" in the item sheet. Each delete, move, and bulk action shows a toast with Undo for 5 s (`src/client/toasts.ts`, `_components/toaster.tsx`). Undo sends `restoreItem`, `restoreList`, `moveItem` back, or one `restoreItem`/`check` for each item that the bulk op changed. The toaster also shows each change that the server refused.
+  - built in #13: a "List actions" menu beside the `h1` (rename, uncheck all, clear checked items with a confirmation, delete list) and "Move to" in the item sheet (#131 moved it to the item menu). Each delete, move, and bulk action shows a toast with Undo for 5 s (`src/client/toasts.ts`, `_components/toaster.tsx`). Undo sends `restoreItem`, `restoreList`, `moveItem` back, or one `restoreItem`/`check` for each item that the bulk op changed. The toaster also shows each change that the server refused.
   - an "editing…" badge on items the other person is editing.
+  - Item menu (#131, `item-row.tsx`): a "…" `wa-dropdown` on each row (label "More for <name>") with Edit (pencil), Move (swap), Copy (copy), Out of stock (cart-circle-xmark) or In stock (cart-circle-check), a divider, and Delete. A checked item has no stock item: it cannot be out of stock. Move and Copy are disabled when there is no other list. The item sheet has no Move and no Delete now: only the name, the quantity, the notes, and the history. Delete shows a toast with Undo, as before.
+  - Move and Copy open the same dialog (`list-picker.tsx`): one button for each other list, by name. A tap acts at once and closes it; Cancel, Escape, and a tap outside close it with no change. Move sends `moveItem` and shows a toast with Undo. Copy (`copyPlan()` in `src/client/copy-item.ts`) uses the dedupe rules of the add bar on the target list: no match makes an `addItem` with the same name, quantity, and notes (Undo deletes the copy); a checked match is unchecked and gets the quantity and the notes that are not the defaults (#120); an unchecked match changes nothing, and a toast tells so.
+  - Out of stock adds a `warning` badge with the cart icon below the notes, and shows a toast for 10 s: "“Milk” is out of stock. Get it at another store?" with Move and Copy. Those open the dialog. To decline, the user does nothing, or closes the toast. A toast item can have more than one action (`actions` in `src/client/toasts.ts`). No toast for In stock. The Undo of a move does not mark the item out of stock again (as it does not check it again, #112).
   - "Older items" (#112): a `<section>` with an `<h2>` at the bottom of the list page. It has the checked items that the server deletes in the next 15 local calendar days, with the delete that comes soonest last (`splitOlder()` in `src/client/queries.ts`). It is not present when it is empty. Each row has a `<wa-badge>`: "Expires in N days", "Expires tomorrow", or "Expires today", `brand`, then `warning` at 7 days or less, then `danger` at 1 day or less. Days are local calendar days: a delete on Wednesday at 11 pm is "tomorrow" all of Tuesday. `useNow()` (`src/client/use-now.ts`) gives the time each minute and when the page comes to the front; it is null before mount. A checked row shows its text in `ink-muted`, not with opacity, and only the check circle fades: opacity on the text or on the row fails the contrast scan.
-  - Built in #9 (`src/app/(app)/lists/[id]/`): each row is one large `role="checkbox"` button with an Edit button beside it. The add bar is sticky at the bottom, with quantity and notes behind a "Quantity and notes" icon button; they open below the name (#56). The sheet is a `<dialog>`: a bottom sheet on a phone, centered at `lg`. It takes focus itself, so the keyboard does not open. Delete is in the sheet; swipe-to-delete is not built. Forms clear before the write, so fast entry keeps each item.
+  - Built in #9 (`src/app/(app)/lists/[id]/`): each row is one large `role="checkbox"` button with an Edit button beside it (#131 replaced it with the item menu). The add bar is sticky at the bottom, with quantity and notes behind a "Quantity and notes" icon button; they open below the name (#56). The sheet is a `<dialog>`: a bottom sheet on a phone, centered at `lg`. It takes focus itself, so the keyboard does not open. Swipe-to-delete is not built. Forms clear before the write, so fast entry keeps each item.
 - **Header:** an offline indicator with the number of pending changes.
 - **Keep screen on (#20):** a switch in Settings (owner's choice: not in the header), and on the list page (#82). It uses the Screen Wake Lock API, re-acquires the lock on `visibilitychange`, is remembered per device, and is hidden where the API isn't supported. `WakeLockKeeper` in the `(app)` layout holds the lock on every page while the setting is on (`_components/keep-screen-on.tsx`, logic in `src/client/wake-lock.ts`). A refused request shows a toast, one time in each session (#104). There is one request at a time: an acquire while a request is open waits for it (#120). `dispose()` sets the state to off, thus a lock that arrives after it is released.
 - **PWA:** `manifest.webmanifest` (standalone, icons, theme color), apple-touch-icon, safe-area insets.
