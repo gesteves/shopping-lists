@@ -215,16 +215,16 @@ test("a cached page of the last user does not delete the outbox of the next user
   page,
   context,
 }) => {
-  // Ana opens Settings. The worker keeps the page, with her user ID.
+  // Emily opens Settings. The worker keeps the page, with the user ID of Emily.
   await signIn(page);
   await controlled(page);
   await page.goto("/settings");
   await page.reload();
 
-  // Ben signs in on the same browser, with no sign-out, and makes a change
+  // Haley signs in on the same browser, with no sign-out, and makes a change
   // offline.
-  await signIn(page, E2E_SECOND_EMAIL, "Ben");
-  const name = `Ben ${randomUUID().slice(0, 8)}`;
+  await signIn(page, E2E_SECOND_EMAIL, "Haley");
+  const name = `Haley ${randomUUID().slice(0, 8)}`;
   await createList(page, name);
   await synced(page);
   await page.reload();
@@ -235,13 +235,13 @@ test("a cached page of the last user does not delete the outbox of the next user
   await page.getByLabel(copy.addBar.name).press("Enter");
   await expect.poll(() => outboxCount(page)).toBe(1);
 
-  // Offline, the cached Settings page of Ana starts. The session cannot show
-  // the user, thus the data of Ben stays.
+  // Offline, the cached Settings page of Emily starts. The session cannot show
+  // the user, thus the data of Haley stays.
   await page.goto("/settings");
   await page.waitForTimeout(500);
   expect(await outboxCount(page)).toBe(1);
 
-  // Online, a page of Ben syncs the change.
+  // Online, a page of Haley syncs the change.
   await context.setOffline(false);
   await page.goto("/");
   await synced(page);

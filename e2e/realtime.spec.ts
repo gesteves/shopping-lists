@@ -38,14 +38,14 @@ test("a change from one person shows up for the other at once", async ({
   const a = await browser.newPage();
   const b = await browser.newPage();
   try {
-    await signIn(a, E2E_ALLOWED_EMAIL, "Ana");
+    await signIn(a, E2E_ALLOWED_EMAIL, "Emily");
     const stream = b.waitForResponse((res) =>
       res.url().includes("/api/events"),
     );
     const firstPull = b.waitForResponse((res) =>
       res.url().includes("/api/sync/pull"),
     );
-    await signIn(b, E2E_SECOND_EMAIL, "Ben");
+    await signIn(b, E2E_SECOND_EMAIL, "Haley");
     const events = await stream;
     await firstPull;
     expect(events.status()).toBe(200);

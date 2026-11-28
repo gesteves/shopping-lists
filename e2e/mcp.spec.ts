@@ -96,7 +96,7 @@ test("a change through Claude appears live, marked via Claude", async ({
   request,
   baseURL,
 }) => {
-  // Ana has the list open.
+  // Emily has the list open.
   await signIn(page);
   const list = `MCP ${randomUUID().slice(0, 8)}`;
   await createList(page, list);
@@ -104,28 +104,28 @@ test("a change through Claude appears live, marked via Claude", async ({
   // The list must be on the server before Claude can find it.
   await synced(page);
 
-  // Ben asks his Claude to add two items.
-  const ben = await browser.newContext();
+  // Haley asks their Claude to add two items.
+  const haley = await browser.newContext();
   try {
-    const benPage = await ben.newPage();
-    await signIn(benPage, E2E_SECOND_EMAIL, "Ben");
-    const token = await connectClaude(benPage, request, baseURL!);
+    const haleyPage = await haley.newPage();
+    await signIn(haleyPage, E2E_SECOND_EMAIL, "Haley");
+    const token = await connectClaude(haleyPage, request, baseURL!);
     await callTool(request, token, "add_items", {
       list: list.toLowerCase(),
       items: [{ name: "Oat milk" }, { name: "Eggs", quantity: 12 }],
     });
   } finally {
-    await ben.close();
+    await haley.close();
   }
 
-  // Ana sees them without a reload, marked via Claude.
+  // Emily sees them without a reload, marked via Claude.
   const oat = page.getByRole("checkbox", { name: /^Oat milk\b/ });
   await expect(oat).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("checkbox", { name: /^Eggs\b/ })).toBeVisible();
   await itemAction(page, "Oat milk", copy.item.edit);
   await expect(
     page.getByText(
-      copy.item.updated(copy.people.viaClaude("Ben"), copy.time.justNow),
+      copy.item.updated(copy.people.viaClaude("Haley"), copy.time.justNow),
       { exact: true },
     ),
   ).toBeVisible();

@@ -119,7 +119,7 @@ test("two people adding the same name make one row", async ({ browser }) => {
   const b = await browser.newPage();
   try {
     await signIn(a);
-    await signIn(b, E2E_SECOND_EMAIL, "Ben");
+    await signIn(b, E2E_SECOND_EMAIL, "Haley");
     const name = await newList(a, "Race");
     await synced(a);
     await openList(a, name);

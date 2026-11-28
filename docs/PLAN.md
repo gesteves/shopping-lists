@@ -182,7 +182,7 @@ Because of this, realtime updates, notifications and attribution behave the same
 Built in #154. A private list is for one person, for example a list of gifts. Only its creator (`created_by`) sees the list and its items, and it sends no push. Only the creator can make a list private, or share it again. The owner's decisions:
 - A shared list can become private, also when the other person added items to it. The confirm dialog tells the owner which items of the other person go away for them.
 - A move goes only between lists of the same kind (`privacy_mismatch`). Copy works between all lists. Thus an activity row never has a private list and a shared list.
-- A share sends a push ("Ana shared the “Gifts” list."), and the history then shows all the changes of the list, also the changes from the private time.
+- A share sends a push ("Emily shared the “Gifts” list."), and the history then shows all the changes of the list, also the changes from the private time.
 
 **Server rules:**
 - `lists.private` has its own field clock (`private`). `canSee()` in `src/server/ops.ts`: a shared list, or a private list of the actor. Each op finds its list (directly, or through the item) with `getVisibleList()`. A private list of another user gives `list_not_found`, and its items give `item_not_found`: the same result as a row that does not exist.

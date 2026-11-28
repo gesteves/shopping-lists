@@ -74,10 +74,10 @@ describe("the dictionary", () => {
     expect(copy.lists.deleteBody(3, ["Sam", "Alex"])).toBe(
       "It has 3 items. They’ll be deleted for Sam and Alex too.",
     );
-    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jo"])).toBe(
-      "It has 3 items. They’ll be deleted for Sam, Alex, and Jo too.",
+    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jodi"])).toBe(
+      "It has 3 items. They’ll be deleted for Sam, Alex, and Jodi too.",
     );
-    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jo", "Kim"])).toBe(
+    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jodi", "Kent"])).toBe(
       "It has 3 items. They’ll be deleted for everyone.",
     );
     expect(copy.lists.deleteBody(0, [])).toBe("It’ll be deleted.");

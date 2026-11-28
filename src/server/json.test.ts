@@ -27,8 +27,11 @@ function chunked(chunks: string[], pulled: { count: number }) {
 describe("readJson", () => {
   it("reads a chunked body under the limit", async () => {
     const pulled = { count: 0 };
-    const res = await readJson(chunked(['{"name":', '"Ana"}'], pulled), schema);
-    expect(res).toEqual({ ok: true, data: { name: "Ana" } });
+    const res = await readJson(
+      chunked(['{"name":', '"Emily"}'], pulled),
+      schema,
+    );
+    expect(res).toEqual({ ok: true, data: { name: "Emily" } });
   });
 
   it("gives 413 to a chunked body over the limit, and stops reading", async () => {
@@ -69,7 +72,7 @@ describe("readJson", () => {
       const res = await p;
       return res.ok ? 200 : res.response.status;
     };
-    expect(await status(post("text/plain", '{"name":"Ana"}'))).toBe(415);
+    expect(await status(post("text/plain", '{"name":"Emily"}'))).toBe(415);
     expect(await status(post("application/json", "{"))).toBe(400);
     expect(await status(post("application/json", '{"name":"A","x":1}'))).toBe(
       400,

@@ -26,7 +26,7 @@ function testEnv(overrides: Record<string, string> = {}) {
 function stubSignIn(auth: ReturnType<typeof createAuth>, email: string) {
   const url = new URL("/api/auth/e2e/sign-in", BASE);
   url.searchParams.set("email", email);
-  url.searchParams.set("name", "Ana");
+  url.searchParams.set("name", "Emily");
   return auth.handler(new Request(url));
 }
 
@@ -104,7 +104,7 @@ describe("sign-in", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       email: "allowed@example.com",
-      name: "Ana",
+      name: "Emily",
     });
 
     const session = await auth.api.getSession({
@@ -210,7 +210,7 @@ describe("sign-in", () => {
       }),
     );
     expect(res.status).toBe(404);
-    expect(db.select().from(users).get()?.name).toBe("Ana");
+    expect(db.select().from(users).get()?.name).toBe("Emily");
   });
 
   it("keeps the endpoints of the sign-in and OAuth flows", () => {

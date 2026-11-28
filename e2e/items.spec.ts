@@ -69,7 +69,7 @@ test("add, check, uncheck, edit, and delete items, in order", async ({
   await itemAction(page, "Milk", copy.item.edit);
   const sheet = dialog(page, copy.itemSheet.title);
   await expect(
-    sheet.getByText(copy.item.added("Ana", copy.time.justNow), {
+    sheet.getByText(copy.item.added("Emily", copy.time.justNow), {
       exact: true,
     }),
   ).toBeVisible();
@@ -219,42 +219,42 @@ test("the sheet keeps the edits of the other person", async ({
   await synced(page);
   const sheet = dialog(page, copy.itemSheet.title);
 
-  const ben = await browser.newPage();
+  const haley = await browser.newPage();
   try {
-    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
-    await ben.goto(page.url());
-    const benSheet = dialog(ben, copy.itemSheet.title);
-    await itemAction(ben, "Milk", copy.item.edit);
-    await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
+    await signIn(haley, E2E_SECOND_EMAIL, "Haley");
+    await haley.goto(page.url());
+    const haleySheet = dialog(haley, copy.itemSheet.title);
+    await itemAction(haley, "Milk", copy.item.edit);
+    await expect(haleySheet.getByLabel(copy.itemSheet.name)).toBeVisible();
 
-    // Ana renames the item while the sheet of Ben is open.
+    // Emily renames the item while the sheet of Haley is open.
     await itemAction(page, "Milk", copy.item.edit);
     await sheet.getByLabel(copy.itemSheet.name).fill("Oat milk");
     await sheet.getByRole("button", { name: copy.common.save }).click();
     await expect(sheet).toBeHidden();
     await synced(page);
-    await expect.poll(() => localItemNames(ben)).toContain("Oat milk");
+    await expect.poll(() => localItemNames(haley)).toContain("Oat milk");
 
-    // Ben changes only the quantity. The rename stays.
-    await benSheet
+    // Haley changes only the quantity. The rename stays.
+    await haleySheet
       .getByRole("button", { name: copy.stepper.increment })
       .click();
-    await benSheet.getByRole("button", { name: copy.common.save }).click();
-    await expect(benSheet).toBeHidden();
-    await expect(item(ben, "Oat milk")).toContainText(copy.item.quantity(2));
+    await haleySheet.getByRole("button", { name: copy.common.save }).click();
+    await expect(haleySheet).toBeHidden();
+    await expect(item(haley, "Oat milk")).toContainText(copy.item.quantity(2));
     await expect(item(page, "Oat milk")).toContainText(copy.item.quantity(2));
 
-    // Ana deletes an item while the sheet of Ben is open: it closes.
-    await itemAction(ben, "Eggs", copy.item.edit);
-    await expect(benSheet.getByLabel(copy.itemSheet.name)).toBeVisible();
+    // Emily deletes an item while the sheet of Haley is open: it closes.
+    await itemAction(haley, "Eggs", copy.item.edit);
+    await expect(haleySheet.getByLabel(copy.itemSheet.name)).toBeVisible();
     await itemAction(page, "Eggs", copy.common.delete);
-    await expect(benSheet).toBeHidden();
+    await expect(haleySheet).toBeHidden();
     await expect(
-      ben.locator("wa-toast-item", { hasText: copy.itemSheet.gone("Eggs") }),
+      haley.locator("wa-toast-item", { hasText: copy.itemSheet.gone("Eggs") }),
     ).toBeVisible();
-    await expect(item(ben, "Eggs")).toHaveCount(0);
+    await expect(item(haley, "Eggs")).toHaveCount(0);
   } finally {
-    await ben.close();
+    await haley.close();
   }
 });
 
@@ -358,18 +358,18 @@ test("adds to a list deleted offline give one toast and one new list", async ({
   await synced(page);
   const listId = new URL(page.url()).pathname.split("/").pop()!;
 
-  // Offline, this device adds three items. Then Ben deletes the list.
+  // Offline, this device adds three items. Then Haley deletes the list.
   await context.setOffline(true);
   for (const thing of ["Tent", "Stove", "Lantern"]) {
     await page.getByLabel(copy.addBar.name).fill(thing);
     await page.getByLabel(copy.addBar.name).press("Enter");
     await expect(item(page, thing)).toBeVisible();
   }
-  const ben = await browser.newPage();
+  const haley = await browser.newPage();
   try {
-    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
+    await signIn(haley, E2E_SECOND_EMAIL, "Haley");
     const clientId = randomUUID();
-    const res = await ben.request.post("/api/sync/push", {
+    const res = await haley.request.post("/api/sync/push", {
       data: {
         clientId,
         ops: [
@@ -385,7 +385,7 @@ test("adds to a list deleted offline give one toast and one new list", async ({
     });
     expect(res.status()).toBe(200);
   } finally {
-    await ben.close();
+    await haley.close();
   }
 
   // Online, the server refuses the three adds. One toast offers a new list.

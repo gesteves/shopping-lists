@@ -146,7 +146,7 @@ describe("readListSummaries", () => {
 describe("readOtherUserNames", () => {
   it("gives the names of the other users, by name", async () => {
     await db.users.bulkPut([
-      { id: "me", name: "Pat", image: null },
+      { id: "me", name: "Penny", image: null },
       { id: "s", name: "Sam", image: null },
       { id: "a", name: "Alex", image: null },
     ]);

@@ -267,14 +267,14 @@ test("the other person sees the badge", async ({ page, browser }) => {
   const { from } = await twoLists(page);
   await add(page, "Rice");
   await synced(page);
-  const ben = await browser.newPage();
+  const haley = await browser.newPage();
   try {
-    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
-    await openList(ben, from);
-    await expect(item(ben, "Rice")).toBeVisible();
+    await signIn(haley, E2E_SECOND_EMAIL, "Haley");
+    await openList(haley, from);
+    await expect(item(haley, "Rice")).toBeVisible();
     await itemAction(page, "Rice", copy.item.outOfStock);
-    await expect(badge(ben, "Rice")).toBeVisible();
+    await expect(badge(haley, "Rice")).toBeVisible();
   } finally {
-    await ben.close();
+    await haley.close();
   }
 });

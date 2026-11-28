@@ -26,7 +26,10 @@ test(
 );
 
 test("a signed-in client pushes ops and pulls them back", async ({ page }) => {
-  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
+  const params = new URLSearchParams({
+    email: E2E_ALLOWED_EMAIL,
+    name: "Emily",
+  });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);
   await expect(page).toHaveURL("/");
 
@@ -79,7 +82,7 @@ test("a signed-in client pushes ops and pulls them back", async ({ page }) => {
   expect(body.items).toContainEqual(
     expect.objectContaining({ listId, name: "Milk" }),
   );
-  expect(body.users).toContainEqual(expect.objectContaining({ name: "Ana" }));
+  expect(body.users).toContainEqual(expect.objectContaining({ name: "Emily" }));
   expect(body.cursor).toBeGreaterThanOrEqual(pushed.seq);
 });
 
@@ -87,7 +90,10 @@ test("the app pulls into IndexedDB after sign-in", async ({ page }) => {
   const pulled = page.waitForResponse(
     (res) => res.url().includes("/api/sync/pull") && res.status() === 200,
   );
-  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
+  const params = new URLSearchParams({
+    email: E2E_ALLOWED_EMAIL,
+    name: "Emily",
+  });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);
   await pulled;
 

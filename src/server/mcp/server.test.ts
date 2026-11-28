@@ -412,8 +412,8 @@ describe("tools", () => {
       quantity: 12,
       notes: "Large",
       checked: false,
-      added: { by: "Ana" },
-      last_changed: { by: "Ana", via_claude: true },
+      added: { by: "Emily" },
+      last_changed: { by: "Emily", via_claude: true },
     });
   });
 
@@ -957,14 +957,14 @@ describe("get_history (#152)", () => {
   it("gives the changes of a list, the last first, with the moves out of it", async () => {
     const { entries, next_cursor } = await history({ list: LIST });
     expect(entries.map((e) => [e.action, e.item_name, e.by])).toEqual([
-      ["moved", "Milk", "Ana"],
-      ["deleted", "Eggs", "Ana"],
+      ["moved", "Milk", "Emily"],
+      ["deleted", "Eggs", "Emily"],
       ["added", "Bread", "Sam"],
-      ["edited", "Eggs", "Ana"],
-      ["checked", "Milk", "Ana"],
-      ["added", "Eggs", "Ana"],
-      ["added", "Milk", "Ana"],
-      ["list_created", null, "Ana"],
+      ["edited", "Eggs", "Emily"],
+      ["checked", "Milk", "Emily"],
+      ["added", "Eggs", "Emily"],
+      ["added", "Milk", "Emily"],
+      ["list_created", null, "Emily"],
     ]);
     expect(next_cursor).toBeNull();
     expect(entries[0]).toMatchObject({
@@ -1066,7 +1066,7 @@ describe("get_history (#152)", () => {
       [{ item: "Milk" }, /list of the item/],
       [{ list: LIST, item: "Caviar" }, /No item “Caviar”/],
       [{ list: "Nowhere" }, /No list, now or in the history/],
-      [{ person: "Zed" }, /No person matches “Zed”.*“Ana”/],
+      [{ person: "Krobus" }, /No person matches “Krobus”.*“Emily”/],
       [{ cursor: "nope" }, /cursor is not valid/],
     ];
     for (const [args, message] of cases) {
@@ -1147,7 +1147,7 @@ describe("notifications", () => {
         userId: sam.id,
         payload: expect.objectContaining({
           title: "Trader Joe’s",
-          body: expect.stringMatching(/^Ana \(via Claude\) /),
+          body: expect.stringMatching(/^Emily \(via Claude\) /),
         }),
       },
     ]);
@@ -1155,115 +1155,118 @@ describe("notifications", () => {
 });
 
 describe("private lists (#154)", () => {
-  let ana: Client;
-  let ben: Client;
+  let emily: Client;
+  let haley: Client;
 
   beforeAll(async () => {
-    ana = await connect("modern");
-    const cookie = (await h.signIn(SECOND, "Ben"))!;
-    const benToken = (
-      await h.getTokens(await h.registerClient("Ben’s Claude"), { cookie })
+    emily = await connect("modern");
+    const cookie = (await h.signIn(SECOND, "Haley"))!;
+    const haleyToken = (
+      await h.getTokens(await h.registerClient("Haley’s Claude"), { cookie })
     ).access_token;
-    ben = await connect("modern", benToken);
+    haley = await connect("modern", haleyToken);
   });
 
   it("shows a private list only to its creator", async () => {
-    const made = await callTool(ana, "create_list", {
+    const made = await callTool(emily, "create_list", {
       name: "Gifts #154",
       private: true,
     });
     expect(made.structuredContent).toMatchObject({ private: true });
     const listId = made.structuredContent.list_id as string;
-    await callTool(ana, "add_items", {
+    await callTool(emily, "add_items", {
       list: listId,
       items: [{ name: "Lego Falcon #154" }],
     });
 
-    const anaLists = await callTool(ana, "list_lists", {});
-    expect(anaLists.structuredContent.lists).toContainEqual(
+    const emilyLists = await callTool(emily, "list_lists", {});
+    expect(emilyLists.structuredContent.lists).toContainEqual(
       expect.objectContaining({ list_id: listId, private: true }),
     );
-    const anaList = await callTool(ana, "get_list", { list: "Gifts #154" });
-    expect(anaList.structuredContent).toMatchObject({ private: true });
+    const emilyList = await callTool(emily, "get_list", { list: "Gifts #154" });
+    expect(emilyList.structuredContent).toMatchObject({ private: true });
 
-    const benLists = await callTool(ben, "list_lists", {});
-    const benIds = (
-      benLists.structuredContent.lists as { list_id: string }[]
+    const haleyLists = await callTool(haley, "list_lists", {});
+    const haleyIds = (
+      haleyLists.structuredContent.lists as { list_id: string }[]
     ).map((l) => l.list_id);
-    expect(benIds).not.toContain(listId);
+    expect(haleyIds).not.toContain(listId);
 
     for (const list of [listId, "Gifts #154"]) {
-      const got = await callTool(ben, "get_list", { list });
+      const got = await callTool(haley, "get_list", { list });
       expect(got.isError).toBe(true);
-      // The error names the lists that Ben can see, not the private list.
+      // The error names the lists that Haley can see, not the private list.
       const names = errorText(got).split("The lists are:")[1] ?? "";
       expect(names).not.toContain("Gifts #154");
     }
-    const found = await callTool(ben, "search_items", {
+    const found = await callTool(haley, "search_items", {
       query: "falcon #154",
     });
     expect(found.structuredContent.items).toEqual([]);
 
-    const history = await callTool(ben, "get_history", { limit: 200 });
+    const history = await callTool(haley, "get_history", { limit: 200 });
     expect(JSON.stringify(history.structuredContent)).not.toContain(
       "Gifts #154",
     );
-    const byList = await callTool(ben, "get_history", { list: listId });
+    const byList = await callTool(haley, "get_history", { list: listId });
     expect(byList.isError).toBe(true);
 
-    // Ben can make a list with the same name: the check sees only his
+    // Haley can make a list with the same name: the check sees only their
     // lists.
-    const same = await callTool(ben, "create_list", { name: "Gifts #154" });
+    const same = await callTool(haley, "create_list", { name: "Gifts #154" });
     expect(same.isError).toBeFalsy();
-    // Ana now sees two lists with that name.
-    const both = await callTool(ana, "get_list", { list: "Gifts #154" });
+    // Emily now sees two lists with that name.
+    const both = await callTool(emily, "get_list", { list: "Gifts #154" });
     expect(errorText(both)).toMatch(/More than one list/);
   });
 
   it("makes a list private and shared again, for its creator only", async () => {
-    const made = await callTool(ana, "create_list", { name: "Party #154" });
+    const made = await callTool(emily, "create_list", { name: "Party #154" });
     const listId = made.structuredContent.list_id as string;
 
-    const refused = await callTool(ben, "set_list_private", {
+    const refused = await callTool(haley, "set_list_private", {
       list: listId,
       private: true,
     });
     expect(refused.isError).toBe(true);
     expect(errorText(refused)).toMatch(/Only the person who made the list/);
 
-    const priv = await callTool(ana, "set_list_private", {
+    const priv = await callTool(emily, "set_list_private", {
       list: listId,
       private: true,
     });
     expect(priv.structuredContent).toMatchObject({ private: true });
-    expect((await callTool(ben, "get_list", { list: listId })).isError).toBe(
+    expect((await callTool(haley, "get_list", { list: listId })).isError).toBe(
       true,
     );
 
-    const history = await callTool(ana, "get_history", { list: listId });
+    const history = await callTool(emily, "get_history", { list: listId });
     expect(
       (history.structuredContent.entries as { action: string }[])[0].action,
     ).toBe("list_made_private");
 
-    await callTool(ana, "set_list_private", { list: listId, private: false });
-    const benList = await callTool(ben, "get_list", { list: listId });
-    expect(benList.structuredContent).toMatchObject({ private: false });
-    const benHistory = await callTool(ben, "get_history", { list: listId });
+    await callTool(emily, "set_list_private", { list: listId, private: false });
+    const haleyList = await callTool(haley, "get_list", { list: listId });
+    expect(haleyList.structuredContent).toMatchObject({ private: false });
+    const haleyHistory = await callTool(haley, "get_history", { list: listId });
     expect(
-      (benHistory.structuredContent.entries as { action: string }[]).map(
+      (haleyHistory.structuredContent.entries as { action: string }[]).map(
         (e) => e.action,
       ),
     ).toEqual(["list_shared", "list_made_private", "list_created"]);
   });
 
   it("refuses a move between a private and a shared list", async () => {
-    await callTool(ana, "create_list", { name: "Secret #154", private: true });
-    await callTool(ana, "create_list", { name: "Open #154" });
-    await callTool(ana, "add_items", {
+    await callTool(emily, "create_list", {
+      name: "Secret #154",
+      private: true,
+    });
+    await callTool(emily, "create_list", { name: "Open #154" });
+    await callTool(emily, "add_items", {
       list: "Open #154",
       items: [{ name: "Wrapping paper" }],
     });
-    const moved = await callTool(ana, "move_item", {
+    const moved = await callTool(emily, "move_item", {
       list: "Open #154",
       item: "Wrapping paper",
       to_list: "Secret #154",

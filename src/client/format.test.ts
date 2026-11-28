@@ -4,7 +4,7 @@ import { initials, itemHistory, relativeTime } from "./format";
 
 describe("initials", () => {
   it("gives the first grapheme in capitals", () => {
-    expect(initials("ana")).toBe("A");
+    expect(initials("emily")).toBe("E");
     expect(initials(" Émile")).toBe("É");
     // A flag and a family emoji have more than one code point.
     expect(initials("🇦🇷 Guille")).toBe("🇦🇷");

@@ -88,78 +88,78 @@ async function listMenu(page: Page, action: string | RegExp) {
 test("a private list shows only to its creator", async ({ browser }) => {
   // Two users and many steps: slow on a busy CI runner.
   test.setTimeout(60_000);
-  const ana = await browser.newPage();
-  const ben = await browser.newPage();
+  const emily = await browser.newPage();
+  const haley = await browser.newPage();
   try {
-    await signIn(ana);
-    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
+    await signIn(emily);
+    await signIn(haley, E2E_SECOND_EMAIL, "Haley");
 
     const gifts = uniqueName("Gifts");
-    await createPrivateList(ana, gifts);
-    const row = listIndex(ana).getByRole("link", { name: gifts });
+    await createPrivateList(emily, gifts);
+    const row = listIndex(emily).getByRole("link", { name: gifts });
     await expect(
       row.getByRole("img", { name: copy.lists.private }),
     ).toBeVisible();
-    await openList(ana, gifts);
-    const id = ana.url().split("/lists/")[1];
+    await openList(emily, gifts);
+    const id = emily.url().split("/lists/")[1];
     // A rare name, so the autocomplete test below finds only this one.
     const secret = `Telescope${randomUUID().slice(0, 4)}`;
-    await add(ana, secret);
+    await add(emily, secret);
     // A private list sends no push: no Notifications switch.
     await expect(
-      ana.getByRole("switch", { name: copy.list.notifications }),
+      emily.getByRole("switch", { name: copy.list.notifications }),
     ).toHaveCount(0);
-    await synced(ana);
+    await synced(emily);
 
-    // Ben's device never gets it.
+    // Haley's device never gets it.
     const shared = uniqueName("Shared");
-    await createList(ben, shared);
+    await createList(haley, shared);
     await expect(
-      listIndex(ben).getByRole("link", { name: shared }),
+      listIndex(haley).getByRole("link", { name: shared }),
     ).toBeVisible();
-    await expect(listIndex(ben).getByRole("link", { name: gifts })).toHaveCount(
-      0,
-    );
-    expect(await localIds(ben)).not.toContain(id);
-    await ben.goto(`/lists/${id}`);
-    await expect(ben.getByText(copy.list.notFound)).toBeVisible();
+    await expect(
+      listIndex(haley).getByRole("link", { name: gifts }),
+    ).toHaveCount(0);
+    expect(await localIds(haley)).not.toContain(id);
+    await haley.goto(`/lists/${id}`);
+    await expect(haley.getByText(copy.list.notFound)).toBeVisible();
 
-    // On a shared list, Ana's autocomplete leaves out the private names.
-    await ana.goto("/");
-    await openList(ana, shared);
-    const box = ana.getByRole("combobox", { name: copy.addBar.name });
+    // On a shared list, Emily's autocomplete leaves out the private names.
+    await emily.goto("/");
+    await openList(emily, shared);
+    const box = emily.getByRole("combobox", { name: copy.addBar.name });
     await box.fill(secret.slice(0, 9).toLowerCase());
     await expect(
-      ana.getByRole("option", { name: secret, exact: true }),
+      emily.getByRole("option", { name: secret, exact: true }),
     ).toHaveCount(0);
     await box.fill("");
 
     // Move does not offer the private list; Copy does.
-    await add(ana, "Wrapping paper");
-    await itemAction(ana, "Wrapping paper", copy.item.copy);
-    const picker = dialog(ana, copy.item.copyTitle("Wrapping paper"));
+    await add(emily, "Wrapping paper");
+    await itemAction(emily, "Wrapping paper", copy.item.copy);
+    const picker = dialog(emily, copy.item.copyTitle("Wrapping paper"));
     await picker.getByRole("combobox", { name: copy.item.targets }).click();
     await expect(
       picker.getByRole("option", { name: new RegExp(gifts) }),
     ).toBeVisible();
     // Close the listbox, then the dialog.
-    await ana.keyboard.press("Escape");
+    await emily.keyboard.press("Escape");
     await picker.getByRole("button", { name: copy.common.cancel }).click();
     await expect(picker).toBeHidden();
-    await itemAction(ana, "Wrapping paper", copy.item.move);
-    const mover = dialog(ana, copy.item.moveTitle("Wrapping paper"));
+    await itemAction(emily, "Wrapping paper", copy.item.move);
+    const mover = dialog(emily, copy.item.moveTitle("Wrapping paper"));
     await mover.getByRole("combobox", { name: copy.item.targets }).click();
     await expect(mover.getByRole("option").first()).toBeVisible();
     await expect(
       mover.getByRole("option", { name: new RegExp(gifts) }),
     ).toHaveCount(0);
     // Close the listbox, then the dialog.
-    await ana.keyboard.press("Escape");
+    await emily.keyboard.press("Escape");
     await mover.getByRole("button", { name: copy.common.cancel }).click();
     await expect(mover).toBeHidden();
   } finally {
-    await ana.close();
-    await ben.close();
+    await emily.close();
+    await haley.close();
   }
 });
 
@@ -167,68 +167,68 @@ test("making a list private takes it from the other person, and sharing gives it
   browser,
 }) => {
   test.setTimeout(60_000);
-  const ana = await browser.newPage();
-  const ben = await browser.newPage();
+  const emily = await browser.newPage();
+  const haley = await browser.newPage();
   try {
-    await signIn(ana);
-    await signIn(ben, E2E_SECOND_EMAIL, "Ben");
+    await signIn(emily);
+    await signIn(haley, E2E_SECOND_EMAIL, "Haley");
 
     const name = uniqueName("Party");
-    await createList(ana, name);
-    await synced(ana);
-    await expect(listIndex(ben).getByRole("link", { name })).toBeVisible();
-    await openList(ben, name);
-    await add(ben, "Balloons");
-    await synced(ben);
+    await createList(emily, name);
+    await synced(emily);
+    await expect(listIndex(haley).getByRole("link", { name })).toBeVisible();
+    await openList(haley, name);
+    await add(haley, "Balloons");
+    await synced(haley);
 
-    await openList(ana, name);
+    await openList(emily, name);
     await expect(
-      ana.getByRole("checkbox", { name: /^Balloons\b/ }),
+      emily.getByRole("checkbox", { name: /^Balloons\b/ }),
     ).toBeVisible();
-    const id = ana.url().split("/lists/")[1];
+    const id = emily.url().split("/lists/")[1];
 
-    // The dialog tells Ana that Ben loses his item too.
-    await listMenu(ana, copy.privacy.makePrivate);
-    const confirm = dialog(ana, copy.privacy.makePrivateTitle(name));
+    // The dialog tells Emily that Haley loses their item too.
+    await listMenu(emily, copy.privacy.makePrivate);
+    const confirm = dialog(emily, copy.privacy.makePrivateTitle(name));
     await expect(
-      confirm.getByText(copy.privacy.makePrivateBody(["Ben"], 1)),
+      confirm.getByText(copy.privacy.makePrivateBody(["Haley"], 1)),
     ).toBeVisible();
     await confirm
       .getByRole("button", { name: copy.privacy.makePrivateConfirm })
       .click();
     await expect(
-      ana.getByRole("heading", { level: 1 }).getByRole("img", {
+      emily.getByRole("heading", { level: 1 }).getByRole("img", {
         name: copy.lists.private,
       }),
     ).toBeVisible();
-    await synced(ana);
+    await synced(emily);
 
-    // Ben's open page loses the list, and his device has no row of it.
-    await expect(ben.getByText(copy.list.notFound)).toBeVisible();
-    await expect.poll(() => localIds(ben)).not.toContain(id);
+    // Haley's open page loses the list, and their device has no row of it.
+    await expect(haley.getByText(copy.list.notFound)).toBeVisible();
+    await expect.poll(() => localIds(haley)).not.toContain(id);
 
-    // Share again: Ben sees the list with its items.
-    await listMenu(ana, copy.privacy.share(["Ben"]));
-    const share = dialog(ana, copy.privacy.shareTitle(name));
+    // Share again: Haley sees the list with its items.
+    await listMenu(emily, copy.privacy.share(["Haley"]));
+    const share = dialog(emily, copy.privacy.shareTitle(name));
     await expect(
-      share.getByText(copy.privacy.shareBody(["Ben"])),
+      share.getByText(copy.privacy.shareBody(["Haley"])),
     ).toBeVisible();
     await share
       .getByRole("button", { name: copy.privacy.shareConfirm })
       .click();
-    await synced(ana);
-    await ben.goto(`/lists/${id}`);
+    await synced(emily);
+    await haley.goto(`/lists/${id}`);
     await expect(
-      ben.getByRole("checkbox", { name: /^Balloons\b/ }),
+      haley.getByRole("checkbox", { name: /^Balloons\b/ }),
     ).toBeVisible();
-    // Ben did not make the list: he cannot change its privacy.
-    await ben.getByRole("button", { name: copy.list.actions }).click();
+    // Haley did not make the list: they cannot change its privacy.
+    await haley.getByRole("button", { name: copy.list.actions }).click();
     await expect(
-      ben.getByRole("menuitem", { name: copy.privacy.makePrivate }),
+      haley.getByRole("menuitem", { name: copy.privacy.makePrivate }),
     ).toHaveCount(0);
   } finally {
-    await ana.close();
-    await ben.close();
+    await emily.close();
+    await haley.close();
   }
 });
 

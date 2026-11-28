@@ -63,7 +63,11 @@ describe("PresenceStore", () => {
 
   it("keeps at most MAX_DEVICES_PER_USER devices for each person", () => {
     const { store, advance } = setup();
-    store.set("ana", { clientId: "ana-1", listId: LIST, editingItemId: null });
+    store.set("emily", {
+      clientId: "emily-1",
+      listId: LIST,
+      editingItemId: null,
+    });
     for (let i = 0; i < MAX_DEVICES_PER_USER + 5; i++) {
       advance(1);
       store.set("sam", {
@@ -80,7 +84,7 @@ describe("PresenceStore", () => {
       `d${MAX_DEVICES_PER_USER + 4}`,
     );
     expect(sam.map((e) => e.clientId)).not.toContain("d0");
-    expect(entries.filter((e) => e.userId === "ana")).toHaveLength(1);
+    expect(entries.filter((e) => e.userId === "emily")).toHaveLength(1);
   });
 
   it("removes the device with the oldest heartbeat to make room", () => {

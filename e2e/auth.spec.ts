@@ -4,7 +4,7 @@ import { E2E_ALLOWED_EMAIL, E2E_DATABASE_PATH } from "../playwright.config";
 import { copy } from "../src/copy";
 
 /** Sign in through the stub, as Google would. */
-function stubSignIn(page: Page, email: string, name = "Ana") {
+function stubSignIn(page: Page, email: string, name = "Emily") {
   const params = new URLSearchParams({ email, name });
   return page.goto(`/api/auth/e2e/sign-in?${params}`);
 }
@@ -40,7 +40,7 @@ test("an allowlisted account signs in and out", async ({ page }) => {
   await stubSignIn(page, E2E_ALLOWED_EMAIL);
   await expect(page).toHaveURL("/");
   await expect(
-    page.getByRole("img", { name: copy.header.signedInAs("Ana") }),
+    page.getByRole("img", { name: copy.header.signedInAs("Emily") }),
   ).toBeVisible();
 
   // A signed-in user does not see the sign-in page.

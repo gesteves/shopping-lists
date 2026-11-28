@@ -48,7 +48,7 @@ export function setupOAuthHarness(
     },
 
     /** Signs in through the stub. The session cookie, or undefined. */
-    async signIn(email = ALLOWED, name = "Ana") {
+    async signIn(email = ALLOWED, name = "Emily") {
       const url = new URL("/api/auth/e2e/sign-in", BASE);
       url.searchParams.set("email", email);
       url.searchParams.set("name", name);

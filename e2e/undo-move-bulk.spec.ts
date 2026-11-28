@@ -37,7 +37,7 @@ test("delete then undo brings the item back for both people", async ({
   const b = await browser.newPage();
   try {
     await signIn(a);
-    await signIn(b, E2E_SECOND_EMAIL, "Ben");
+    await signIn(b, E2E_SECOND_EMAIL, "Haley");
     const name = `Undo ${randomUUID().slice(0, 8)}`;
     await createList(a, name);
     await openList(a, name);

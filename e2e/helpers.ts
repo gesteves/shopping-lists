@@ -8,7 +8,7 @@ import { copy } from "../src/copy";
 export async function signIn(
   page: Page,
   email = E2E_ALLOWED_EMAIL,
-  name = "Ana",
+  name = "Emily",
 ) {
   const params = new URLSearchParams({ email, name });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);

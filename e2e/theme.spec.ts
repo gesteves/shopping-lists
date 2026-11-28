@@ -5,7 +5,10 @@ import { E2E_ALLOWED_EMAIL } from "../playwright.config";
 const META = /<meta name="color-scheme" content="light dark"\s*\/?>/;
 
 async function signIn(page: Page) {
-  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
+  const params = new URLSearchParams({
+    email: E2E_ALLOWED_EMAIL,
+    name: "Emily",
+  });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);
   await expect(page).toHaveURL("/");
 }
@@ -21,7 +24,10 @@ test("the server-rendered HTML declares light and dark", async ({ page }) => {
   const signIn = await page.request.get("/sign-in");
   expect(await signIn.text()).toMatch(META);
 
-  const params = new URLSearchParams({ email: E2E_ALLOWED_EMAIL, name: "Ana" });
+  const params = new URLSearchParams({
+    email: E2E_ALLOWED_EMAIL,
+    name: "Emily",
+  });
   await page.goto(`/api/auth/e2e/sign-in?${params}`);
   const home = await page.request.get("/");
   expect(home.url()).not.toContain("/sign-in");
