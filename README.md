@@ -2,7 +2,7 @@
 
 A private household shopping list app. It is a mobile-first web app that you install on the iPhone Home Screen and use in the store, with a two-pane layout for planning on a laptop. It works offline, shows changes from the other person in real time, sends push notifications, and lets Claude read and edit the lists through an MCP server.
 
-<img width="2880" height="1800" alt="Screen Shot 2026-11-28 at 09 28 33" src="https://github.com/user-attachments/assets/892ecf8b-09e1-45b9-b1df-553f3fb8da96" />
+<img width="2880" height="1800" alt="image" src="https://github.com/user-attachments/assets/09b1231f-9eb1-4f61-988f-92f61871bf66" />
 
 ## Features
 
