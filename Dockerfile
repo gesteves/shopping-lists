@@ -44,5 +44,10 @@ COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/restore-drill.sh /usr/local/bin/restore-drill.sh
 COPY scripts/restore-check.mjs /usr/local/lib/restore-check.mjs
 COPY --from=build --chown=node:node /app/.next/standalone ./
+# The commit of the build, for the boot line of the log (#147). CI gives it
+# with --build-arg. It is last, thus a new value keeps the cache of the
+# layers above.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 EXPOSE 3000
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

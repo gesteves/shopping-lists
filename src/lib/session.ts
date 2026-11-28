@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { isAllowedEmail } from "./allowlist";
+import { log } from "@/server/log";
 import { getAuth } from "./auth";
 
 export type CurrentUser = {
@@ -28,7 +29,11 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   });
   if (!session) return null;
   const { id, name, email, image } = session.user;
-  if (!isAllowedEmail(email, process.env.ALLOWED_EMAILS)) return null;
+  if (!isAllowedEmail(email, process.env.ALLOWED_EMAILS)) {
+    // A session of a user who is no longer in the allowlist. No email.
+    log.warn("auth", "refused", { reason: "email_not_allowed", user: id });
+    return null;
+  }
   return { id, name, email, image: image ?? null };
 });
 
@@ -42,5 +47,8 @@ export async function requireUser(): Promise<CurrentUser> {
 /** For route handlers: the user, or a 401 JSON response. */
 export async function requireApiUser(): Promise<CurrentUser | Response> {
   const user = await getCurrentUser();
-  return user ?? Response.json({ error: "unauthorized" }, { status: 401 });
+  if (user) return user;
+  // Routine: a signed-out device, or an expired session.
+  log.debug("auth", "unauthorized");
+  return Response.json({ error: "unauthorized" }, { status: 401 });
 }

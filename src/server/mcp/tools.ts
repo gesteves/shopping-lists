@@ -52,6 +52,8 @@ export interface ToolContext {
   db: Db;
   /** The token owner. MCP ops are recorded as this user. */
   userId: string;
+  /** The OAuth client, for the log only. */
+  clientId?: string;
   clock?: HlcClock;
   now?: () => number;
 }

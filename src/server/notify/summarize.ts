@@ -7,7 +7,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prompts } from "@/prompts";
-import { logClaudeError, logClaudeResponse } from "../claude-log";
+import { requestStructured } from "../claude";
+import { log } from "../log";
 import { renderFallback, who } from "./templates";
 import { snapshotFor, type ActivityEvent } from "./types";
 
@@ -102,39 +103,29 @@ export function createSummarizer(options: SummarizerOptions = {}) {
   return async (events: ActivityEvent[], actorName: string) => {
     const fallback = renderFallback(events, actorName);
     if (!client) return fallback;
-    const started = Date.now();
-    try {
-      const response = await client.beta.messages.parse({
-        model: MODEL,
-        // Thinking is always on and counts toward this limit.
-        max_tokens: 4000,
-        betas: [FALLBACK_BETA],
-        fallbacks: "default",
-        output_config: {
-          effort: "low",
-          format: betaZodOutputFormat(Summary),
+    const result = await requestStructured(client, "push-text", {
+      model: MODEL,
+      // Thinking is always on and counts toward this limit.
+      max_tokens: 4000,
+      betas: [FALLBACK_BETA],
+      fallbacks: "default",
+      output_config: {
+        effort: "low",
+        format: betaZodOutputFormat(Summary),
+      },
+      system: prompts.notificationSummary.system,
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(summaryInput(events, actorName)),
         },
-        system: prompts.notificationSummary.system,
-        messages: [
-          {
-            role: "user",
-            content: JSON.stringify(summaryInput(events, actorName)),
-          },
-        ],
-      });
-      logClaudeResponse("push text", Date.now() - started, response);
-      // A refusal (also after the fallback model), a cut answer, or JSON
-      // that did not parse.
-      if (response.stop_reason !== "end_turn" || !response.parsed_output) {
-        console.warn("Summary not used:", response.stop_reason);
-        return fallback;
-      }
-      const body = cleanBody(response.parsed_output.body);
-      if (!body) console.warn("Summary not used: empty or too long");
-      return body ?? fallback;
-    } catch (error) {
-      logClaudeError("push text", Date.now() - started, error);
-      return fallback;
-    }
+      ],
+    });
+    const body = result.output && cleanBody(result.output.body);
+    if (body) return body;
+    log.warn("notify", "fallback", {
+      reason: result.reason ?? "empty_or_long",
+    });
+    return fallback;
   };
 }

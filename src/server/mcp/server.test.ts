@@ -1290,3 +1290,72 @@ describe("private lists (#154)", () => {
     expect(errorText(moved)).toMatch(/add_items/);
   });
 });
+
+describe("log (#147)", () => {
+  it("logs each tool call with IDs only, and the refusals", async () => {
+    const { captureLogs } = await import("@/test/logs");
+    vi.stubEnv("LOG_LEVEL", "debug");
+    const logs = captureLogs();
+    try {
+      const made = await rpc("tools/call", {
+        name: "create_list",
+        arguments: { name: "ZQX Log Shop" },
+      });
+      expect(made.status).toBe(200);
+      const missing = await rpc("tools/call", {
+        name: "get_list",
+        arguments: { list: "ZQX Nowhere" },
+      });
+      expect(missing.body.result.isError).toBe(true);
+      const scoped = await rpc(
+        "tools/call",
+        { name: "create_list", arguments: { name: "ZQX Other" } },
+        { token: readOnlyToken },
+      );
+      expect(scoped.status).toBe(403);
+      const bad = await rpc("tools/list", {}, { token: "not-a-token" });
+      expect(bad.status).toBe(401);
+      const lines = logs.lines.map((l) => l.replace(/ ms=\d+/, ""));
+      const call = (tool: string, result: string) =>
+        expect.stringMatching(
+          new RegExp(
+            `^info \\[mcp\\] call tool=${tool} user=${userId} client=\\S+ result=${result}$`,
+          ),
+        );
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          call("create_list", "ok"),
+          call("get_list", "tool_error"),
+          "warn [mcp] refused status=403 reason=insufficient_scope",
+          "debug [mcp] refused status=401 reason=token",
+        ]),
+      );
+      // The OAuth lines of an MCP client.
+      const clientId = await h.registerClient("Logger");
+      await h.getTokens(clientId);
+      const bad401 = await h.token({
+        grant_type: "refresh_token",
+        refresh_token: "nope",
+        client_id: clientId,
+      });
+      expect(bad401.status).toBeGreaterThanOrEqual(400);
+      expect(logs.lines).toEqual(
+        expect.arrayContaining([
+          `info [auth] client registered client=${clientId}`,
+          `info [auth] token grant=authorization_code client=${clientId}`,
+          expect.stringMatching(
+            new RegExp(
+              `^warn \\[auth\\] token grant=refresh_token client=${clientId} status=4\\d\\d$`,
+            ),
+          ),
+        ]),
+      );
+      expect(logs.text()).not.toContain("ZQX");
+      expect(logs.text()).not.toContain(token);
+      expect(logs.text()).not.toContain("@example.com");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+});

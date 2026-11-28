@@ -6,6 +6,7 @@ import { sendNotification } from "web-push";
 import { getDb, type Db } from "@/db/client";
 import { listMutes, pushSubscriptions } from "@/db/schema";
 import type { PushPayload, SubscriptionInfo } from "@/shared/push";
+import { log } from "./log";
 
 export interface VapidConfig {
   publicKey: string;
@@ -271,6 +272,7 @@ export async function sendToUser(
   const wait = options.wait ?? sleep;
   const result: SendResult = { sent: 0, removed: 0, failed: 0 };
   if (!vapid) return result;
+  const started = performance.now();
 
   const conditions = [
     eq(pushSubscriptions.userId, userId),
@@ -324,20 +326,44 @@ export async function sendToUser(
         result.sent++;
       } catch (error) {
         const status = (error as PushError).statusCode;
+        const device = { device: row.id, host: pushHost(row.endpoint) };
         if (status === 404 || status === 410) {
           db.delete(pushSubscriptions)
             .where(eq(pushSubscriptions.id, row.id))
             .run();
           result.removed++;
+          log.info("push", "removed", { ...device, status });
           return;
         }
-        console.error("Push failed", status ?? error);
+        // The name only: the error of web-push has the endpoint.
+        log.warn("push", "failed", { ...device, status }, error);
         result.failed++;
         recordFailure(db, row, new Date(now()));
       }
     }),
   );
+  if (rows.length > 0) {
+    log.info("push", "sent", {
+      user: userId,
+      devices: rows.length,
+      ...result,
+      ms: Math.round(performance.now() - started),
+    });
+  }
   return result;
+}
+
+/**
+ * The host of a push endpoint, for the log (for example
+ * web.push.apple.com). Never log the endpoint: its path is the key of the
+ * device.
+ */
+export function pushHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return "-";
+  }
 }
 
 /** Add one failure. Turn the device off if it failed for too long. */
@@ -353,5 +379,10 @@ function recordFailure(db: Db, row: SubscriptionRow, at: Date) {
     })
     .where(eq(pushSubscriptions.id, row.id))
     .run();
-  if (stop) console.warn("Push device turned off: no delivery for 7 days");
+  if (stop) {
+    log.warn("push", "device off", {
+      device: row.id,
+      failures: row.failureCount + 1,
+    });
+  }
 }

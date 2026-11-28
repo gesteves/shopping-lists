@@ -19,6 +19,8 @@ export interface RealtimeOptions {
   /** Called with each presence snapshot, and with null when the stream
    * closes (presence is hidden while offline). */
   onPresence?: (snapshot: PresenceSnapshot | null) => void;
+  /** Called one time when REPORT_AFTER connections in a row fail (#147). */
+  onFailures?: (failures: number) => void;
   url?: string;
   EventSource?: typeof EventSource;
   document?: VisibilitySource;
@@ -29,6 +31,8 @@ export interface RealtimeOptions {
 /** The first wait after the browser stops trying. It doubles to 60 s. */
 const RETRY_MS = 5_000;
 const MAX_RETRY_MS = 60_000;
+/** Report a problem after this many failed connections in a row. */
+export const REPORT_AFTER = 3;
 
 /** Start the stream. It returns a function that stops it. */
 export function startRealtime(options: RealtimeOptions): () => void {
@@ -69,6 +73,7 @@ export function startRealtime(options: RealtimeOptions): () => void {
       if (current.readyState !== Source.CLOSED || source !== current) return;
       source = null;
       failures++;
+      if (failures === REPORT_AFTER) options.onFailures?.(failures);
       const wait = Math.min(MAX_RETRY_MS, RETRY_MS * 2 ** (failures - 1));
       retry = later(() => {
         retry = null;

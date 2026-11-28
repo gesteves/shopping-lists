@@ -79,3 +79,27 @@ describe("createEventStream", () => {
     expect(bus.listenerCount("poke")).toBe(before);
   });
 });
+
+describe("onClose", () => {
+  it("gives the reason one time: the client, or the max age", async () => {
+    controller = new AbortController();
+    const reasons: string[] = [];
+    const reader = createEventStream(controller.signal, {
+      onClose: (reason) => reasons.push(reason),
+    }).getReader();
+    await read(reader);
+    controller.abort();
+    controller.abort();
+    expect(reasons).toEqual(["client"]);
+
+    const other = new AbortController();
+    const aged = createEventStream(other.signal, {
+      maxAgeMs: 5,
+      onClose: (reason) => reasons.push(reason),
+    }).getReader();
+    await read(aged);
+    await read(aged);
+    expect(await read(aged)).toBeNull();
+    expect(reasons).toEqual(["client", "max_age"]);
+  });
+});

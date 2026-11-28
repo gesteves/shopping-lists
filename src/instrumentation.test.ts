@@ -25,3 +25,31 @@ describe("register", () => {
     expect(exit).toHaveBeenCalledWith(1);
   });
 });
+
+describe("onRequestError", () => {
+  it("logs the route template and the stack, never the path or headers", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { onRequestError } = await import("./instrumentation");
+    await onRequestError(
+      Object.assign(new Error("boom"), { digest: "123" }),
+      {
+        path: "/api/sync/pull?since=4&name=Milk",
+        method: "GET",
+        headers: { cookie: "better-auth.session_token=secret" },
+      },
+      {
+        routerKind: "App Router",
+        routePath: "/api/sync/pull",
+        routeType: "route",
+        renderSource: undefined,
+        revalidateReason: undefined,
+      } as never,
+    );
+    const line = String(error.mock.calls[0][0]);
+    expect(line).toMatch(
+      /^error \[request\] failed method=GET route=\/api\/sync\/pull type=route digest=123 err=Error\nError: boom\n/,
+    );
+    expect(line).not.toMatch(/since=|Milk|secret/);
+  });
+});

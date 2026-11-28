@@ -37,7 +37,7 @@ afterEach(() => {
 describe("purge schedule", () => {
   it("purges after 30 days, a few minutes after boot, then each day", () => {
     vi.useFakeTimers();
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
     const purge = vi.fn(() => RESULT);
     const expire = vi.fn(() => 0);
     startPurger(purge, expire);

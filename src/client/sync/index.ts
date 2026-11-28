@@ -3,6 +3,7 @@ import type { Op } from "@/shared/ops";
 import { getClientDb, getMeta } from "../db";
 import { presenceStore, startPresence } from "../presence";
 import { startRealtime } from "../realtime";
+import { installErrorReports, reportError } from "../report";
 import { SyncEngine } from "./engine";
 import {
   ensureClientId,
@@ -22,7 +23,10 @@ export type {
 let engine: SyncEngine | undefined;
 
 export function getSyncEngine(): SyncEngine {
-  engine ??= new SyncEngine({ db: getClientDb() });
+  engine ??= new SyncEngine({
+    db: getClientDb(),
+    onError: (error) => reportError("sync", error),
+  });
   return engine;
 }
 
@@ -92,6 +96,7 @@ export function stopSync(): void {
  * have the new user, thus the reset keeps them.
  */
 export function startSync(userId: string): () => void {
+  installErrorReports();
   syncUser = userId;
   const stops: (() => void)[] = [];
   let stopped = false;
@@ -148,6 +153,14 @@ export function startSync(userId: string): () => void {
         onPresence: (snapshot) =>
           presenceStore.set(
             snapshot?.entries.filter((e) => e.userId !== userId) ?? [],
+          ),
+        // The EventSource gives no detail: the count only.
+        onFailures: (failures) =>
+          reportError(
+            "realtime",
+            Object.assign(new Error(`${failures} failed connections`), {
+              name: "EventSource",
+            }),
           ),
       }),
     );

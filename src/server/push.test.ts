@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { lists, pushSubscriptions } from "@/db/schema";
 import { ALEX, SAM, createTestDb } from "@/test/db";
+import { captureLogs } from "@/test/logs";
 import {
   FAILING_DISABLE_MS,
   MAX_RETRY_AFTER_MS,
@@ -244,7 +245,7 @@ describe("sendToUser", () => {
     Object.assign(new Error(`HTTP ${statusCode}`), { statusCode, headers });
 
   it("counts failures, and turns a device off after 7 days of them", async () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const sub = subscribe(SAM.id, 1);
     let now = 1_764_000_000_000;
@@ -292,8 +293,30 @@ describe("sendToUser", () => {
     vi.restoreAllMocks();
   });
 
+  it("logs the device ID and the host, never the endpoint", async () => {
+    const logs = captureLogs();
+    const gone = subscribe(SAM.id, 1);
+    const failing = subscribe(SAM.id, 2);
+    const send = (async (sub: { endpoint: string }) => {
+      throw status(sub.endpoint.endsWith("/1") ? 410 : 500);
+    }) as unknown as Send;
+    await sendToUser(SAM.id, payload, { db, vapid: VAPID, send });
+    const lines = logs.lines.map((l) => l.replace(/ ms=\d+/, ""));
+    expect(lines).toContain(
+      `info [push] removed device=${gone.id} host=fcm.googleapis.com status=410`,
+    );
+    expect(lines).toContain(
+      `warn [push] failed device=${failing.id} host=fcm.googleapis.com status=500 err=Error`,
+    );
+    expect(lines).toContain(
+      `info [push] sent user=${SAM.id} devices=2 sent=0 removed=1 failed=1`,
+    );
+    expect(logs.text()).not.toContain("/fcm/send/");
+    vi.restoreAllMocks();
+  });
+
   it("clears the failures on a success", async () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "warn").mockImplementation(() => {});
     subscribe(SAM.id, 1);
     let fail = true;
     const send = (async () => {
@@ -338,7 +361,7 @@ describe("sendToUser", () => {
   });
 
   it("does not try a 429 again with a long or no Retry-After", async () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "warn").mockImplementation(() => {});
     subscribe(SAM.id, 1);
     for (const headers of [{ "retry-after": "60" }, {}]) {
       let calls = 0;

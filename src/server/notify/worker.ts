@@ -9,6 +9,7 @@ import { getDb, type Db } from "@/db/client";
 import { activity, listMutes, lists, users } from "@/db/schema";
 import { isAllowedEmail } from "@/lib/allowlist";
 import type { PushPayload } from "@/shared/push";
+import { log } from "../log";
 import { canPushTo, sendToUser } from "../push";
 import { collapse } from "./collapse";
 import { renderFallback } from "./templates";
@@ -114,7 +115,7 @@ export class Notifier {
     try {
       for (const group of this.#readyGroups()) await this.#flush(group);
     } catch (error) {
-      console.error("Notifier tick failed", error);
+      log.error("notify", "tick failed", {}, error);
     } finally {
       this.#running = false;
     }
@@ -160,6 +161,17 @@ export class Notifier {
     const db = this.#db;
     const actorId = group[0].actorId;
     const ids = group.map((e) => e.id);
+    // IDs and counts only: no names.
+    const burst = {
+      actor: actorId,
+      via: group[0].via,
+      events: rows.length,
+      lists: new Set(rows.map((e) => e.listId)).size,
+      ready:
+        this.#now() - rows.at(-1)!.at >= this.#quietMs
+          ? ("quiet" as const)
+          : ("max" as const),
+    };
 
     // Mark the rows first. A crash after this loses one push; it never
     // sends the same push two times.
@@ -195,7 +207,10 @@ export class Notifier {
         .map((l) => l.id),
     );
     group = group.filter((e) => !privateLists.has(e.listId));
-    if (group.length === 0) return;
+    if (group.length === 0) {
+      log.debug("notify", "skipped", { ...burst, reason: "private" });
+      return;
+    }
 
     const actor = db
       .select({ name: users.name })
@@ -211,9 +226,17 @@ export class Notifier {
       .all()
       .filter((user) => isAllowedEmail(user.email, allowlist));
 
+    let sent = 0;
     for (const recipient of recipients) {
       // No push can go out: make no text, thus no Claude call.
-      if (!this.#canPush(recipient.id)) continue;
+      if (!this.#canPush(recipient.id)) {
+        log.debug("notify", "skipped", {
+          ...burst,
+          user: recipient.id,
+          reason: "no_device",
+        });
+        continue;
+      }
       const muted = new Set(
         db
           .select({ listId: listMutes.listId })
@@ -229,11 +252,30 @@ export class Notifier {
           actor?.name ?? copy.people.someone,
           this.#summarize,
         );
-        if (payload) await this.#send(recipient.id, payload);
+        if (payload) {
+          await this.#send(recipient.id, payload);
+          sent++;
+        } else {
+          log.debug("notify", "skipped", {
+            ...burst,
+            user: recipient.id,
+            reason: "muted",
+          });
+        }
       } catch (error) {
-        console.error("Notification failed", error);
+        log.error(
+          "notify",
+          "send failed",
+          { ...burst, user: recipient.id },
+          error,
+        );
       }
     }
+    log.info("notify", "burst", {
+      ...burst,
+      recipients: recipients.length,
+      sent,
+    });
   }
 }
 
@@ -246,6 +288,7 @@ export function startNotifier(options: NotifierOptions = {}): Notifier {
   const store = globalThis as typeof globalThis & { [KEY]?: Notifier };
   if (store[KEY]) return store[KEY];
   const notifier = new Notifier(options);
+  log.info("notify", "started");
   setInterval(() => void notifier.tick(), TICK_MS).unref();
   store[KEY] = notifier;
   return notifier;

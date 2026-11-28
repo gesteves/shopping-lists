@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { claudeMessage, fakeClaude } from "@/test/fake-claude";
 import { MODEL } from "../notify/summarize";
 import { MAX_SUMMARY, createListSummarizer, summaryInput } from "./summarize";
 
@@ -7,18 +8,15 @@ const items = [
   { name: "Eggs", quantity: 12 },
 ];
 
-function fakeClient(parse: (...args: unknown[]) => unknown) {
-  const fn = vi.fn(parse);
-  return { client: { beta: { messages: { parse: fn } } } as never, parse: fn };
-}
+const fakeClient = fakeClaude;
 
 function answer(summary: string, stop_reason = "end_turn") {
-  return { stop_reason, parsed_output: { summary }, content: [] };
+  return claudeMessage({ summary }, stop_reason);
 }
 
 describe("createListSummarizer", () => {
   it("returns the line from Claude", async () => {
-    const { client, parse } = fakeClient(async () =>
+    const { client, create: parse } = fakeClient(async () =>
       answer("Milk and a dozen eggs"),
     );
     const summarize = createListSummarizer({ client })!;
@@ -49,10 +47,14 @@ describe("createListSummarizer", () => {
     ]) {
       const { client } = fakeClient(parse);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.spyOn(console, "info").mockImplementation(() => {});
       expect(await createListSummarizer({ client })!("JojaMart", items)).toBe(
         null,
       );
-      warn.mockRestore();
+      expect(warn.mock.calls.at(-1)![0]).toMatch(
+        /^warn \[summary\] not used reason=/,
+      );
+      vi.restoreAllMocks();
     }
   });
 

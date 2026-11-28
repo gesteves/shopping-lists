@@ -526,9 +526,8 @@ describe("Notifier", () => {
     const n = notifier();
     db.$client.close();
     await expect(n.tick()).resolves.toBeUndefined();
-    expect(error).toHaveBeenCalledWith(
-      "Notifier tick failed",
-      expect.anything(),
+    expect(error.mock.calls[0][0]).toMatch(
+      /^error \[notify\] tick failed err=\w+\n/,
     );
     error.mockRestore();
     db = createTestDb();

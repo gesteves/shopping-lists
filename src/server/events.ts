@@ -25,6 +25,16 @@ export const EVENT_HEADERS = {
   Connection: "keep-alive",
 };
 
+/** Why a stream closed. */
+export type CloseReason = "max_age" | "client" | "error";
+
+let openStreams = 0;
+
+/** The number of open streams in this process. */
+export function openStreamCount(): number {
+  return openStreams;
+}
+
 /** One SSE message. */
 export function sseMessage(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -41,11 +51,13 @@ export function createEventStream(
     pingMs?: number;
     maxAgeMs?: number;
     presence?: (snapshot: PresenceSnapshot) => PresenceSnapshot;
+    /** Called one time, after the stream closes. */
+    onClose?: (reason: CloseReason) => void;
   } = {},
 ): ReadableStream<Uint8Array> {
   const view = options.presence ?? ((snapshot) => snapshot);
   const encoder = new TextEncoder();
-  let cleanup = () => {};
+  let cleanup = (reason: CloseReason) => void reason;
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -53,7 +65,7 @@ export function createEventStream(
         try {
           controller.enqueue(encoder.encode(text));
         } catch {
-          cleanup();
+          cleanup("error");
         }
       };
       const onPoke = (...[payload]: BusEvents["poke"]) =>
@@ -67,25 +79,32 @@ export function createEventStream(
 
       // The retry line tells the browser to connect again after RETRY_MS.
       const maxAge = setTimeout(
-        () => onAbort(),
+        () => close("max_age"),
         options.maxAgeMs ?? MAX_AGE_MS,
       );
 
-      cleanup = () => {
+      let closed = false;
+      openStreams++;
+      cleanup = (reason) => {
+        if (closed) return;
+        closed = true;
+        openStreams--;
         clearInterval(timer);
         clearTimeout(maxAge);
         bus.off("poke", onPoke);
         bus.off("presence", onPresence);
         signal.removeEventListener("abort", onAbort);
+        options.onClose?.(reason);
       };
-      const onAbort = () => {
-        cleanup();
+      const close = (reason: CloseReason) => {
+        cleanup(reason);
         try {
           controller.close();
         } catch {
           // The stream is already closed.
         }
       };
+      const onAbort = () => close("client");
 
       bus.on("poke", onPoke);
       bus.on("presence", onPresence);
@@ -98,7 +117,7 @@ export function createEventStream(
       if (signal.aborted) onAbort();
     },
     cancel() {
-      cleanup();
+      cleanup("client");
     },
   });
 }

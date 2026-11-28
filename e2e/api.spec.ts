@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { signIn } from "./helpers";
 
+const CLIENT_ERROR = {
+  area: "sync",
+  name: "TypeError",
+  msg: "Load failed",
+  page: "/",
+};
+
 // Each JSON route refuses a body that is not application/json, and a body
 // with an unknown key (#100). The good bodies are in the other tests.
 const ROUTES: {
@@ -37,6 +44,11 @@ const ROUTES: {
     method: "POST",
     path: "/api/sync/push",
     body: { clientId: randomUUID(), ops: [] },
+  },
+  {
+    method: "POST",
+    path: "/api/client-log",
+    body: CLIENT_ERROR,
   },
 ];
 
@@ -75,5 +87,21 @@ test(
       },
     });
     expect(res.status()).toBe(400);
+  },
+);
+
+test(
+  "the client log takes a browser error only from a signed-in user (#147)",
+  { tag: "@once" },
+  async ({ page, request }) => {
+    const anonymous = await request.post("/api/client-log", {
+      data: CLIENT_ERROR,
+    });
+    expect(anonymous.status()).toBe(401);
+    await signIn(page);
+    const res = await page.request.post("/api/client-log", {
+      data: CLIENT_ERROR,
+    });
+    expect(res.status()).toBe(204);
   },
 );

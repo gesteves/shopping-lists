@@ -34,6 +34,18 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // The server writes each line through src/server/log.ts (#147): one
+    // format, one level rule, and no personal data.
+    files: [
+      "src/server/**/*.ts",
+      "src/lib/**/*.ts",
+      "src/app/api/**/*.ts",
+      "src/instrumentation*.ts",
+    ],
+    ignores: ["src/server/log.ts", "**/*.test.ts"],
+    rules: { "no-console": "error" },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

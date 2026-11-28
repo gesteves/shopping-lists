@@ -385,6 +385,30 @@ describe("sync", () => {
     expect([...timers.pending][0].ms).toBe(1000);
   });
 
+  it("reports the first failure of a streak only, online (#147)", async () => {
+    const errors: unknown[] = [];
+    let fail = true;
+    const engine = new SyncEngine({
+      db,
+      fetch: async (...args) => {
+        if (fail) throw new TypeError("Load failed");
+        return fakeFetch(...args);
+      },
+      timers: manualTimers(),
+      isOnline: () => true,
+      onError: (error) => errors.push(error),
+    });
+    await engine.sync();
+    await engine.sync();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(TypeError);
+    fail = false;
+    await engine.sync();
+    fail = true;
+    await engine.sync();
+    expect(errors).toHaveLength(2);
+  });
+
   it("caps the backoff", async () => {
     net.online = false;
     const timers = manualTimers();

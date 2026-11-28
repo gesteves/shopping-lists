@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { HlcClock, serialize } from "@/shared/hlc";
 import { MAX_PUSH_BYTES, MAX_PUSH_OPS, type PullResponse } from "@/shared/sync";
 import { SAM, createTestDb } from "@/test/db";
+import { captureLogs } from "@/test/logs";
 import { setListSummary } from "./ops";
 import { purgeTombstones } from "./purge";
 import { handlePull, handlePush } from "./sync";
@@ -22,7 +23,11 @@ beforeEach(() => {
   clock = new HlcClock("server", undefined, () => NOW);
 });
 
-afterEach(() => db.$client.close());
+afterEach(() => {
+  db.$client.close();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 /** A raw op, as the client sends it. */
 function op(type: string, args: Record<string, unknown>, wall = NOW - 1000) {
@@ -379,5 +384,61 @@ describe("reset", () => {
     const page = await pull("?since=99");
     expect(page).toMatchObject({ reset: true, cursor: 1 });
     expect(page.lists).toHaveLength(1);
+  });
+});
+
+describe("log (#147)", () => {
+  const noMs = (lines: string[]) => lines.map((l) => l.replace(/ ms=\d+/, ""));
+
+  it("logs one line for each push, with counts and reasons, and no names", async () => {
+    const logs = captureLogs();
+    const create = op("createList", { listId: LIST, name: "Oasis" });
+    await push([
+      create,
+      op("addItem", { itemId: itemId(1), listId: LIST, name: "Milk" }),
+      op("addItem", { itemId: itemId(2), listId: itemId(9), name: "Eggs" }),
+    ]);
+    await push([create]);
+    expect(noMs(logs.lines)).toEqual([
+      `info [sync] push user=${SAM.id} client=${CLIENT} ops=3 applied=2 duplicate=0 rejected=1 reasons=list_not_found:1 seq=2`,
+      `info [sync] push user=${SAM.id} client=${CLIENT} ops=1 applied=0 duplicate=1 rejected=0 seq=-`,
+    ]);
+    expect(logs.text()).not.toMatch(/Oasis|Milk|Eggs/);
+  });
+
+  it("logs a pull with changes; an empty pull only at debug", async () => {
+    await push([op("createList", { listId: LIST, name: "Oasis" })]);
+    const logs = captureLogs();
+    await pull("?since=0");
+    await pull("?since=1");
+    vi.stubEnv("LOG_LEVEL", "debug");
+    await pull("?since=1");
+    expect(noMs(logs.lines)).toEqual([
+      `info [sync] pull user=${SAM.id} since=0 cursor=1 lists=1 items=0 more=false`,
+      `debug [sync] pull user=${SAM.id} since=1 cursor=1 lists=0 items=0 more=false`,
+    ]);
+  });
+
+  it("warns for a reset because the cursor is after the last seq", async () => {
+    await push([op("createList", { listId: LIST, name: "Oasis" })]);
+    const logs = captureLogs();
+    await pull("?since=99");
+    expect(noMs(logs.lines)).toEqual([
+      `warn [sync] pull user=${SAM.id} since=99 cursor=1 lists=1 items=0 more=false reset=ahead`,
+    ]);
+  });
+
+  it("warns for a refused body, with the route and the reason", async () => {
+    const logs = captureLogs();
+    await handlePush(pushRequest("{"), { id: SAM.id }, { db, clock });
+    await handlePush(
+      pushRequest({ clientId: CLIENT, ops: [] }),
+      { id: SAM.id },
+      { db, clock },
+    );
+    expect(logs.lines).toEqual([
+      "warn [request] refused route=/api/sync/push status=400 reason=invalid_json",
+      "warn [request] refused route=/api/sync/push status=400 reason=invalid_request issues=1",
+    ]);
   });
 });

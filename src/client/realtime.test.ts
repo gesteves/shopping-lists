@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { startRealtime, type VisibilitySource } from "./realtime";
+import { REPORT_AFTER, startRealtime, type VisibilitySource } from "./realtime";
 
 /** A fake EventSource. The test calls emit() for the server. */
 class FakeSource extends EventTarget {
@@ -33,7 +33,7 @@ class FakeDocument extends EventTarget implements VisibilitySource {
   }
 }
 
-function setup() {
+function setup(onFailures?: (n: number) => void) {
   FakeSource.all = [];
   const doc = new FakeDocument();
   const timers: { fn: () => void; ms: number }[] = [];
@@ -43,6 +43,7 @@ function setup() {
     onPoke: () => calls.pokes++,
     onOpen: () => calls.opens++,
     onPresence: (s) => presence.push(s),
+    onFailures,
     EventSource: FakeSource as unknown as typeof EventSource,
     document: doc,
     setTimeout: (fn, ms) => {
@@ -99,6 +100,17 @@ describe("startRealtime", () => {
     latest().readyState = FakeSource.CLOSED;
     latest().emit("error");
     expect(timers.map((t) => t.ms)).toEqual([5000]);
+  });
+
+  it("reports one time after REPORT_AFTER failed connections (#147)", () => {
+    const reports: number[] = [];
+    const { timers, latest } = setup((n) => reports.push(n));
+    for (let n = 0; n < REPORT_AFTER + 2; n++) {
+      latest().readyState = FakeSource.CLOSED;
+      latest().emit("error");
+      timers.shift()!.fn();
+    }
+    expect(reports).toEqual([REPORT_AFTER]);
   });
 
   it("passes presence on, and clears it when the stream closes", () => {

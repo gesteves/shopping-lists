@@ -4,6 +4,7 @@
 import { CLEAR_PAGES_MESSAGE } from "@/shared/offline";
 import type { SubscriptionInfo } from "@/shared/push";
 import { getClientDb } from "./db";
+import { reportError } from "./report";
 import { getSyncEngine, stopSync } from "./sync";
 import { clearForSignOut, pendingCount } from "./sync/local";
 
@@ -13,6 +14,7 @@ async function step(name: string, fn: () => Promise<unknown>) {
     await fn();
   } catch (error) {
     console.error(`Sign-out step failed: ${name}`, error);
+    reportError("sign-out", error);
   }
 }
 
@@ -82,6 +84,7 @@ export async function syncBeforeSignOut(): Promise<number> {
     return await pendingCount(getClientDb());
   } catch (error) {
     console.error("Sign-out step failed: count", error);
+    reportError("sign-out", error);
     return 0;
   }
 }

@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { claudeMessage, fakeClaude } from "@/test/fake-claude";
+import { captureLogs } from "@/test/logs";
 import { ev } from "@/test/notify-events";
 import {
   MAX_BODY,
@@ -20,19 +22,17 @@ const events = [
 ];
 const FALLBACK = "Sam made 3 changes to 2 lists.";
 
-/** A fake client whose parse() does what the test says. */
-function fakeClient(parse: (...args: unknown[]) => unknown) {
-  const fn = vi.fn(parse);
-  return { client: { beta: { messages: { parse: fn } } } as never, parse: fn };
-}
+afterEach(() => vi.restoreAllMocks());
+
+const fakeClient = fakeClaude;
 
 function answer(body: string, stop_reason = "end_turn") {
-  return { stop_reason, parsed_output: { body }, content: [] };
+  return claudeMessage({ body }, stop_reason);
 }
 
 describe("createSummarizer", () => {
   it("returns the line from Claude", async () => {
-    const { client, parse } = fakeClient(async () =>
+    const { client, create: parse } = fakeClient(async () =>
       answer(
         "Sam added milk and eggs to the “Pierre’s General Store” list and checked off bread in the “Oasis” list.",
       ),
@@ -57,15 +57,27 @@ describe("createSummarizer", () => {
   });
 
   it("falls back on a refusal", async () => {
+    const logs = captureLogs();
     const { client } = fakeClient(async () => answer("", "refusal"));
     expect(await createSummarizer({ client })(events, "Sam")).toBe(FALLBACK);
+    expect(logs.lines.map((l) => l.replace(/ ms=\d+/, " ms=N"))).toEqual([
+      "info [claude] response for=push-text ms=N model=claude-sonnet-5-5 stop=refusal in=10 out=5 request=req_test",
+      "warn [notify] fallback reason=refusal",
+    ]);
+  });
+
+  it("logs the request ID of the response", async () => {
+    const logs = captureLogs();
+    const { client } = fakeClaude(
+      async () => answer("Sam added milk."),
+      "req_abc",
+    );
+    await createSummarizer({ client })(events, "Sam");
+    expect(logs.find("info [claude] response")[0]).toMatch(/ request=req_abc$/);
   });
 
   it("falls back when the answer does not parse or is cut", async () => {
-    const { client } = fakeClient(async () => ({
-      stop_reason: "end_turn",
-      parsed_output: null,
-    }));
+    const { client } = fakeClient(async () => claudeMessage("not json"));
     expect(await createSummarizer({ client })(events, "Sam")).toBe(FALLBACK);
     const cut = fakeClient(async () => answer("Sam added", "max_tokens"));
     expect(await createSummarizer({ client: cut.client })(events, "Sam")).toBe(
@@ -110,7 +122,7 @@ describe("createSummarizer", () => {
 
   it("writes one change too, with its sentence as the fallback", async () => {
     const one = [ev("addItem", { itemName: "Eggs" })];
-    const { client, parse } = fakeClient(async () =>
+    const { client, create: parse } = fakeClient(async () =>
       answer("Sam added eggs to the “Pierre’s General Store” list."),
     );
     expect(await createSummarizer({ client })(one, "Sam")).toBe(

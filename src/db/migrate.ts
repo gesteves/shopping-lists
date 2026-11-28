@@ -33,31 +33,33 @@ function appliedCount(sqlite: Database.Database): number {
 }
 
 /**
- * Apply all new migrations to the database at `path`. If it applied a
- * migration, it then checks the foreign keys, and throws if a row points to
- * no row. Then the server does not start.
+ * Apply all new migrations to the database at `path`, and give the number
+ * that it applied. If it applied a migration, it then checks the foreign
+ * keys, and throws if a row points to no row. Then the server does not start.
  */
 export function runMigrations(
   path: string = databasePath(),
   folder: string = MIGRATIONS_FOLDER,
-) {
+): number {
   const sqlite = openMigrationConnection(path);
   try {
     const before = appliedCount(sqlite);
     migrate(drizzle(sqlite), { migrationsFolder: folder });
-    if (appliedCount(sqlite) === before) return;
+    const applied = appliedCount(sqlite) - before;
+    if (applied === 0) return 0;
     const broken = sqlite.pragma("foreign_key_check") as unknown[];
     if (broken.length > 0) {
       throw new Error(
         `Foreign key check failed after the migrations: ${JSON.stringify(broken.slice(0, 10))}`,
       );
     }
+    return applied;
   } finally {
     sqlite.close();
   }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runMigrations();
-  console.log(`Migrations applied to ${databasePath()}`);
+  const applied = runMigrations();
+  console.log(`${applied} migrations applied to ${databasePath()}`);
 }
