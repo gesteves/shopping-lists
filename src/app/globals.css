@@ -152,6 +152,14 @@ wa-option::part(label) {
   overflow-wrap: anywhere;
 }
 
+/* The skeleton of a list summary on the way (#143) does not pulse when
+   the user asks for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  wa-skeleton::part(indicator) {
+    animation: none;
+  }
+}
+
 /* A label that only assistive technology reads, for a Web Awesome field. */
 .wa-sr-label::part(form-control-label) {
   position: absolute;

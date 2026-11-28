@@ -11,6 +11,7 @@ import { HlcClock, MAX_DRIFT_MS, parse, serialize } from "@/shared/hlc";
 import { opSchema, type Op } from "@/shared/ops";
 import { ALEX, SAM, createTestDb } from "@/test/db";
 import { ClientDb, getMeta, setMeta } from "../db";
+import type { PullResponse } from "@/shared/sync";
 import { readList } from "../queries";
 import {
   SyncEngine,
@@ -437,6 +438,25 @@ describe("sync", () => {
     expect((await readList(db, LIST))?.items).toHaveLength(601);
   });
 
+  it("keeps if the server makes summaries (#143)", async () => {
+    const page = {
+      reset: false,
+      lists: [],
+      items: [],
+      users: [],
+      hlc: null,
+      cursor: 0,
+      hasMore: false,
+      purgedSeq: 0,
+      now: Date.now(),
+    };
+    await savePullPage(db, { ...page, summaries: true });
+    expect(await getMeta(db, "summaries")).toBe(true);
+    // An older server sends no `summaries`.
+    await savePullPage(db, page as unknown as PullResponse);
+    expect(await getMeta(db, "summaries")).toBe(false);
+  });
+
   it("deletes the server layer on a reset", async () => {
     await seed();
     await savePullPage(db, {
@@ -448,6 +468,7 @@ describe("sync", () => {
       cursor: 0,
       hasMore: false,
       purgedSeq: 0,
+      summaries: false,
       now: realNow(),
     });
     await rebuildView(db);

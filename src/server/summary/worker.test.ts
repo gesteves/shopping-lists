@@ -7,12 +7,17 @@ import { opSchema, type OpInput } from "@/shared/ops";
 import { SAM, createTestDb } from "@/test/db";
 import { bus } from "../bus";
 import { applyOps, setListSummary } from "../ops";
-import type { SummaryItem } from "./summarize";
+import {
+  SUMMARY_WAIT_MS,
+  summaryKeyOf,
+  type SummaryItem,
+} from "@/shared/summary";
 import {
   MAX_WAIT_MS,
   QUIET_MS,
   RETRY_MS,
   SummaryWorker,
+  TICK_MS,
   summaryKey,
 } from "./worker";
 
@@ -181,12 +186,29 @@ describe("setListSummary", () => {
   });
 });
 
+describe("SUMMARY_WAIT_MS (#143)", () => {
+  it("is longer than the longest time to a new summary", () => {
+    // The longest wait, one tick, and the Claude request (10 s, 1 retry).
+    expect(SUMMARY_WAIT_MS).toBeGreaterThan(MAX_WAIT_MS + TICK_MS + 20_000);
+  });
+});
+
 describe("summaryKey", () => {
   const milk: SummaryItem = { name: "Milk", quantity: 1 };
   const eggs: SummaryItem = { name: "Eggs", quantity: 12 };
 
   it("is the same for the same items in any order", () => {
     expect(summaryKey([milk, eggs])).toBe(summaryKey([eggs, milk]));
+  });
+
+  it("is the key that the client makes (#143)", async () => {
+    for (const items of [
+      [milk, eggs],
+      [milk],
+      [{ name: "Café “crème” 🥛", quantity: 3 }, eggs],
+    ]) {
+      expect(await summaryKeyOf(items)).toBe(summaryKey(items));
+    }
   });
 
   it("changes with a name or a quantity", () => {

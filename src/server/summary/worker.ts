@@ -6,11 +6,16 @@ import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
 import { items, lists } from "@/db/schema";
-import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
+import {
+  SUMMARY_MIN_ITEMS,
+  summaryKeyText,
+  type SummaryItem,
+} from "@/shared/summary";
 import { setListSummary } from "../ops";
-import type { ListSummarizer, SummaryItem } from "./summarize";
+import type { ListSummarizer } from "./summarize";
 
 export const TICK_MS = 10_000;
+const WORKER_KEY = "shopping-lists.summary-worker";
 /** Wait this long after the last change of the items. */
 export const QUIET_MS = 60_000;
 /** Make a summary at most this long after the first change. */
@@ -19,14 +24,19 @@ export const MAX_WAIT_MS = 3 * 60_000;
 export const RETRY_MS = 10 * 60_000;
 
 /**
- * The same items, in any order, give the same key. The notes are not in the
- * summary, thus not in the key.
+ * The same items, in any order, give the same key. The client makes the
+ * same key with summaryKeyOf (src/shared/summary.ts, #143).
  */
 export function summaryKey(summaryItems: SummaryItem[]): string {
-  const parts = summaryItems
-    .map((i) => JSON.stringify([i.name, i.quantity]))
-    .sort();
-  return createHash("sha256").update(parts.join("\n")).digest("base64url");
+  return createHash("sha256")
+    .update(summaryKeyText(summaryItems))
+    .digest("base64url");
+}
+
+/** True if this process runs the summary worker (#143). */
+export function summaryWorkerRunning(): boolean {
+  const KEY = Symbol.for(WORKER_KEY);
+  return !!(globalThis as Record<symbol, unknown>)[KEY];
 }
 
 export interface SummaryWorkerOptions {
@@ -169,7 +179,7 @@ export class SummaryWorker {
 export function startSummaryWorker(
   options: SummaryWorkerOptions,
 ): SummaryWorker {
-  const KEY = Symbol.for("shopping-lists.summary-worker");
+  const KEY = Symbol.for(WORKER_KEY);
   const store = globalThis as typeof globalThis & { [KEY]?: SummaryWorker };
   if (store[KEY]) return store[KEY];
   const worker = new SummaryWorker(options);

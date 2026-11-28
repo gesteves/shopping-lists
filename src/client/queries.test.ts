@@ -12,6 +12,7 @@ import {
   type ListSummary,
 } from "./queries";
 import { DAY_MS } from "@/shared/expiry";
+import { SUMMARY_WAIT_MS, summaryKeyOf } from "@/shared/summary";
 
 let db: ClientDb;
 let n = 0;
@@ -43,6 +44,7 @@ function list(
     updatedAt: 1,
     deletedAt,
     summary,
+    summaryKey: null,
   } satisfies ListRecord;
 }
 
@@ -164,34 +166,103 @@ describe("readListSummaries names", () => {
 });
 
 describe("listLine", () => {
+  const NOW = 10 * 60_000;
   const summary = (patch: Partial<ListSummary>): ListSummary => ({
     ...list("l", "Target"),
     remaining: 0,
     total: 0,
     names: [],
+    summaryFresh: false,
+    summaries: true,
+    changedAt: NOW,
     ...patch,
   });
 
   it("says that there is nothing to get", () => {
-    expect(listLine(summary({ summary: "Old summary" }))).toBe(
+    expect(listLine(summary({ summary: "Old summary" }), NOW)).toBe(
       "Nothing to get",
     );
   });
 
   it("gives the name of one item", () => {
     expect(
-      listLine(summary({ remaining: 1, names: ["Milk"], summary: "x" })),
+      listLine(summary({ remaining: 1, names: ["Milk"], summary: "x" }), NOW),
     ).toBe("Milk");
   });
 
-  it("gives the summary of two or more items, or the count", () => {
+  it("gives a summary for the items now", () => {
     expect(
-      listLine(summary({ remaining: 5, summary: "Produce and milk" })),
+      listLine(
+        summary({
+          remaining: 5,
+          summary: "Produce and milk",
+          summaryFresh: true,
+        }),
+        NOW,
+      ),
     ).toBe("Produce and milk");
-    expect(listLine(summary({ remaining: 5 }))).toBe("5 items");
-    expect(listLine(summary({ remaining: 2, summary: "Milk and eggs" }))).toBe(
-      "Milk and eggs",
+  });
+
+  it("waits for a new summary, never the old one (#143)", () => {
+    const old = summary({ remaining: 3, summary: "Milk and eggs" });
+    // Just changed: a summary can come. Before mount too.
+    expect(listLine(old, NOW)).toBeNull();
+    expect(listLine(old, null)).toBeNull();
+    expect(listLine({ ...old, summary: null }, NOW)).toBeNull();
+    // It did not come in time: the count.
+    expect(listLine(old, NOW + SUMMARY_WAIT_MS)).toBe("3 items");
+    expect(listLine({ ...old, summary: null }, NOW + SUMMARY_WAIT_MS)).toBe(
+      "3 items",
     );
+  });
+
+  it("gives the count when the server makes no summaries", () => {
+    const old = summary({ remaining: 3, summary: "Milk", summaries: false });
+    expect(listLine(old, NOW)).toBe("3 items");
+    expect(listLine({ ...old, summary: null }, null)).toBe("3 items");
+  });
+});
+
+describe("readListSummaries summaries (#143)", () => {
+  const unchecked = [
+    { name: "a", quantity: 1 },
+    { name: "b", quantity: 1 },
+  ];
+
+  it("knows if the summary is for the unchecked items now", async () => {
+    await setMeta(db, "summaries", true);
+    await db.lists.put({
+      ...list("l", "Target", null, "A and b"),
+      summaryKey: await summaryKeyOf(unchecked),
+    });
+    await db.items.bulkPut([item("a", 1), item("b", 2), item("c", 3, true)]);
+    let [row] = await readListSummaries(db);
+    expect(row).toMatchObject({ summaryFresh: true, summaries: true });
+
+    // A new item: the summary is old.
+    await db.items.put(item("d", 4));
+    [row] = await readListSummaries(db);
+    expect(row.summaryFresh).toBe(false);
+
+    // Checked off again: the same items as the summary.
+    await db.items.put(item("d", 5, true));
+    [row] = await readListSummaries(db);
+    expect(row.summaryFresh).toBe(true);
+  });
+
+  it("is not fresh with no key (a row from an older server)", async () => {
+    await db.lists.put(list("l", "Target", null, "A and b"));
+    await db.items.bulkPut([item("a", 1), item("b", 2)]);
+    const [row] = await readListSummaries(db);
+    expect(row).toMatchObject({ summaryFresh: false, summaries: false });
+  });
+
+  it("gives the last change of an item, also a delete, in device time", async () => {
+    await setMeta(db, "clockOffset", 100);
+    await db.lists.put(list("l", "Target"));
+    await db.items.bulkPut([item("a", 1_000), item("b", 2_000, false, 3_000)]);
+    const [row] = await readListSummaries(db);
+    expect(row.changedAt).toBe(3_000 - 100);
   });
 });
 

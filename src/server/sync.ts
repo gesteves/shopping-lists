@@ -13,6 +13,7 @@ import {
 import { readJson } from "./json";
 import { applyOps, type Actor, type ApplyOptions } from "./ops";
 import { readChanges, readSeqState, readUsers } from "./queries";
+import { summaryWorkerRunning } from "./summary/worker";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -66,7 +67,7 @@ export async function handlePush(
  */
 export function handlePull(
   request: Request,
-  options: { db?: Db; now?: () => number } = {},
+  options: { db?: Db; now?: () => number; summaries?: boolean } = {},
 ): Response {
   const db = options.db ?? getDb();
   const now = options.now ?? Date.now;
@@ -101,6 +102,7 @@ export function handlePull(
       hasMore: changes.hasMore,
       purgedSeq: state.purgedSeq,
       now: now(),
+      summaries: options.summaries ?? summaryWorkerRunning(),
     };
   });
   return json(body);

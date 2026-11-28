@@ -254,11 +254,18 @@ How it works:
 Code in `src/server/summary/`. The lists page shows one line under each list name, so you can see at a glance what to get:
 - No unchecked items: "Nothing to get".
 - 1 unchecked item: its name, as the user wrote it. The client makes this line at once, with no API call.
-- 2 or more: the summary from Claude in `lists.summary`, for example "Milk and eggs" or "Milk, eggs, produce, and snacks for the party". Claude also corrects the capitals. If there is no summary yet, the count ("3 items").
+- 2 or more: the summary from Claude in `lists.summary`, for example "Milk and eggs" or "Milk, eggs, produce, and snacks for the party". Claude also corrects the capitals. Only a summary of the unchecked items now shows (#143): see Freshness.
 
 The list page shows no count.
 
-**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 2 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows the old summary.
+**Worker** (`worker.ts`): an in-process interval (10 s), started at boot only with `ANTHROPIC_API_KEY`. For each list with 2 or more unchecked items, it makes `summaryKey()`: a hash of the names and quantities, in any order (the notes are not in the summary). If the key is not the same as `lists.summary_key`, it waits until the key stays the same for 60 s, or 3 minutes after the first change at most, then asks Claude. The wait is in memory: a restart starts it again. After a failure, it tries the same items again after 10 minutes. During the wait, the page shows a skeleton, not the old summary (#143).
+
+**Freshness (#143):** before, the page showed the summary that the list had, also when it was for other items: for example, after the user checked off all but one item and then added new items, the summary of the old items showed until the new one came. Now the client knows if a summary is for the items now:
+- The pull sends `summaryKey` with each list, and `summaries: true` when the server runs the summary worker (`summaryWorkerRunning()`). The client keeps `summaries` in `meta`. An older server sends neither: no key and no summaries.
+- `summaryKeyOf()` (`src/shared/summary.ts`) makes the key in the browser with Web Crypto: SHA-256 of `summaryKeyText()`, base64url. The server makes the same key with `node:crypto` (`summaryKey()`), and a unit test checks that both are the same. Thus the stored keys stay valid, and the deploy makes no new summaries.
+- `readListSummaries()` compares the key of the unchecked items in the view (pending local changes included) with `summaryKey`. `listLine()` gives the summary only if they match. Else, if the server makes summaries and the last change of an item of the list (`updatedAt` or `deletedAt`, in device time with `clockOffset`) is less than `SUMMARY_WAIT_MS` (4 minutes: the longest wait of the worker, a tick, and the Claude request) ago, it gives null, and the row shows a `wa-skeleton` (pulse) of one text line, with "Summary is updating" for a screen reader. After that time, or if the server makes no summaries (dev, e2e), the count. Thus an old summary never shows, and a failed request or an offline device does not pulse for ever. The time comes from `useNow()` (each minute).
+- With reduced motion, the skeleton does not pulse (`wa-skeleton::part(indicator)` in `globals.css`).
+- `e2e/list-summary.spec.ts` adds the summaries to the pull responses with `page.route`, because the e2e server has no `ANTHROPIC_API_KEY`. It blocks the service worker: WebKit does not route the requests of a page that a worker controls.
 
 **Write:** `setListSummary()` in `src/server/ops.ts` sets `summary` and `summary_key` and gives the list a new seq and a poke, thus the clients pull it like other list changes. It does not change the clocks, `updated_by/at/via`, or `activity`: a summary is not a change by a person, and sends no notification.
 
@@ -451,7 +458,7 @@ Mobile-first. Routes under `src/app/(app)/`.
 - template strings and a/an;
 - the summarizer fallback path, with the SDK mocked.
 
-**End-to-end tests (Playwright):** each test runs on the `mobile` (WebKit) and `desktop` (Chromium) projects. A test with the tag `@once` runs on desktop only, because the browser does not change its result (#85). When the stub is on, the Better Auth rate limit is off: all the e2e requests come from one IP.
+**End-to-end tests (Playwright):** each test runs on the `mobile` (WebKit) and `desktop` (Chromium) projects. A test with the tag `@once` runs on desktop only, because the browser does not change its result (#85). When the stub is on, the Better Auth rate limit is off: all the e2e requests come from one IP. The e2e server gets `ANTHROPIC_API_KEY=""` (#143): the env wins over `.env.local`, thus a local run makes no Claude calls and runs no summary worker, the same as CI.
 - two browser contexts as two users: realtime updates within about 1s, and presence badges;
 - `context.setOffline(true)`: make edits, go back online, confirm they reconcile, with conflicting edits on both sides;
 - the undo toast;
