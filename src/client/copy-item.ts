@@ -1,5 +1,5 @@
 // Copy an item to another list (#131). A copy is an add with the same
-// name, quantity, and notes. It obeys the dedupe rules of the add bar (#14,
+// name, quantity, notes, and URL (#140). It obeys the dedupe rules of the add bar (#14,
 // #120): a name that is on the target list already gives no second item.
 import { nameKey } from "@/shared/names";
 import type { ItemRecord } from "@/shared/sync";
@@ -20,7 +20,7 @@ export type CopyPlan =
  * on the server.
  */
 export function copyPlan(
-  item: Pick<ItemRecord, "name" | "quantity" | "notes">,
+  item: Pick<ItemRecord, "name" | "quantity" | "notes" | "url">,
   toListId: string,
   targetItems: readonly ItemRecord[],
   newId: string = crypto.randomUUID(),
@@ -48,6 +48,8 @@ export function copyPlan(
             name: item.name,
             quantity: item.quantity,
             notes: item.notes,
+            // A row from an older server has no url.
+            url: item.url ?? "",
           },
         },
       ],

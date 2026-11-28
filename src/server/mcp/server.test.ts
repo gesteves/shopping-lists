@@ -568,6 +568,48 @@ describe("tools", () => {
     expect(nothing.isError).toBe(true);
   });
 
+  it("adds, sets, and removes the URL of an item (#140)", async () => {
+    const url = "https://example.com/coffee";
+    await callTool(client, "create_list", { name: "Cafe" });
+    const added = await callTool(client, "add_items", {
+      list: "Cafe",
+      items: [{ name: "Coffee", url }],
+    });
+    expect(added.isError).toBeFalsy();
+    const got = await callTool(client, "get_list", { list: "Cafe" });
+    expect(
+      (got.structuredContent.items as Json[]).find((i) => i.name === "Coffee"),
+    ).toMatchObject({ url });
+
+    const other = "https://example.com/decaf";
+    const set = await callTool(client, "update_item", {
+      list: "Cafe",
+      item: "coffee",
+      url: other,
+    });
+    expect(set.structuredContent).toMatchObject({ url: other });
+    const removed = await callTool(client, "update_item", {
+      list: "Cafe",
+      item: "coffee",
+      url: "",
+    });
+    expect(removed.structuredContent).toMatchObject({ url: "" });
+
+    // Only http and https: the app opens the link.
+    const bad = await callTool(client, "update_item", {
+      list: "Cafe",
+      item: "coffee",
+      url: "javascript:alert(1)",
+    });
+    expect(bad.isError).toBe(true);
+    const after = await callTool(client, "get_list", { list: "Cafe" });
+    expect(
+      (after.structuredContent.items as Json[]).find(
+        (i) => i.name === "Coffee",
+      ),
+    ).toMatchObject({ url: "" });
+  });
+
   it("unchecks all and clears checked items", async () => {
     await callTool(client, "check_items", {
       list: "Whole Foods",

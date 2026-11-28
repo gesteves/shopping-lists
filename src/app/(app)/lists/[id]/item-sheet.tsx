@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { itemHistory } from "@/client/format";
 import { useUsers } from "@/client/hooks";
 import { mutate } from "@/client/sync";
@@ -8,11 +8,13 @@ import { useMedia } from "@/client/use-media";
 import { copy } from "@/copy";
 import { ITEM_NAME_MAX, NOTES_MAX } from "@/shared/ops";
 import type { ItemRecord } from "@/shared/sync";
+import { URL_MAX, normalizeUrl } from "@/shared/url";
 import { Stepper } from "../../_components/stepper";
 import { useWaEvents } from "../../_components/wa";
 
 /**
- * Edit an item: name, quantity, and notes, with who added and changed it.
+ * Edit an item: name, quantity, URL (#140), and notes, with who added and
+ * changed it.
  * Move and Delete are in the menu of the row (#131), not here.
  * A bottom drawer on a phone, a dialog on a large screen. Neither focuses
  * the name field when it opens, so a phone does not open the keyboard.
@@ -28,6 +30,15 @@ export function ItemSheet({
   // Keep the last item while the sheet closes, so its content stays.
   const [shown, setShown] = useState(item);
   if (item && item !== shown) setShown(item);
+  // Each open gets a new form. Without this, a second open of the same item
+  // kept the form of the first open, and a save compared the fields with
+  // the old values (#140).
+  const [opens, setOpens] = useState(item ? 1 : 0);
+  const [open, setOpen] = useState(item !== null);
+  if ((item !== null) !== open) {
+    setOpen(item !== null);
+    if (item) setOpens(opens + 1);
+  }
 
   const ref = useWaEvents<HTMLElement>({
     "wa-after-hide": (event) => {
@@ -37,7 +48,7 @@ export function ItemSheet({
   });
 
   const content = shown && (
-    <SheetForm key={shown.id} item={shown} onDone={onClose} />
+    <SheetForm key={`${shown.id}:${opens}`} item={shown} onDone={onClose} />
   );
   return large ? (
     <wa-dialog
@@ -74,12 +85,35 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity);
   const [notes, setNotes] = useState(item.notes);
+  // A row from an older server has no url.
+  const [url, setUrl] = useState(item.url ?? "");
+  const urlField = useRef<{ reportValidity(): boolean } | null>(null);
+
+  /** Mark the URL field invalid, thus the form does not submit. */
+  function onUrlInput(event: Event) {
+    const field = event.target as HTMLInputElement;
+    setUrl(field.value);
+    field.setCustomValidity(
+      normalizeUrl(field.value) === undefined ? copy.itemSheet.urlInvalid : "",
+    );
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    const fields: { name?: string; quantity?: number; notes?: string } = {};
+    const link = normalizeUrl(url);
+    if (link === undefined) {
+      urlField.current?.reportValidity();
+      return;
+    }
+    const fields: {
+      name?: string;
+      quantity?: number;
+      notes?: string;
+      url?: string;
+    } = {};
     if (name.trim() && name.trim() !== initial.name) fields.name = name.trim();
     if (quantity !== initial.quantity) fields.quantity = quantity;
+    if (link !== (initial.url ?? "")) fields.url = link;
     if (notes.trim() !== initial.notes.trim()) fields.notes = notes.trim();
     if (Object.keys(fields).length > 0) {
       await mutate({ type: "updateItem", args: { itemId: item.id, fields } });
@@ -108,6 +142,26 @@ function SheetForm({ item, onDone }: { item: ItemRecord; onDone: () => void }) {
           label={copy.itemSheet.quantity}
         />
       </div>
+      <Field>
+        {/* Text with the URL keyboard, not type="url": the browser refuses a
+            URL with no scheme, and normalizeUrl adds https:// to it. */}
+        <wa-input
+          ref={(field) => {
+            urlField.current = field;
+          }}
+          label={copy.itemSheet.url}
+          placeholder={copy.itemSheet.urlPlaceholder}
+          value={url}
+          onInput={onUrlInput}
+          inputmode="url"
+          autocapitalize="off"
+          autocorrect={false}
+          spellcheck={false}
+          enterkeyhint="done"
+          maxlength={URL_MAX}
+          with-clear
+        ></wa-input>
+      </Field>
       <Field>
         <wa-textarea
           label={copy.itemSheet.notes}

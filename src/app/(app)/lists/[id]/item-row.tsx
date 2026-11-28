@@ -5,14 +5,16 @@ import { showToast } from "@/client/toasts";
 import { copy } from "@/copy";
 import { expiryVariant } from "@/shared/expiry";
 import type { ItemRecord } from "@/shared/sync";
+import { isWebUrl, urlHost } from "@/shared/url";
 import { EditingBadge } from "../../_components/presence";
 import { useWaEvents } from "../../_components/wa";
 import type { PickMode } from "./list-picker";
 
 /**
- * One item: a large target to check it, and a "…" menu (#131): Edit, Move,
- * Copy, Out of stock (or In stock), and Delete. An out-of-stock item has a
- * badge. A checked item is never out of stock, thus its menu has no stock
+ * One item: a large target to check it, and a "…" menu (#131): Edit, Visit
+ * page (only with a URL, #140), Move, Copy, Out of stock (or In stock), and
+ * Delete. An item with a URL shows its host below the notes. An
+ * out-of-stock item has a badge. A checked item is never out of stock, thus its menu has no stock
  * item. An older checked item (#112) has a badge with the days until its
  * automatic delete. The name and the notes wrap, also a long word or URL
  * (#129): no truncation.
@@ -35,6 +37,9 @@ export function ItemRow({
 }) {
   // A row from an older server has no outOfStockAt.
   const outOfStock = item.outOfStockAt != null;
+  // A row from an older server has no url. The server accepts only web
+  // URLs; check again before the app opens one.
+  const url = item.url && isWebUrl(item.url) ? item.url : undefined;
   // A checked row looks quiet: the muted text color, not opacity. Opacity on
   // the text, or on the row with the expiry badge, fails the contrast scan.
   const quiet = item.checked ? "text-ink-muted" : "";
@@ -78,6 +83,9 @@ export function ItemRow({
       const value = (event as CustomEvent<{ item: { value: string } }>).detail
         .item.value;
       if (value === "edit") onEdit(item);
+      // In the select event of the tap, thus the browser allows the tab.
+      if (value === "visit" && url)
+        window.open(url, "_blank", "noopener,noreferrer");
       if (value === "move" || value === "copy") onPick(item, value);
       if (value === "out-of-stock") void markOutOfStock();
       if (value === "in-stock")
@@ -131,6 +139,17 @@ export function ItemRow({
               {item.notes}
             </span>
           )}
+          {url && (
+            <span className="flex items-start gap-1.5 text-sm text-ink-muted">
+              <span className="inline-flex h-lh shrink-0 items-center">
+                <wa-icon name="link"></wa-icon>
+              </span>
+              <span className="min-w-0 wrap-anywhere">
+                <span className="sr-only">{copy.item.linkPrefix}</span>
+                {urlHost(url)}
+              </span>
+            </span>
+          )}
           {outOfStock && (
             <span className="mt-1">
               <wa-badge
@@ -170,6 +189,12 @@ export function ItemRow({
           <wa-icon slot="icon" name="pencil"></wa-icon>
           {copy.item.edit}
         </wa-dropdown-item>
+        {url && (
+          <wa-dropdown-item value="visit">
+            <wa-icon slot="icon" name="arrow-up-right-from-square"></wa-icon>
+            {copy.item.visitPage}
+          </wa-dropdown-item>
+        )}
         <wa-dropdown-item value="move" disabled={!canPick}>
           <wa-icon slot="icon" name="swap"></wa-icon>
           {copy.item.move}

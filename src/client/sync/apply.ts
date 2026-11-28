@@ -116,7 +116,7 @@ export function applyLocal(
       break;
     }
     case "addItem": {
-      const { itemId, listId, name, quantity, notes } = op.args;
+      const { itemId, listId, name, quantity, notes, url } = op.args;
       // The server rejects an add to a missing or deleted list.
       if (!liveList(listId) || state.items.has(itemId)) break;
       const key = nameKey(name);
@@ -136,6 +136,7 @@ export function applyLocal(
         name,
         quantity,
         notes,
+        url,
         checked: false,
         checkedAt: null,
         outOfStockAt: null,
@@ -154,8 +155,10 @@ export function applyLocal(
       if (!item) break;
       // An edit that changes the item also unchecks it (#112).
       const { fields } = op.args;
+      // A row from an older server has no url (#140): it is empty.
+      const before = { ...item, url: item.url ?? "" };
       const changes = (Object.keys(fields) as (keyof typeof fields)[]).some(
-        (key) => fields[key] !== undefined && fields[key] !== item[key],
+        (key) => fields[key] !== undefined && fields[key] !== before[key],
       );
       putItem({
         ...item,

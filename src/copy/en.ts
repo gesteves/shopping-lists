@@ -175,6 +175,10 @@ export const en = {
     /** The menu item, and the badge on the row. */
     outOfStock: "Out of stock",
     inStock: "In stock",
+    /** The menu item of an item with a URL (#140). It opens a new tab. */
+    visitPage: "Visit page",
+    /** Screen reader text before the host of the URL on the row. */
+    linkPrefix: "link to ",
     deleted: (name: string) => `Deleted ${q(name)}.`,
     moved: (name: string, list: string) =>
       `Moved ${q(name)} to the ${q(list)} list.`,
@@ -240,6 +244,9 @@ export const en = {
     title: "Edit item",
     name: "Name",
     quantity: "Quantity",
+    url: "URL",
+    urlPlaceholder: "For example, a link to the product page",
+    urlInvalid: "Enter a web address, for example store.com/milk.",
     notes: "Notes",
     /** The item went from the list (a delete or a move on another device). */
     gone: (name: string) => `${q(name)} isn’t on this list anymore.`,

@@ -24,8 +24,8 @@
 //     a different value. Updates that end at the first values → nothing
 //     (#133). More than one move → one move from the first list to the
 //     last list; a move back → nothing.
-//   - Delete an item, then add a new item with the same name, quantity, and
-//     notes to the same list → nothing (#133). The deleted item must not be
+//   - Delete an item, then add a new item with the same name, quantity,
+//     notes, and URL to the same list → nothing (#133). The deleted item must not be
 //     checked or out of stock, and its other changes in the burst must
 //     cancel out. The new item must end unchecked and in stock.
 //   - Create, then rename → "created" with the new name. Renames that end at
@@ -178,6 +178,7 @@ function stockChange(events: Event[]): Event | undefined {
 const VALUE_KEYS = [
   ["quantity", "oldQuantity"],
   ["notes", "oldNotes"],
+  ["url", "oldUrl"],
 ] as const;
 
 /**
@@ -291,14 +292,15 @@ interface ItemResult {
 /** The values of a new item at the end of the burst, if the rows tell them. */
 function addedValues(events: Event[]) {
   const add = events.find(isNewAdd)!;
-  let { quantity, notes } = add.snapshot;
+  let { quantity, notes, url } = add.snapshot;
   for (const e of events) {
     if (e.type !== "updateItem") continue;
     if (!e.snapshot.fields) return undefined;
     if (e.snapshot.fields.includes("quantity")) quantity = e.snapshot.quantity;
     if (e.snapshot.fields.includes("notes")) notes = e.snapshot.notes;
+    if (e.snapshot.fields.includes("url")) url = e.snapshot.url;
   }
-  return { quantity, notes };
+  return { quantity, notes, url };
 }
 
 const PRESENCE_TYPES = new Set<OpType>([
@@ -329,8 +331,9 @@ function onlyDeleted(events: Event[]): boolean {
 /**
  * Delete an item, then add the same item again → nothing (#133). The
  * deleted item had no other change that is left, and was not checked and
- * not out of stock. The new item ends with the same name, quantity, and
- * notes, on the same list, unchecked and in stock.
+ * not out of stock. The new item ends with the same name, quantity, notes,
+ * and URL, on the same list, unchecked and in stock. A row from before
+ * #140 has no URL: it counts as no link.
  */
 function cancelAddsAgain(results: ItemResult[]) {
   const deletes = results.filter(({ events }) => onlyDeleted(events));
@@ -345,7 +348,8 @@ function cancelAddsAgain(results: ItemResult[]) {
         e.listId === event.listId &&
         e.snapshot.itemName === event.snapshot.itemName &&
         e.snapshot.quantity === values.quantity &&
-        e.snapshot.notes === values.notes
+        e.snapshot.notes === values.notes &&
+        (e.snapshot.url ?? "") === (values.url ?? "")
       );
     });
     if (match === -1) continue;

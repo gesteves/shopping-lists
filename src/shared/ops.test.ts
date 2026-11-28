@@ -11,6 +11,7 @@ import {
   type OpInput,
   type OpType,
 } from "./ops";
+import { URL_MAX } from "./url";
 
 const CLIENT = "5b0c5c8e-4c1e-4f7a-9d55-2f0f1c4b9a10";
 const OTHER = "0d3f6f2a-8b7e-4c1d-a2b9-6e5c4d3b2a19";
@@ -72,12 +73,20 @@ const INVALID: Record<OpType, unknown[]> = {
       name: "Milk",
       notes: "x".repeat(NOTES_MAX + 1),
     },
+    { itemId: ITEM, listId: LIST, name: "Milk", url: "javascript:alert(1)" },
+    { itemId: ITEM, listId: LIST, name: "Milk", url: "example.com" },
     { itemId: ITEM, listId: LIST, name: "Milk", checked: true },
   ],
   updateItem: [
     { itemId: ITEM, fields: {} },
     { itemId: ITEM, fields: { name: " " } },
     { itemId: ITEM, fields: { checked: true } },
+    { itemId: ITEM, fields: { url: "ftp://example.com/milk" } },
+    { itemId: ITEM, fields: { url: "data:text/html,hi" } },
+    {
+      itemId: ITEM,
+      fields: { url: `https://example.com/${"x".repeat(URL_MAX)}` },
+    },
     { itemId: ITEM },
   ],
   check: [{}, { itemId: ITEM, listId: LIST }],
@@ -173,6 +182,7 @@ describe("op parse output", () => {
       name: "Eggs",
       quantity: 1,
       notes: "",
+      url: "",
     });
   });
 
