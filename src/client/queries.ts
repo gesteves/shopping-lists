@@ -3,7 +3,7 @@ import { copy } from "@/copy";
 import { expiresAt, isOlder } from "@/shared/expiry";
 import { SUMMARY_MIN_ITEMS } from "@/shared/summary";
 import type { ItemRecord, ListRecord } from "@/shared/sync";
-import type { ClientDb } from "./db";
+import { getMeta, type ClientDb } from "./db";
 
 /** The lists that are not deleted, by name. */
 export async function readLists(db: ClientDb): Promise<ListRecord[]> {
@@ -74,6 +74,8 @@ export async function readList(
 export interface ListSummary extends ListRecord {
   /** Items that are not checked and not deleted. */
   remaining: number;
+  /** Items that are not deleted, checked or not. */
+  total: number;
   /**
    * The names of the unchecked items, in list order, when there are fewer
    * than SUMMARY_MIN_ITEMS (thus one name). Else empty.
@@ -82,23 +84,25 @@ export interface ListSummary extends ListRecord {
 }
 
 /**
- * The lists that are not deleted, by name, each with its unchecked count
- * and, for a short list, the names.
+ * The lists that are not deleted, by name, each with its unchecked count,
+ * its item count, and, for a short list, the names.
  */
 export async function readListSummaries(db: ClientDb): Promise<ListSummary[]> {
   const [lists, items] = await Promise.all([
     readLists(db),
-    db.items.filter((i) => i.deletedAt === null && !i.checked).toArray(),
+    db.items.filter((i) => i.deletedAt === null).toArray(),
   ]);
   const byList = new Map<string, ItemRecord[]>();
   for (const item of items) {
     byList.set(item.listId, [...(byList.get(item.listId) ?? []), item]);
   }
   return lists.map((list) => {
-    const unchecked = byList.get(list.id) ?? [];
+    const all = byList.get(list.id) ?? [];
+    const unchecked = all.filter((i) => !i.checked);
     return {
       ...list,
       remaining: unchecked.length,
+      total: all.length,
       names:
         unchecked.length < SUMMARY_MIN_ITEMS
           ? sortItems(unchecked).map((i) => i.name)
@@ -115,4 +119,16 @@ export function listLine(list: ListSummary): string {
   if (list.remaining === 0) return copy.lists.nothingToGet;
   if (list.remaining < SUMMARY_MIN_ITEMS) return copy.lists.names(list.names);
   return list.summary ?? copy.lists.remaining(list.remaining);
+}
+
+/** The names of the users other than the signed-in user, by name. */
+export async function readOtherUserNames(db: ClientDb): Promise<string[]> {
+  const [me, users] = await Promise.all([
+    getMeta(db, "userId"),
+    db.users.toArray(),
+  ]);
+  return users
+    .filter((u) => u.id !== me)
+    .map((u) => u.name)
+    .sort((a, b) => a.localeCompare(b));
 }

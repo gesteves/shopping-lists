@@ -65,10 +65,22 @@ describe("the dictionary", () => {
     expect(copy.settings.testSent(2)).toBe(
       "Sent a test notification to 2 devices.",
     );
-    expect(copy.lists.deleteBody(1)).toBe(
-      "It has 1 item to get. The other person loses it too.",
+    expect(copy.lists.deleteBody(0, ["Sam"])).toBe(
+      "It’ll be deleted for Sam too.",
     );
-    expect(copy.lists.deleteBody(0)).toBe("The other person loses it too.");
+    expect(copy.lists.deleteBody(1, ["Sam"])).toBe(
+      "It has 1 item. It’ll be deleted for Sam too.",
+    );
+    expect(copy.lists.deleteBody(3, ["Sam", "Alex"])).toBe(
+      "It has 3 items. They’ll be deleted for Sam and Alex too.",
+    );
+    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jo"])).toBe(
+      "It has 3 items. They’ll be deleted for Sam, Alex, and Jo too.",
+    );
+    expect(copy.lists.deleteBody(3, ["Sam", "Alex", "Jo", "Kim"])).toBe(
+      "It has 3 items. They’ll be deleted for everyone.",
+    );
+    expect(copy.lists.deleteBody(0, [])).toBe("It’ll be deleted.");
     expect(copy.push.burst("Sam", 2, 1, "Costco")).toBe(
       "Sam made 2 changes to the “Costco” list.",
     );

@@ -132,10 +132,21 @@ export const en = {
     renameLabel: (name: string) => `New name for ${q(name)}`,
     deleteTitle: (name: string) => `Delete the ${q(name)} list?`,
     deleteConfirm: "Delete list",
-    deleteBody: (remaining: number) =>
-      remaining > 0
-        ? `It has ${items(remaining)} to get. The other person loses it too.`
-        : "The other person loses it too.",
+    /**
+     * `total` counts all the items of the list, checked or not. `others` are
+     * the names of the other users. More than three become "everyone".
+     */
+    deleteBody: (total: number, others: string[]) => {
+      const who =
+        others.length === 0
+          ? ""
+          : others.length > 3
+            ? " for everyone"
+            : ` for ${andList.format(others)} too`;
+      return total > 0
+        ? `It has ${items(total)}. ${plural(total, { one: "It’ll", other: "They’ll" })} be deleted${who}.`
+        : `It’ll be deleted${who}.`;
+    },
     deleted: (name: string) => `Deleted the ${q(name)} list.`,
   },
 

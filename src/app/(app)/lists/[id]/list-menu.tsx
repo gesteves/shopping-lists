@@ -21,7 +21,6 @@ export function ListHeader({ view }: { view: ListView }) {
   const [deleting, setDeleting] = useState(false);
   const checked = items.filter((i) => i.checked).map((i) => i.id);
   const unchecked = items.filter((i) => !i.checked).map((i) => i.id);
-  const remaining = unchecked.length;
 
   async function checkAll() {
     await mutate({ type: "checkAll", args: { listId: list.id } });
@@ -136,7 +135,7 @@ export function ListHeader({ view }: { view: ListView }) {
       </ConfirmDialog>
       <DeleteDialog
         open={deleting}
-        list={{ ...list, remaining }}
+        list={{ ...list, total: items.length }}
         onClose={() => setDeleting(false)}
         onDeleted={() => router.push("/")}
       />

@@ -10,6 +10,7 @@ import {
   readList,
   readListSummaries,
   readLists,
+  readOtherUserNames,
   type ListSummary,
   type ListView,
 } from "./queries";
@@ -58,6 +59,11 @@ export function useUsers(): Map<string, UserRecord> | undefined {
       new Map((await getClientDb().users.toArray()).map((u) => [u.id, u])),
     [],
   );
+}
+
+/** The names of the other users, by name. */
+export function useOtherUserNames(): string[] | undefined {
+  return useLiveQuery(() => readOtherUserNames(getClientDb()), []);
 }
 
 const SERVER_STATUS: SyncStatus = { state: "idle", lastSyncAt: null };
