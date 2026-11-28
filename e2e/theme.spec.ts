@@ -63,7 +63,10 @@ test("light and dark have different colors and pass the contrast scan", async ({
         ).toEqual([]);
 
         const shot = testInfo.outputPath(`${route}-${colorScheme}.png`);
-        await page.screenshot({ path: shot, fullPage: true });
+        // Not the full page: the e2e tests share the lists, thus the list
+        // page gets long. On the phone (3x), it was more than the limit of
+        // 32767 pixels.
+        await page.screenshot({ path: shot });
         await testInfo.attach(`${route}-${colorScheme}`, {
           path: shot,
           contentType: "image/png",

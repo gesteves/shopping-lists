@@ -55,24 +55,41 @@ test("a change from one person shows up for the other at once", async ({
 
     // A creates a list through the sync API, as the app does.
     const clientId = randomUUID();
-    const name = `Realtime ${testInfo.project.name} ${randomUUID().slice(0, 8)}`;
-    const push = await a.request.post("/api/sync/push", {
-      data: {
-        clientId,
-        ops: [
-          {
-            opId: randomUUID(),
-            clientId,
-            hlc: serialize({ wall: Date.now(), counter: 0, node: clientId }),
-            type: "createList",
-            args: { listId: randomUUID(), name },
-          },
-        ],
-      },
-    });
-    expect(push.status()).toBe(200);
+    let counter = 0;
+    async function createList() {
+      const name = `Realtime ${testInfo.project.name} ${randomUUID().slice(0, 8)}`;
+      const push = await a.request.post("/api/sync/push", {
+        data: {
+          clientId,
+          ops: [
+            {
+              opId: randomUUID(),
+              clientId,
+              hlc: serialize({
+                wall: Date.now(),
+                counter: counter++,
+                node: clientId,
+              }),
+              type: "createList",
+              args: { listId: randomUUID(), name },
+            },
+          ],
+        },
+      });
+      expect(push.status()).toBe(200);
+      return name;
+    }
+
+    // First, B finishes its first sync. All the e2e tests use the same
+    // lists, thus on a slow CI machine the first sync can take more than
+    // the time of the check below.
+    const first = await createList();
+    await expect
+      .poll(() => localListNames(b), { timeout: 15_000 })
+      .toContain(first);
 
     // B gets a poke, syncs, and has the list. No reload.
+    const name = await createList();
     await expect
       .poll(() => localListNames(b), { timeout: 2000, intervals: [100] })
       .toContain(name);
