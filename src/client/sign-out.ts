@@ -2,6 +2,7 @@
 // thus the next person on this device gets no data, no pages, and no pushes
 // of the last user.
 import { CLEAR_PAGES_MESSAGE } from "@/shared/offline";
+import { clearAppBadge } from "./badge";
 import type { SubscriptionInfo } from "@/shared/push";
 import { getClientDb } from "./db";
 import { reportError } from "./report";
@@ -90,13 +91,14 @@ export async function syncBeforeSignOut(): Promise<number> {
 }
 
 /**
- * Stop sync, then delete the push subscription, the cached pages, and the
- * local data. Call syncBeforeSignOut() first. The device keeps its client
+ * Stop sync, then delete the push subscription, the app icon badge (#161),
+ * the cached pages, and the local data. Call syncBeforeSignOut() first. The device keeps its client
  * ID and its clock.
  */
 export async function clearDeviceForSignOut(): Promise<void> {
   stopSync();
   await step("push", removePush);
+  await clearAppBadge();
   await step("caches", clearPageCaches);
   await step("data", () => clearForSignOut(getClientDb()));
 }

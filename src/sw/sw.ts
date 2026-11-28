@@ -11,6 +11,7 @@ import type {
 } from "serwist";
 import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { copy } from "../copy";
+import { addToBadge } from "../shared/badge";
 import { CLEAR_PAGES_MESSAGE, LIST_SHELL_PATH } from "../shared/offline";
 import { openUrl, targetUrl } from "./open-url";
 import {
@@ -197,15 +198,36 @@ self.addEventListener("push", (event) => {
     data = { body: event.data?.text() };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || copy.push.title, {
-      body: data.body ?? "",
-      tag: data.tag,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      data: { url: data.url },
-    }),
+    Promise.all([
+      self.registration.showNotification(data.title || copy.push.title, {
+        body: data.body ?? "",
+        tag: data.tag,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        data: { url: data.url },
+      }),
+      countUnseen(),
+    ]),
   );
 });
+
+/**
+ * The app icon badge (#161, src/shared/badge.ts). A push counts only if no
+ * window of the app is visible: else the user sees the change already.
+ * A badge failure must not stop the notification.
+ */
+async function countUnseen() {
+  try {
+    const windows = await self.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true,
+    });
+    if (windows.some((w) => w.visibilityState === "visible")) return;
+    await addToBadge(caches, self.navigator);
+  } catch {
+    // No badge this time. The notification still shows.
+  }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
