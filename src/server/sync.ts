@@ -11,6 +11,7 @@ import {
   type PushResponse,
 } from "@/shared/sync";
 import { readJson } from "./json";
+import { log } from "./log";
 import { applyOps, type Actor, type ApplyOptions } from "./ops";
 import { readChanges, readSeqState, readUsers } from "./queries";
 import { summaryWorkerRunning } from "./summary/worker";
@@ -44,6 +45,7 @@ export async function handlePush(
   actor: Actor,
   options: ApplyOptions = {},
 ): Promise<Response> {
+  const started = performance.now();
   const body = await readJson(request, pushRequestSchema, {
     maxBytes: MAX_PUSH_BYTES,
   });
@@ -53,7 +55,41 @@ export async function handlePush(
     ...applyOps(actor, "app", body.data.ops, options),
     now: (options.now ?? Date.now)(),
   };
+  log.info("sync", "push", {
+    user: actor.id,
+    client: body.data.clientId,
+    ...countResults(result.results),
+    seq: result.seq,
+    ms: Math.round(performance.now() - started),
+  });
   return json(result);
+}
+
+/** The counts of a push, and the reject reasons as `reason:count` pairs. */
+export function countResults(results: PushResponse["results"]) {
+  const reasons = new Map<string, number>();
+  let applied = 0;
+  let duplicate = 0;
+  for (const r of results) {
+    if (r.status === "duplicate") duplicate++;
+    else if (r.status === "rejected") {
+      reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + 1);
+    } else applied++;
+  }
+  const rejected = results.length - applied - duplicate;
+  return {
+    ops: results.length,
+    applied,
+    duplicate,
+    rejected,
+    reasons:
+      rejected > 0
+        ? [...reasons]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([reason, n]) => `${reason}:${n}`)
+            .join(",")
+        : undefined,
+  };
 }
 
 /**
@@ -79,9 +115,19 @@ export function handlePull(
   const parsed = pullQuerySchema.safeParse(
     Object.fromEntries(url.searchParams),
   );
-  if (!parsed.success) return badRequest(parsed.error);
+  if (!parsed.success) {
+    log.warn("request", "refused", {
+      route: url.pathname,
+      status: 400,
+      reason: "invalid_request",
+      issues: parsed.error.issues.length,
+    });
+    return badRequest(parsed.error);
+  }
   const { since, seen, limit } = parsed.data;
+  const started = performance.now();
 
+  let resetCause: "ahead" | "purged" | undefined;
   // better-sqlite3 is synchronous, thus no write can come between the reads.
   // The transaction makes this explicit.
   const body = db.transaction((tx): PullResponse => {
@@ -90,7 +136,11 @@ export function handlePull(
       since > 0 &&
       since < state.purgedSeq &&
       (seen === undefined || seen < state.purgedSeq);
-    const reset = since > state.seq || purged;
+    // Two causes: the cursor is after the last seq (the server database
+    // is older than the client, for example after a restore), or before
+    // the last purge.
+    resetCause = since > state.seq ? "ahead" : purged ? "purged" : undefined;
+    const reset = resetCause !== undefined;
     const from = reset ? 0 : since;
     const changes = readChanges(from, limit, userId, tx);
     return {
@@ -109,5 +159,20 @@ export function handlePull(
       summaries: options.summaries ?? summaryWorkerRunning(),
     };
   });
+  // A pull with no changes is routine: each poke and each focus makes one.
+  const fields = {
+    user: userId,
+    since,
+    cursor: body.cursor,
+    lists: body.lists.length,
+    items: body.items.length,
+    more: body.hasMore,
+    reset: resetCause,
+    ms: Math.round(performance.now() - started),
+  };
+  if (resetCause === "ahead") log.warn("sync", "pull", fields);
+  else if (resetCause || body.lists.length > 0 || body.items.length > 0) {
+    log.info("sync", "pull", fields);
+  } else log.debug("sync", "pull", fields);
   return json(body);
 }

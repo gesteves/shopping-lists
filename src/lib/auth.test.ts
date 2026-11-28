@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openDatabase, type Db } from "@/db/client";
 import { runMigrations } from "@/db/migrate";
 import { users } from "@/db/schema";
@@ -111,6 +111,25 @@ describe("sign-in", () => {
       headers: new Headers({ cookie: cookie!.split(";")[0] }),
     });
     expect(session?.user.email).toBe("allowed@example.com");
+  });
+
+  it("logs a refusal and a sign-in with no email (#147)", async () => {
+    const { captureLogs } = await import("@/test/logs");
+    const logs = captureLogs();
+    try {
+      await stubSignIn(auth, "other@example.com");
+      await stubSignIn(auth, "allowed@example.com");
+      const userId = db.select().from(users).get()!.id;
+      expect(logs.lines).toEqual(
+        expect.arrayContaining([
+          "warn [auth] refused reason=email_not_allowed",
+          `info [auth] sign-in user=${userId}`,
+        ]),
+      );
+      expect(logs.text()).not.toContain("@example.com");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("rejects a known user who is no longer in the allowlist", async () => {

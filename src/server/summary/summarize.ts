@@ -8,7 +8,8 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prompts } from "@/prompts";
 import type { SummaryItem } from "@/shared/summary";
-import { logClaudeError, logClaudeResponse } from "../claude-log";
+import { requestStructured } from "../claude";
+import { log } from "../log";
 import { FALLBACK_BETA, MODEL, cleanLine } from "../notify/summarize";
 
 /** The server cuts at this. It is more than `prompts.listSummary.length`. */
@@ -56,37 +57,28 @@ export function createListSummarizer(
   if (!client) return null;
 
   return async (listName, items) => {
-    const started = Date.now();
-    try {
-      const response = await client.beta.messages.parse({
-        model: MODEL,
-        // Thinking is always on and counts toward this limit.
-        max_tokens: 4000,
-        betas: [FALLBACK_BETA],
-        fallbacks: "default",
-        output_config: {
-          effort: "low",
-          format: betaZodOutputFormat(Summary),
+    const result = await requestStructured(client, "list-summary", {
+      model: MODEL,
+      // Thinking is always on and counts toward this limit.
+      max_tokens: 4000,
+      betas: [FALLBACK_BETA],
+      fallbacks: "default",
+      output_config: {
+        effort: "low",
+        format: betaZodOutputFormat(Summary),
+      },
+      system: prompts.listSummary.system,
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(summaryInput(listName, items)),
         },
-        system: prompts.listSummary.system,
-        messages: [
-          {
-            role: "user",
-            content: JSON.stringify(summaryInput(listName, items)),
-          },
-        ],
-      });
-      logClaudeResponse("list summary", Date.now() - started, response);
-      // A refusal (also after the fallback model), a cut answer, or JSON
-      // that did not parse.
-      if (response.stop_reason !== "end_turn" || !response.parsed_output) {
-        console.warn("List summary not used:", response.stop_reason);
-        return null;
-      }
-      return cleanLine(response.parsed_output.summary, MAX_SUMMARY) || null;
-    } catch (error) {
-      logClaudeError("list summary", Date.now() - started, error);
-      return null;
-    }
+      ],
+    });
+    const summary =
+      result.output && cleanLine(result.output.summary, MAX_SUMMARY);
+    if (summary) return summary;
+    log.warn("summary", "not used", { reason: result.reason ?? "empty" });
+    return null;
   };
 }

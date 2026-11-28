@@ -7,6 +7,7 @@ import { nameKey } from "@/shared/names";
 import type { Op } from "@/shared/ops";
 import { getClientDb } from "./db";
 import { mutate } from "./sync";
+import { reportError } from "./report";
 
 export interface RecreateItem {
   name: string;
@@ -177,7 +178,10 @@ export class RecreateGroups {
     this.#pending.clear();
     this.#chain = this.#chain
       .then(() => this.#show(groups))
-      .catch((error: unknown) => console.error(error));
+      .catch((error: unknown) => {
+        console.error(error);
+        reportError("recreate", error);
+      });
     return this.#chain;
   }
 

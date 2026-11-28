@@ -68,6 +68,11 @@ export interface SyncEngineOptions {
   isOnline?: () => boolean;
   /** A request that takes longer fails as a network error. */
   timeoutMs?: number;
+  /**
+   * Called for the first failure after a success, online (#147). Not for a
+   * 401: the session ended.
+   */
+  onError?: (error: unknown) => void;
 }
 
 class UnauthorizedError extends Error {}
@@ -121,6 +126,7 @@ export class SyncEngine {
   readonly #timers: Timers;
   readonly #isOnline: () => boolean;
   readonly #timeoutMs: number;
+  readonly #onError: ((error: unknown) => void) | undefined;
 
   #status: SyncStatus = { state: "idle", lastSyncAt: null };
   #listeners = new Set<() => void>();
@@ -141,6 +147,7 @@ export class SyncEngine {
       options.isOnline ??
       (() => typeof navigator === "undefined" || navigator.onLine !== false);
     this.#timeoutMs = options.timeoutMs ?? 30_000;
+    this.#onError = options.onError;
   }
 
   // Status, for useSyncExternalStore. The object changes at each update.
@@ -268,6 +275,13 @@ export class SyncEngine {
         return false;
       }
       this.#failures++;
+      if (this.#failures === 1 && this.#isOnline()) {
+        try {
+          this.#onError?.(error);
+        } catch {
+          // A report never stops the sync.
+        }
+      }
       const wait = Math.min(
         this.#maxBackoffMs,
         this.#backoffMs * 2 ** (this.#failures - 1),

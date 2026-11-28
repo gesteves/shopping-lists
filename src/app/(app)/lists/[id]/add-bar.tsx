@@ -21,6 +21,7 @@ import { checkedFields, type Entry } from "@/client/duplicate";
 import { Stepper } from "../../_components/stepper";
 import { UrlField, type UrlFieldHandle } from "../../_components/url-field";
 import { ConfirmDialog } from "../../_components/wa";
+import { reportError } from "@/client/report";
 
 /**
  * The add bar at the bottom of a list. The name is required. The quantity,
@@ -128,6 +129,7 @@ export function AddBar({
       for (const request of requests) await mutate(request);
     } catch (error) {
       console.error(error);
+      reportError("add", error);
       // Plain, like the toasts of the changes that the server refused.
       showToast({ message: copy.addBar.failed(entry.name.trim()) });
     }

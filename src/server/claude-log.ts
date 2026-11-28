@@ -3,8 +3,10 @@
 // list names and no item names.
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { log } from "./log";
 
-type Response = Anthropic.Beta.BetaMessage & { _request_id?: string | null };
+/** What the request is for. */
+export type ClaudeFor = "push-text" | "list-summary";
 
 /**
  * Log a request that gave a response. `ms` includes the retry of the SDK
@@ -12,36 +14,40 @@ type Response = Anthropic.Beta.BetaMessage & { _request_id?: string | null };
  * a `fallback_message` iteration.
  */
 export function logClaudeResponse(
-  label: string,
+  label: ClaudeFor,
   ms: number,
-  response: Response,
+  response: Anthropic.Beta.BetaMessage,
+  requestId: string | null | undefined,
 ) {
-  // A log line never makes the request fail.
-  try {
-    const usage = response.usage as Response["usage"] | undefined;
-    const fallback = (usage?.iterations ?? []).some(
-      (i) => i.type === "fallback_message",
-    );
-    console.info(
-      `[claude] ${label} ms=${ms} model=${response.model ?? "-"}` +
-        `${fallback ? " fallback=yes" : ""} stop=${response.stop_reason}` +
-        ` in=${usage?.input_tokens ?? "-"} out=${usage?.output_tokens ?? "-"}` +
-        ` request=${response._request_id ?? "-"}`,
-    );
-  } catch {
-    console.info(`[claude] ${label} ms=${ms}`);
-  }
+  const usage = response.usage as
+    Anthropic.Beta.BetaMessage["usage"] | undefined;
+  const fallback = (usage?.iterations ?? []).some(
+    (i) => i.type === "fallback_message",
+  );
+  log.info("claude", "response", {
+    for: label,
+    ms,
+    model: response.model ?? "-",
+    fallback: fallback ? "yes" : undefined,
+    stop: response.stop_reason,
+    in: usage?.input_tokens ?? "-",
+    out: usage?.output_tokens ?? "-",
+    request: requestId ?? "-",
+  });
 }
 
 /** Log a request that failed: a timeout, an API error, or another error. */
-export function logClaudeError(label: string, ms: number, error: unknown) {
-  const detail =
+export function logClaudeError(label: ClaudeFor, ms: number, error: unknown) {
+  const fields =
     error instanceof Anthropic.APIConnectionTimeoutError
-      ? "timeout"
+      ? { reason: "timeout" }
       : error instanceof Anthropic.APIError
-        ? `status=${error.status} request=${error.requestID ?? "-"}`
-        : error instanceof Error
-          ? error.name
-          : "unknown";
-  console.warn(`[claude] ${label} failed ms=${ms} ${detail}`);
+        ? {
+            reason: "api",
+            status: error.status,
+            request: error.requestID ?? "-",
+          }
+        : { reason: "other" };
+  // The name only: an error message can have the text of the request.
+  log.warn("claude", "failed", { for: label, ms, ...fields }, error);
 }

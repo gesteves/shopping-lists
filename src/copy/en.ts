@@ -116,6 +116,13 @@ export const en = {
     message: "A new version of the app is ready.",
   },
 
+  /** The error boundary of the app (#147). */
+  pageError: {
+    message:
+      "This page stopped working. Your lists and changes are still on this device.",
+    retry: "Try again",
+  },
+
   lists: {
     heading: "Lists",
     /** The label of the sidebar on a large screen. */

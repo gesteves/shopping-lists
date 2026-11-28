@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { createTestDb } from "@/test/db";
-import { healthResponse } from "./health";
+import { captureLogs } from "@/test/logs";
+import { healthResponse, resetHealthState } from "./health";
 import {
   MAX_LAG_MS,
   ReplicationMonitor,
@@ -156,5 +157,37 @@ describe("healthResponse", () => {
     db.$client.close();
     expect((await healthResponse({ db })).status).toBe(503);
     db = createTestDb();
+  });
+});
+
+describe("health log (#147)", () => {
+  afterEach(() => {
+    resetHealthState();
+    vi.restoreAllMocks();
+  });
+
+  it("logs only a change of state", async () => {
+    resetHealthState();
+    const logs = captureLogs();
+    const db = createTestDb();
+    let status: { ok: false; reason: "no_metrics" } | null = {
+      ok: false,
+      reason: "no_metrics",
+    };
+    const full = () =>
+      healthResponse({ db, replication: true, status: async () => status });
+    await full();
+    await full();
+    await healthResponse({ db });
+    status = null;
+    await full();
+    await full();
+    db.$client.close();
+    await healthResponse({ db });
+    expect(logs.lines).toEqual([
+      "warn [health] down check=full reason=no_metrics",
+      "info [health] up check=full",
+      "warn [health] down check=live reason=db err=TypeError",
+    ]);
   });
 });

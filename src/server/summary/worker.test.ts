@@ -1,3 +1,4 @@
+import { captureLogs } from "@/test/logs";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/db/client";
@@ -127,7 +128,8 @@ describe("SummaryWorker", () => {
   });
 
   it("logs the wait and the time of the request, with no names", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.stubEnv("LOG_LEVEL", "debug");
+    const logs = captureLogs();
     const w = new SummaryWorker({
       db,
       now: () => now,
@@ -139,13 +141,13 @@ describe("SummaryWorker", () => {
     await seed(w);
     now += QUIET_MS;
     await w.tick();
-    const lines = info.mock.calls.map((c) => String(c[0]));
-    expect(lines).toEqual([
-      `[summary] list=${LIST} items changed, waiting`,
-      `[summary] list=${LIST} items=4 ready=quiet wait=15.0s claude=2.5s total=17.5s written`,
+    expect(logs.lines).toEqual([
+      `debug [summary] waiting list=${LIST}`,
+      `info [summary] done list=${LIST} items=4 ready=quiet wait=15.0s claude=2.5s total=17.5s result=written`,
     ]);
-    expect(lines.join("\n")).not.toMatch(/JojaMart|Milk/);
-    info.mockRestore();
+    expect(logs.text()).not.toMatch(/JojaMart|Milk/);
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("waits until the items are quiet for 15 s, then writes the summary", async () => {

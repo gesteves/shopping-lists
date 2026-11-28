@@ -12,6 +12,17 @@ Steps for the owner and for agents. The app name and the host are not in this fi
 
 **Never run the normal entrypoint on a second machine.** It runs `litestream replicate`, and two replicas that write to the same R2 path damage the backup. The machine count in `fly.toml` is one for this reason.
 
+## Logs
+
+The format, the levels, and the privacy rules are in "Logging" in `docs/PLAN.md` (#147).
+
+- Read the logs: `fly logs -a "$FLY_APP"`. Add `--no-tail` for the recent lines only.
+- Only the problems: `fly logs -a "$FLY_APP" | grep -E ' (warn|error) \['`.
+- One area: `fly logs -a "$FLY_APP" | grep '\[sync\]'`. The areas: `boot sync events presence auth mcp push notify summary claude purge health request client`.
+- After a deploy or a restart, the first line of the app is `info [boot] start version=<commit>`.
+- More detail: `fly secrets set LOG_LEVEL=debug -a "$FLY_APP"`. This restarts the machine. Set it back with `fly secrets unset LOG_LEVEL -a "$FLY_APP"`.
+- Litestream logs only warnings and errors (`litestream.yml`).
+
 ## Restore drill
 
 Do it after a change to the database setup, to Litestream, or to R2, and at least each quarter. The drill only reads from R2. It does not use the volume and does not change the live app.

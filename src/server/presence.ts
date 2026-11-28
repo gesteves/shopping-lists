@@ -8,6 +8,7 @@ import {
   type PresenceSnapshot,
 } from "@/shared/presence";
 import { bus } from "./bus";
+import { log } from "./log";
 
 /** How often the store removes expired entries. */
 const SWEEP_MS = 5_000;
@@ -58,6 +59,11 @@ export class PresenceStore {
       before?.listId !== input.listId ||
       before?.editingItemId !== input.editingItemId
     ) {
+      log.debug("presence", "set", {
+        user: userId,
+        client: input.clientId,
+        list: input.listId,
+      });
       this.#broadcast();
     }
   }
@@ -69,6 +75,7 @@ export class PresenceStore {
       .sort(([, a], [, b]) => a.expiresAt - b.expiresAt);
     while (devices.length >= MAX_DEVICES_PER_USER) {
       this.#entries.delete(devices.shift()![0]);
+      log.debug("presence", "evicted", { user: userId });
     }
   }
 

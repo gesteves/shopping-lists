@@ -24,6 +24,7 @@ import type { HlcClock } from "@/shared/hlc";
 import { DAY_MS } from "@/shared/expiry";
 import { bus } from "./bus";
 import { getServerClock } from "./clock";
+import { log } from "./log";
 import { expireCheckedItems, tombstoneItems } from "./ops";
 
 /** Delete tombstones after this many days. */
@@ -181,12 +182,20 @@ export function purgeTombstones(
 export function runPurge(
   purge: (days: number) => PurgeResult = purgeTombstones,
 ): PurgeResult | null {
+  const started = performance.now();
   try {
     const result = purge(PURGE_AFTER_DAYS);
-    console.log("Purged tombstones:", JSON.stringify(result));
+    log.info("purge", "tombstones", {
+      lists: result.lists,
+      items: result.items,
+      ops: result.processedOps,
+      tombstoned: result.tombstoned,
+      seq: result.purgedSeq,
+      ms: Math.round(performance.now() - started),
+    });
     return result;
   } catch (error) {
-    console.error("Purge failed:", error);
+    log.error("purge", "tombstones failed", {}, error);
     return null;
   }
 }
@@ -200,10 +209,11 @@ export function runExpiry(
 ): number | null {
   try {
     const count = expire();
-    console.log("Expired checked items:", count);
+    // Each hour: a line only when items expired.
+    (count > 0 ? log.info : log.debug)("purge", "expired", { count });
     return count;
   } catch (error) {
-    console.error("Expiry failed:", error);
+    log.error("purge", "expiry failed", {}, error);
     return null;
   }
 }

@@ -5,11 +5,12 @@ import { mcp } from "@better-auth/mcp";
 import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { jwt } from "better-auth/plugins";
 import { getDb, type Db } from "@/db/client";
 import * as schema from "@/db/schema";
+import { log, scrub } from "@/server/log";
 import { isAllowedEmail } from "./allowlist";
 import { EMAIL_NOT_ALLOWED } from "./auth-errors";
 import { authStub, authStubEnabled } from "./auth-stub";
@@ -64,16 +65,38 @@ export function createAuth(
     user: {
       // Runs before a user row is made, and again at each Google sign-in.
       validateUserInfo: ({ user, source }) => {
-        if (source.method !== "oauth" || source.oauth?.providerId !== "google")
+        // No email in the log: the reason only.
+        if (
+          source.method !== "oauth" ||
+          source.oauth?.providerId !== "google"
+        ) {
+          log.warn("auth", "refused", { reason: "method_not_allowed" });
           return { error: "method_not_allowed" };
+        }
         if (
           user.emailVerified !== true ||
           !isAllowedEmail(user.email, env.ALLOWED_EMAILS)
-        )
+        ) {
+          log.warn("auth", "refused", {
+            reason:
+              user.emailVerified !== true
+                ? "email_not_verified"
+                : "email_not_allowed",
+          });
           return {
             error: EMAIL_NOT_ALLOWED,
             errorDescription: "This account cannot use this app.",
           };
+        }
+      },
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          after: async (session) => {
+            log.info("auth", "sign-in", { user: session.userId });
+          },
+        },
       },
     },
     session: {
@@ -88,10 +111,17 @@ export function createAuth(
     },
     onAPIError: { errorURL: "/sign-in" },
     telemetry: { enabled: false },
+    // The lines of Better Auth go to the app log. Its extra values can
+    // have user data, thus only the message goes, with no emails.
+    logger: {
+      level: "warn",
+      log: (level, message) =>
+        log[level]("auth", "better-auth", { msg: scrub(message) }),
+    },
     // The limit is for each IP, and all the e2e requests come from one IP.
     // Parallel tests then get 429. The stub is never on in production.
     ...(authStubEnabled(env) && { rateLimit: { enabled: false } }),
-    hooks: { before: beforeHook(env) },
+    hooks: { before: beforeHook(env), after: afterHook },
     plugins: [
       ...(authStubEnabled(env) ? [authStub(env)] : []),
       // The OAuth server for MCP clients (#18). See "Authorization" in
@@ -234,6 +264,11 @@ async function allowlistRule(ctx: HookContext, env: Env) {
   if (!token) return;
   const found = await ctx.context.internalAdapter.findSession(token);
   if (found && !isAllowedEmail(found.user.email, env.ALLOWED_EMAILS)) {
+    log.warn("auth", "refused", {
+      reason: "email_not_allowed",
+      user: found.user.id,
+      route: ctx.path,
+    });
     throw new APIError("FORBIDDEN", {
       code: EMAIL_NOT_ALLOWED,
       message: "This account cannot use this app.",
@@ -254,6 +289,10 @@ function oauthRequestRules(ctx: HookContext) {
     // GET has a query, POST has a form body.
     const params = { ...ctx.query, ...(ctx.body as object | undefined) };
     if (!("resource" in params) || !params.resource) {
+      log.warn("auth", "refused", {
+        reason: "invalid_target",
+        route: ctx.path,
+      });
       throw new APIError("BAD_REQUEST", {
         error: "invalid_target",
         error_description: "the resource parameter is required",
@@ -267,6 +306,10 @@ function oauthRequestRules(ctx: HookContext) {
         ? body.application_type
         : undefined;
     if (type !== "web" && type !== "native") {
+      log.warn("auth", "refused", {
+        reason: "invalid_client_metadata",
+        route: ctx.path,
+      });
       throw new APIError("BAD_REQUEST", {
         error: "invalid_client_metadata",
         error_description: 'application_type must be "web" or "native"',
@@ -274,6 +317,38 @@ function oauthRequestRules(ctx: HookContext) {
     }
   }
 }
+
+/** A body value as a short string, or undefined. */
+function field(body: unknown, key: string): string | undefined {
+  if (!body || typeof body !== "object" || !(key in body)) return undefined;
+  const value = (body as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * One line for each token request and client registration of an MCP client
+ * (#147). The client ID is a URL (CIMD) or a random ID (DCR). Never the
+ * code, the tokens, or the redirect URI.
+ */
+const afterHook = createAuthMiddleware(async (ctx) => {
+  if (ctx.path !== "/oauth2/token" && ctx.path !== "/oauth2/register") return;
+  const returned = ctx.context.returned;
+  // The status only for an error: a success can be 200 or 201.
+  const status = isAPIError(returned) ? returned.statusCode : undefined;
+  const level = status ? "warn" : "info";
+  if (ctx.path === "/oauth2/token") {
+    log[level]("auth", "token", {
+      grant: field(ctx.body, "grant_type"),
+      client: field(ctx.body, "client_id"),
+      status,
+    });
+  } else {
+    log[level]("auth", "client registered", {
+      client: field(returned, "client_id"),
+      status,
+    });
+  }
+});
 
 export type Auth = ReturnType<typeof createAuth>;
 

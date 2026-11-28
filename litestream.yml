@@ -5,6 +5,11 @@
 # without it, Litestream listens on all interfaces. Do not open this port in
 # fly.toml.
 addr: "127.0.0.1:9090"
+# Only warnings and errors (#147): the info lines (each sync and each
+# compaction) were most of the log. The replication check of /api/health
+# finds a stop.
+logging:
+  level: warn
 dbs:
   - path: ${DATABASE_PATH}
     replica:

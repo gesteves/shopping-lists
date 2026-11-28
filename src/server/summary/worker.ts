@@ -11,6 +11,7 @@ import {
   summaryKeyText,
   type SummaryItem,
 } from "@/shared/summary";
+import { log } from "../log";
 import { setListSummary } from "../ops";
 import type { ListSummarizer } from "./summarize";
 
@@ -37,7 +38,7 @@ export function summaryKey(summaryItems: SummaryItem[]): string {
 }
 
 function seconds(ms: number): string {
-  return (ms / 1000).toFixed(1);
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 /** True if this process runs the summary worker (#143). */
@@ -66,9 +67,7 @@ export function quietMsFromEnv(
   if (value === undefined || value.trim() === "") return QUIET_MS;
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0) {
-    console.warn(
-      `SUMMARY_QUIET_SECONDS is not a number of seconds; using ${QUIET_MS / 1000}`,
-    );
+    log.warn("boot", "bad SUMMARY_QUIET_SECONDS", { quiet: QUIET_MS / 1000 });
     return QUIET_MS;
   }
   return Math.round(seconds * 1000);
@@ -113,11 +112,15 @@ export class SummaryWorker {
         // The time from the first change of the items to the write: the
         // wait for a quiet time, then the request. IDs only, no names.
         const ms = this.#now() - started;
-        console.info(
-          `[summary] list=${list.id} items=${list.items.length} ready=${list.reason}` +
-            ` wait=${seconds(list.waited)}s claude=${seconds(ms)}s` +
-            ` total=${seconds(list.waited + ms)}s ${summary ? "written" : "failed"}`,
-        );
+        log.info("summary", "done", {
+          list: list.id,
+          items: list.items.length,
+          ready: list.reason,
+          wait: seconds(list.waited),
+          claude: seconds(ms),
+          total: seconds(list.waited + ms),
+          result: summary ? "written" : "failed",
+        });
         if (summary) {
           this.#failed.delete(list.id);
           setListSummary(list.id, summary, list.key, { db: this.#db });
@@ -129,7 +132,7 @@ export class SummaryWorker {
         }
       }
     } catch (error) {
-      console.error("Summary tick failed", error);
+      log.error("summary", "tick failed", {}, error);
     } finally {
       this.#running = false;
     }
@@ -206,7 +209,7 @@ export class SummaryWorker {
       const pending = this.#pending.get(list.id);
       if (!pending) {
         this.#pending.set(list.id, { key, since: now, first: now });
-        console.info(`[summary] list=${list.id} items changed, waiting`);
+        log.debug("summary", "waiting", { list: list.id });
         continue;
       }
       if (pending.key !== key) {
@@ -241,7 +244,7 @@ export function startSummaryWorker(
   if (store[KEY]) return store[KEY];
   const quietMs = options.quietMs ?? quietMsFromEnv();
   const worker = new SummaryWorker({ ...options, quietMs });
-  console.info(`[summary] worker started, quiet=${quietMs / 1000}s`);
+  log.info("summary", "started", { quiet: quietMs / 1000 });
   setInterval(() => void worker.tick(), TICK_MS).unref();
   store[KEY] = worker;
   return worker;

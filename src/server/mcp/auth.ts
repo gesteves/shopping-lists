@@ -28,6 +28,7 @@ import { oauthClients, oauthConsents, users } from "@/db/schema";
 import { isAllowedEmail } from "@/lib/allowlist";
 import type { Auth } from "@/lib/auth";
 import { SCOPES, appOrigin, mcpResource } from "@/lib/oauth";
+import { log } from "../log";
 
 type Env = Record<string, string | undefined>;
 
@@ -71,6 +72,14 @@ function parseScopes(value: string): string[] {
   }
 }
 
+/** The 401 responses that withMcpAuth made and logged. */
+const loggedRefusals = new WeakSet<Response>();
+
+/** True if withMcpAuth made this response, and logged it. */
+export function isLoggedRefusal(response: Response): boolean {
+  return loggedRefusals.has(response);
+}
+
 /** Wraps an MCP route handler with the token checks. */
 export function withMcpAuth(
   deps: { auth: () => Auth; db: () => Db; env?: Env },
@@ -84,13 +93,27 @@ export function withMcpAuth(
       deps.auth(),
       async (req, claims) => {
         const resource = mcpResource(env);
-        const reject = (description: string) =>
-          unauthorized(req, resource, description);
-
-        if (tokenType(req) !== "at+jwt") return reject("not an access token");
         const userId = claims.sub;
         const clientId = typeof claims.azp === "string" ? claims.azp : "";
-        if (!userId || !clientId) return reject("no subject or client");
+        // A valid token that the app refuses: log it (#147). IDs only.
+        const reject = (reason: string, description: string) => {
+          log.warn("mcp", "refused", {
+            status: 401,
+            reason,
+            user: userId || undefined,
+            client: clientId || undefined,
+          });
+          const response = unauthorized(req, resource, description);
+          loggedRefusals.add(response);
+          return response;
+        };
+
+        if (tokenType(req) !== "at+jwt") {
+          return reject("not_access_token", "not an access token");
+        }
+        if (!userId || !clientId) {
+          return reject("no_subject", "no subject or client");
+        }
 
         const db = deps.db();
         const user = db
@@ -99,7 +122,7 @@ export function withMcpAuth(
           .where(eq(users.id, userId))
           .get();
         if (!user || !isAllowedEmail(user.email, env.ALLOWED_EMAILS)) {
-          return reject("the user cannot use this app");
+          return reject("not_allowed", "the user cannot use this app");
         }
         const grant = db
           .select({
@@ -119,13 +142,15 @@ export function withMcpAuth(
             ),
           )
           .get();
-        if (!grant || grant.disabled) return reject("access was revoked");
+        if (!grant || grant.disabled) {
+          return reject("revoked", "access was revoked");
+        }
         // The provider keeps the consent time in whole seconds, as iat.
         if (
           typeof claims.iat !== "number" ||
           claims.iat * 1000 < grant.consentedAt.getTime()
         ) {
-          return reject("the token is older than the consent");
+          return reject("stale_consent", "the token is older than the consent");
         }
         const granted = new Set(parseScopes(grant.scopes));
         const scopes = new Set(
