@@ -406,6 +406,10 @@ function saveItem(
   clocks: ItemClocks,
 ) {
   const changed = Object.keys(set).length > 0;
+  // Each change of `checked` goes through here (#150).
+  if (set.checked !== undefined) {
+    set.uncheckedAt = set.checked ? null : opTime(op);
+  }
   markTombstone(ctx, set);
   ctx.tx
     .update(items)

@@ -27,12 +27,7 @@ import {
   url as urlField,
   type OpInput,
 } from "@/shared/ops";
-import type {
-  ItemRecord,
-  ListRecord,
-  RejectReason,
-  StoredResult,
-} from "@/shared/sync";
+import type { ListRecord, RejectReason, StoredResult } from "@/shared/sync";
 import { getServerClock, SERVER_NODE } from "../clock";
 import { applyOps } from "../ops";
 import {
@@ -41,6 +36,7 @@ import {
   readLiveLists,
   readUsers,
   searchLiveItems,
+  type ServerItemRecord,
 } from "../queries";
 
 export interface ToolContext {
@@ -99,6 +95,18 @@ const itemOut = z.object({
   notes: z.string(),
   url: z.string().describe("A link to a web page for the item, or empty"),
   checked: z.boolean(),
+  checked_at: z.iso
+    .datetime()
+    .nullable()
+    .describe(
+      "When someone checked the item off (got it). Null if it is not checked",
+    ),
+  unchecked_at: z.iso
+    .datetime()
+    .nullable()
+    .describe(
+      "When the item last went back on the list: someone unchecked it, or added, changed, or moved it while it was checked. Null if it is checked, or if no one unchecked it",
+    ),
   out_of_stock: z
     .boolean()
     .describe("True if someone marked the item out of stock at the store"),
@@ -192,7 +200,7 @@ function resolveItems(
   ctx: ToolContext,
   list: ListRecord,
   refs: string[],
-): ItemRecord[] {
+): ServerItemRecord[] {
   const items = readListItems(list.id, ctx.db);
   const missing: string[] = [];
   const found = refs.flatMap((ref) => {
@@ -273,7 +281,7 @@ function iso(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-function toItemOut(item: ItemRecord) {
+function toItemOut(item: ServerItemRecord) {
   return {
     item_id: item.id,
     name: item.name,
@@ -281,6 +289,8 @@ function toItemOut(item: ItemRecord) {
     notes: item.notes,
     url: item.url,
     checked: item.checked,
+    checked_at: item.checkedAt === null ? null : iso(item.checkedAt),
+    unchecked_at: item.uncheckedAt === null ? null : iso(item.uncheckedAt),
     out_of_stock: item.outOfStockAt !== null,
   };
 }
@@ -342,7 +352,7 @@ export const TOOLS = [
     name: "get_list",
     title: "Get a shopping list",
     description:
-      "The items of one list: unchecked first, then the most recently changed first. Each item says who added it and who changed it last, and when.",
+      "The items of one list: unchecked first, then the most recently changed first. Each item says who added it and who changed it last, and when, and when it was checked off or unchecked.",
     scope: "lists:read",
     annotations: READ,
     input: z.object({
@@ -741,7 +751,13 @@ export const TOOLS = [
           { type: "moveItem", args: { itemId: item.id, toListId: to.id } },
         ]);
       }
-      return { ...toItemOut(item), from_list_id: from.id, to_list_id: to.id };
+      // A move unchecks the item: return it as it is now.
+      const after = readListItems(to.id, ctx.db).find((i) => i.id === item.id);
+      return {
+        ...toItemOut(after ?? item),
+        from_list_id: from.id,
+        to_list_id: to.id,
+      };
     },
   }),
 

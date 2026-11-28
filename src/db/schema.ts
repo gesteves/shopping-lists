@@ -382,6 +382,13 @@ export const items = sqliteTable(
     checked: integer("checked", { mode: "boolean" }).notNull().default(false),
     checkedAt: integer("checked_at", { mode: "timestamp_ms" }),
     /**
+     * The op time of the last uncheck (#150): an uncheck, or an edit, move,
+     * add, or out-of-stock mark that unchecked the item. Null if the item is
+     * checked, or no one unchecked it. Only the MCP tools read it: the
+     * clients do not get it.
+     */
+    uncheckedAt: integer("unchecked_at", { mode: "timestamp_ms" }),
+    /**
      * The op time when someone marked the item out of stock (#131). Null if
      * it is in stock.
      */

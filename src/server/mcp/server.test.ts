@@ -485,6 +485,74 @@ describe("tools", () => {
     ]);
   });
 
+  it("tells when each item was checked and unchecked (#150)", async () => {
+    await callTool(client, "create_list", { name: "Pantry #150" });
+    await callTool(client, "create_list", { name: "Freezer #150" });
+    await callTool(client, "add_items", {
+      list: "Pantry #150",
+      items: [{ name: "Rice" }, { name: "Beans" }, { name: "Oats" }],
+    });
+    const byName = async () => {
+      const got = await callTool(client, "get_list", { list: "Pantry #150" });
+      return Object.fromEntries(
+        (got.structuredContent.items as Json[]).map((i) => [i.name, i]),
+      );
+    };
+    const isNow = (value: unknown, from: number) => {
+      const ms = Date.parse(value as string);
+      expect(ms).toBeGreaterThanOrEqual(from);
+      expect(ms).toBeLessThanOrEqual(Date.now());
+    };
+
+    // Never checked: no times.
+    expect(await byName()).toMatchObject({
+      Oats: { checked_at: null, unchecked_at: null },
+    });
+
+    const checkedFrom = Date.now();
+    const checked = await callTool(client, "check_items", {
+      list: "Pantry #150",
+      items: ["Rice", "Beans"],
+    });
+    for (const item of checked.structuredContent.items as Json[]) {
+      isNow(item.checked_at, checkedFrom);
+      expect(item.unchecked_at).toBeNull();
+    }
+
+    const uncheckedFrom = Date.now();
+    await callTool(client, "uncheck_items", {
+      list: "Pantry #150",
+      items: ["Rice"],
+    });
+    // A move of a checked item unchecks it too. The output shows it.
+    const moved = await callTool(client, "move_item", {
+      list: "Pantry #150",
+      item: "Beans",
+      to_list: "Freezer #150",
+    });
+    expect(moved.structuredContent).toMatchObject({
+      checked: false,
+      checked_at: null,
+    });
+    isNow(moved.structuredContent.unchecked_at, uncheckedFrom);
+
+    const items = await byName();
+    expect(items.Rice).toMatchObject({ checked: false, checked_at: null });
+    isNow(items.Rice.unchecked_at, uncheckedFrom);
+    const found = await callTool(client, "search_items", { query: "beans" });
+    isNow(
+      (found.structuredContent.items as Json[])[0].unchecked_at,
+      uncheckedFrom,
+    );
+
+    // A new check clears the uncheck time.
+    await callTool(client, "check_items", {
+      list: "Pantry #150",
+      items: ["Rice"],
+    });
+    expect((await byName()).Rice).toMatchObject({ unchecked_at: null });
+  });
+
   it("updates, moves, and deletes items", async () => {
     await callTool(client, "create_list", { name: "Target" });
     const updated = await callTool(client, "update_item", {

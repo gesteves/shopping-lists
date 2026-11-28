@@ -79,7 +79,7 @@ Schema in `src/db/schema.ts`.
 |---|---|
 | `users` | id, email, name (Google given name), avatar_url |
 | `lists` | id (UUID generated on the client), name, created_by/at, updated_by/at, updated_via (`app` \| `mcp`), deleted_at, tombstoned_at (server time of the delete, #101), clocks (JSON), summary and summary_key (see List summaries), seq |
-| `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, url (an http or https URL, or empty, #140), checked, checked_at, out_of_stock_at (the op time of the mark, or null, #131), created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
+| `items` | id (UUID), list_id, name, name_key (normalized for dedupe), quantity (int, default 1), notes, url (an http or https URL, or empty, #140), checked, checked_at, unchecked_at (the op time of the last uncheck, or null; only MCP reads it, #150), out_of_stock_at (the op time of the mark, or null, #131), created_by/at, updated_by/at, updated_via, deleted_at, tombstoned_at, clocks (JSON, one HLC timestamp per field), seq |
 | `processed_ops` | op_id, user_id, result (JSON), processed_at (server time). It makes pushes idempotent: a retry gets the stored result. The purge keeps the rows for 180 days (#119). |
 | `activity` | id, op_id, actor_id, via, type (the op type; a `moveItem` that does not change the list only restores the item, thus its row is a `restoreItem` on the list of the item, #118), list_id, item_id, snapshot (names at that moment; for an update, also the fields that changed (`name`, `quantity`, `notes`, `url`); `unchecked` and `inStock` when the change also unchecked the item or marked it in stock, #112, #131; an add of a name that is checked on the list has `unchecked`, #133; the values for collapse, #133: see Notifications), at, notified_at. A bulk op (`clearChecked`, `uncheckAll`, `checkAll`) writes one row for each item that it changed, with the op type and the item (#133; older rows: one row with `count` and no item). Drives notifications. A partial index covers the rows with no `notified_at`. |
 | `push_subscriptions` | id, user_id, endpoint (unique), p256dh, auth, device_label, enabled, created_at, last_success_at, failure_count, failing_since, last_failure_at (#118) |
@@ -361,6 +361,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 - Every write calls `applyOps` with `via: "mcp"`. Reads use `src/server/queries.ts`.
 - Scopes: read tools need `lists:read`, write tools `lists:write`. A missing scope gets 403 `insufficient_scope` before the tool runs (the SDK `scopeChallenge`). `tools/list` shows all the tools.
 - Each item output has `url` (#140): an http or https URL, or empty. `add_items` and `update_item` take `url`; an empty string removes it, and any other scheme is a schema error.
+- Each item output has `checked_at` and `unchecked_at` (#150): ISO times, or null. `checked_at` is the time of the check, and null if the item is not checked. `unchecked_at` is the op time of the last change from checked to unchecked: an uncheck, an uncheck all, or an add, edit, move, or out-of-stock mark that unchecked the item. It is null while the item is checked. It is in the `unchecked_at` column, and `saveItem` in `src/server/ops.ts` writes it on each change of `checked`. Only the MCP tools read it (`ServerItemRecord` in `src/server/queries.ts`): it is not in the sync records. Items that were unchecked before #150 have null. `move_item` returns the item after the move.
 - Each item output has `out_of_stock` (#131). `update_item` takes `out_of_stock` (a boolean) with or without the other fields: it sends a `markOutOfStock` or `markInStock` op after the `updateItem`. Its description says that a mark also unchecks the item; `check_items` and `move_item` say that they mark it in stock.
 - `create_list` refuses a name that a live list has, because names are references. `add_items` does not change the quantity or the notes of an item that is already on the list: use `update_item`.
 - Every tool sets `openWorldHint: false`.
@@ -368,7 +369,7 @@ OAuth 2.1. The app is both the authorization server (AS) and the resource server
 | Tool | Annotations | Notes |
 |---|---|---|
 | `list_lists` | readOnly | |
-| `get_list` | readOnly | items, with who added and updated each one, and when |
+| `get_list` | readOnly | items, with who added and updated each one, and when; when each was checked and unchecked |
 | `search_items` | readOnly | across all lists |
 | `create_list` | | returns `list_id` |
 | `rename_list` | idempotent, non-destructive | |
