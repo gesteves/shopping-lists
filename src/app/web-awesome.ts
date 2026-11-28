@@ -19,6 +19,7 @@ import "@web.awesome.me/webawesome-pro/dist/components/input/input.js";
 import "@web.awesome.me/webawesome-pro/dist/components/number-input/number-input.js";
 import "@web.awesome.me/webawesome-pro/dist/components/option/option.js";
 import "@web.awesome.me/webawesome-pro/dist/components/select/select.js";
+import "@web.awesome.me/webawesome-pro/dist/components/skeleton/skeleton.js";
 import "@web.awesome.me/webawesome-pro/dist/components/switch/switch.js";
 import "@web.awesome.me/webawesome-pro/dist/components/textarea/textarea.js";
 import "@web.awesome.me/webawesome-pro/dist/components/toast/toast.js";

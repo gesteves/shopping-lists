@@ -94,6 +94,13 @@ export interface ListRecord {
   deletedAt: number | null;
   /** A one-line summary of the unchecked items, from Claude, or null. */
   summary: string | null;
+  /**
+   * The key of the items that `summary` tells about (summaryKeyOf in
+   * src/shared/summary.ts), or null. If it is not the key of the unchecked
+   * items now, the summary is old (#143). A row from an older server has
+   * no value: read it as null.
+   */
+  summaryKey: string | null;
   seq: number;
 }
 
@@ -157,4 +164,9 @@ export interface PullResponse {
   purgedSeq: number;
   /** The server time in ms. The client keeps the offset to its own clock. */
   now: number;
+  /**
+   * True if the server makes list summaries (it has ANTHROPIC_API_KEY,
+   * #143). If not, the lists page never waits for one.
+   */
+  summaries: boolean;
 }

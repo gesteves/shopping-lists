@@ -7,6 +7,7 @@ import { useListSummaries, useOtherUserNames } from "@/client/hooks";
 import { listLine, type ListSummary } from "@/client/queries";
 import { mutate } from "@/client/sync";
 import { showToast } from "@/client/toasts";
+import { useNow } from "@/client/use-now";
 import { copy } from "@/copy";
 import { LIST_NAME_MAX } from "@/shared/ops";
 import { ListViewers } from "./presence";
@@ -18,6 +19,8 @@ import { ConfirmDialog, useWaEvents } from "./wa";
  */
 export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
   const lists = useListSummaries();
+  // The skeleton of a summary that is on the way ends after a time (#143).
+  const now = useNow();
   const Heading = `h${headingLevel}` as const;
   // The layout and the page `/` both mount this list, thus the ID is unique.
   const headingId = useId();
@@ -35,7 +38,7 @@ export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
       ) : (
         <ul className="flex flex-col gap-2">
           {lists.map((list) => (
-            <ListRow key={list.id} list={list} />
+            <ListRow key={list.id} list={list} now={now} />
           ))}
         </ul>
       )}
@@ -44,7 +47,7 @@ export function ListIndex({ headingLevel = 1 }: { headingLevel?: 1 | 2 }) {
   );
 }
 
-function ListRow({ list }: { list: ListSummary }) {
+function ListRow({ list, now }: { list: ListSummary; now: number | null }) {
   const pathname = usePathname();
   const href = `/lists/${list.id}`;
   const current = pathname === href;
@@ -82,9 +85,7 @@ function ListRow({ list }: { list: ListSummary }) {
             {list.name}
           </span>
           <span className="flex items-center gap-2 text-sm text-ink-muted tabular-nums">
-            <span className="line-clamp-2 min-w-0 wrap-anywhere">
-              {listLine(list)}
-            </span>
+            <SummaryLine list={list} now={now} />
             <ListViewers listId={list.id} />
           </span>
         </Link>
@@ -118,6 +119,32 @@ function ListRow({ list }: { list: ListSummary }) {
         onClose={() => setDeleting(false)}
       />
     </li>
+  );
+}
+
+/**
+ * The line under the list name. While a summary for the items now is on
+ * the way, a skeleton of one text line, not the old summary (#143).
+ */
+function SummaryLine({ list, now }: { list: ListSummary; now: number | null }) {
+  const line = listLine(list, now);
+  if (line === null) {
+    return (
+      // One line of the text, at the same place: the row does not move
+      // when a summary of one line comes.
+      <span
+        data-summary-line
+        className="flex h-lh w-40 max-w-full min-w-0 items-center"
+      >
+        <wa-skeleton effect="pulse" className="h-[1em]"></wa-skeleton>
+        <span className="sr-only">{copy.lists.summaryPending}</span>
+      </span>
+    );
+  }
+  return (
+    <span data-summary-line className="line-clamp-2 min-w-0 wrap-anywhere">
+      {line}
+    </span>
   );
 }
 

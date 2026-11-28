@@ -54,6 +54,8 @@ export interface MetaValues {
    * gave. After the last page, the server rows with no ID here go.
    */
   resetting: { lists: string[]; items: string[] };
+  /** The `summaries` of the last pull: the server makes list summaries. */
+  summaries: boolean;
 }
 
 export interface MetaEntry<K extends keyof MetaValues = keyof MetaValues> {

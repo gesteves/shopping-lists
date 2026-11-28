@@ -125,6 +125,8 @@ export const en = {
     /** The unchecked items of a list. */
     remaining: (n: number) => items(n),
     nothingToGet: "Nothing to get",
+    /** Screen reader text of the skeleton of a summary on the way (#143). */
+    summaryPending: "Summary is updating",
     /** The unchecked items of a short list, for example "Milk and Eggs". */
     names: (names: string[]) => andList.format(names),
     more: (name: string) => `More for ${name}`,

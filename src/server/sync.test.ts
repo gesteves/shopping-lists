@@ -3,6 +3,7 @@ import type { Db } from "@/db/client";
 import { HlcClock, serialize } from "@/shared/hlc";
 import { MAX_PUSH_BYTES, MAX_PUSH_OPS, type PullResponse } from "@/shared/sync";
 import { SAM, createTestDb } from "@/test/db";
+import { setListSummary } from "./ops";
 import { purgeTombstones } from "./purge";
 import { handlePull, handlePush } from "./sync";
 
@@ -65,6 +66,23 @@ async function pull(query = ""): Promise<PullResponse & { status: number }> {
   return { status: res.status, ...(await res.json()) };
 }
 
+describe("list summaries (#143)", () => {
+  it("sends the summary key, and if the server makes summaries", async () => {
+    await push([op("createList", { listId: LIST, name: "Whole Foods" })]);
+    setListSummary(LIST, "Milk and eggs", "key-1", { db });
+    const res = handlePull(
+      new Request("http://localhost/api/sync/pull?since=0"),
+      { db, now: () => NOW, summaries: true },
+    );
+    const page = (await res.json()) as PullResponse;
+    expect(page.summaries).toBe(true);
+    expect(page.lists[0]).toMatchObject({
+      summary: "Milk and eggs",
+      summaryKey: "key-1",
+    });
+  });
+});
+
 describe("push then pull", () => {
   it("returns the changes, the users, and the new cursor", async () => {
     const create = op("createList", { listId: LIST, name: "Whole Foods" });
@@ -94,6 +112,8 @@ describe("push then pull", () => {
       hasMore: false,
       hlc: add.hlc,
       now: NOW,
+      // No ANTHROPIC_API_KEY in the tests: no summary worker (#143).
+      summaries: false,
     });
     expect(page.users).toHaveLength(2);
     expect(page.users).toContainEqual({ id: SAM.id, name: "Sam", image: null });
@@ -108,6 +128,7 @@ describe("push then pull", () => {
         updatedVia: "app",
         deletedAt: null,
         summary: null,
+        summaryKey: null,
         seq: 1,
       },
     ]);

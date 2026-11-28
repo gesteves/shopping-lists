@@ -94,6 +94,7 @@ export function applyLocal(
         updatedVia: "app",
         deletedAt: null,
         summary: null,
+        summaryKey: null,
         seq: 0,
       });
       break;

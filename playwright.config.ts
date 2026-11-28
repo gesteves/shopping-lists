@@ -58,6 +58,9 @@ export default defineConfig({
       VAPID_SUBJECT: "https://shopping-lists.invalid",
       // Turns on the sign-in stub (src/lib/auth-stub.ts).
       AUTH_STUB: "1",
+      // No Claude: the same as CI, also when .env.local has a key (the env
+      // wins over the file). Thus no summary worker (#143) and no API calls.
+      ANTHROPIC_API_KEY: "",
     },
     url: baseURL,
     reuseExistingServer: !process.env.CI,

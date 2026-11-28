@@ -32,6 +32,7 @@ const base = {
   updatedVia: "app" as const,
   deletedAt: null,
   summary: null,
+  summaryKey: null,
   seq: 1,
 };
 

@@ -240,6 +240,8 @@ export async function savePullPage(
       if (typeof page.purgedSeq === "number") {
         await setMeta(db, "purgedSeq", page.purgedSeq);
       }
+      // An old server sends no `summaries`: it makes no skeleton (#143).
+      await setMeta(db, "summaries", page.summaries === true);
     },
   );
 }
