@@ -20,9 +20,10 @@ export async function GET(request: Request) {
     createEventStream(request.signal, {
       // The private lists of other users stay out (#154).
       presence: (snapshot) => presenceFor(snapshot, readHiddenListIds(userId)),
-      // One line for each connection, at its end.
+      // One line for each connection, at its end. Debug only: a page load,
+      // a hidden tab, or a phone in the background closes a stream (#147).
       onClose: (reason) =>
-        log.info("events", "closed", {
+        log.debug("events", "closed", {
           user: userId,
           reason,
           ms: Math.round(performance.now() - started),
